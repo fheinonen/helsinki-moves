@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Helsinki Train Radar</title>
+    <meta name="theme-color" content="#080c16" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400..800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page" aria-live="polite">
+      <section class="board card">
+        <div class="board-top">
+          <p class="eyebrow">HSL Commuter Rail</p>
+          <p id="nowClock" class="clock">--:--</p>
+        </div>
+
+        <div class="controls">
+          <button id="locateBtn">Refresh Location</button>
+          <button id="helsinkiOnlyBtn" class="secondary filter-toggle" aria-pressed="false">
+            Helsinki Only: Off
+          </button>
+        </div>
+
+        <p id="status" class="status">Getting your location...</p>
+        <p id="lastUpdated" class="last-updated">Last updated: —</p>
+
+        <section id="result" class="result hidden">
+          <div class="result-head">
+            <div>
+              <h2 id="stationTitle"></h2>
+              <p id="stationMeta" class="muted"></p>
+            </div>
+            <span class="live-pill">Realtime</span>
+          </div>
+          <div id="nextSummary" class="next-summary hidden" aria-live="polite">
+            <p class="next-label">Next Train</p>
+            <div class="next-grid">
+              <span id="nextLine" class="letter-badge next-letter">—</span>
+              <p class="next-mins"><span id="nextMins">—</span></p>
+            </div>
+            <p id="nextDestination" class="next-destination">—</p>
+            <p class="next-track-row">
+              <span id="nextTrack" class="next-chip">Track —</span>
+            </p>
+          </div>
+          <ul id="departures" class="departures"></ul>
+        </section>
+      </section>
+
+      <section id="permissionCard" class="permission card hidden">
+        <h2>Location Permission Required</h2>
+        <p class="muted">
+          This app needs location access to show departures from your nearest station.
+          Enable location permission in your browser settings and tap Refresh Location.
+        </p>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

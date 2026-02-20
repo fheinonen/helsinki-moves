@@ -75,6 +75,10 @@ Production domain is aliased to:
 
 - `https://train.fheinonen.eu`
 
+## Version Control
+
+- Changes in this repository are committed with `jj` (Jujutsu).
+
 ## Style and Editing Guidelines
 
 - Keep implementation plain HTML/CSS/JS unless user requests framework migration.

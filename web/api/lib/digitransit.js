@@ -1,4 +1,5 @@
 const DIGITRANSIT_ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
+const DIGITRANSIT_TIMEOUT_MS = 7000;
 const MODE_RAIL = "RAIL";
 const MODE_BUS = "BUS";
 
@@ -81,16 +82,35 @@ async function graphqlRequest(query, variables) {
     throw new Error("Missing DIGITRANSIT_API_KEY environment variable.");
   }
 
-  const response = await fetch(DIGITRANSIT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "digitransit-subscription-key": key,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DIGITRANSIT_TIMEOUT_MS);
+  let response;
 
-  const json = await response.json();
+  try {
+    response = await fetch(DIGITRANSIT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "digitransit-subscription-key": key,
+      },
+      body: JSON.stringify({ query, variables }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Digitransit request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  let json;
+  try {
+    json = await response.json();
+  } catch {
+    throw new Error(`Digitransit invalid response (HTTP ${response.status})`);
+  }
 
   if (!response.ok) {
     throw new Error(`Digitransit HTTP ${response.status}`);

@@ -8,8 +8,13 @@ This repo is a **web-only** project.
 
 - Frontend:
   - `web/index.html`
-  - `web/scripts/app.js`
-  - `web/styles/main.css`
+  - `web/scripts/app.js` (legacy placeholder)
+  - `web/scripts/app/*.js` (ordered runtime modules)
+  - `web/scripts/README.md` (script module boundaries/load order)
+  - `web/scripts/theme-init.js`
+  - `web/styles/main.css` (stylesheet entrypoint/import manifest)
+  - `web/styles/*.css` (modular stylesheets)
+  - `web/styles/README.md` (stylesheet maintenance rules)
   - `web/assets/icons/*`
 - API (Vercel serverless):
   - `web/api/v1/departures.js`
@@ -36,6 +41,8 @@ Key UX requirements currently in use:
   - line filters
   - destination filters
 - Persist selected mode and filters in URL + localStorage.
+- Theme toggle with system preference fallback.
+- Persist selected theme in localStorage.
 - Show departures clearly with:
   - line identifier
   - track/platform or stop
@@ -105,6 +112,11 @@ Quick sanity checks:
 From repository root:
 
 - `node --check web/scripts/app.js`
+- `node --check web/scripts/app/01-state.js`
+- `node --check web/scripts/app/02-ui.js`
+- `node --check web/scripts/app/03-data.js`
+- `node --check web/scripts/app/04-init.js`
+- `node --check web/scripts/theme-init.js`
 - `node --check web/api/v1/departures.js`
 - `node --check web/api/v1/client-error.js`
 - `node --check web/api/lib/digitransit.js`
@@ -134,6 +146,12 @@ Primary production domain is aliased to:
 - Prioritize readability over visual complexity.
 - Keep UI mobile-friendly.
 - Prefer small targeted patches over broad rewrites.
+- Frontend runtime scripts are modularized under `web/scripts/app/`; preserve load order in `web/index.html`.
+- Add new app logic to the closest module file instead of growing one file.
+- Cross-module script communication should go through `window.HMApp` (`dom`, `constants`, `state`, `api`) instead of new implicit globals.
+- CSS is modularized; add styles to the closest file under `web/styles/` rather than `web/styles/main.css`.
+- Keep `web/styles/main.css` import order stable unless there is a clear cascade reason to change it.
+- Light theme overrides are centralized in `web/styles/theme-light.css` under `[data-theme="light"]`.
 
 ## Common Safe Tests
 

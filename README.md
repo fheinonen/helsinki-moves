@@ -14,6 +14,8 @@ Web app for showing nearby Helsinki public transport departures using browser ge
   - line filters
   - destination filters
 - UI state is persisted in URL query params and localStorage
+- Light/dark theme toggle with system preference fallback
+- Theme is initialized before CSS load to avoid flash/mismatch
 - Frontend reports client errors to server-side logging endpoint
 
 ## API routes
@@ -28,8 +30,12 @@ Web app for showing nearby Helsinki public transport departures using browser ge
 ## Project structure
 
 - `web/index.html` app shell
-- `web/scripts/app.js` frontend behavior
-- `web/styles/main.css` styles
+- `web/scripts/app.js` legacy placeholder
+- `web/scripts/app/*.js` frontend runtime modules (ordered in `index.html`)
+- `web/scripts/README.md` module boundaries/load order (`window.HMApp` contract)
+- `web/scripts/theme-init.js` early theme initialization
+- `web/styles/main.css` stylesheet entrypoint
+- `web/styles/*.css` modular stylesheets (see `web/styles/README.md`)
 - `web/assets/icons/` static icons
 - `web/api/v1/departures.js` departures API
 - `web/api/v1/client-error.js` client error reporting API
@@ -50,6 +56,11 @@ Quick checks:
 From repository root:
 
 - `node --check web/scripts/app.js`
+- `node --check web/scripts/app/01-state.js`
+- `node --check web/scripts/app/02-ui.js`
+- `node --check web/scripts/app/03-data.js`
+- `node --check web/scripts/app/04-init.js`
+- `node --check web/scripts/theme-init.js`
 - `node --check web/api/v1/departures.js`
 - `node --check web/api/v1/client-error.js`
 - `node --check web/api/lib/digitransit.js`

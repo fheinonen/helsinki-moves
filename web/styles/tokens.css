@@ -1,0 +1,23 @@
+/* ─── Custom Properties ─── */
+:root {
+  --bg: #080c16;
+  --bg-card: rgba(13, 19, 33, 0.85);
+  --bg-elevated: rgba(20, 28, 45, 0.6);
+  --border: rgba(148, 180, 210, 0.07);
+  --text: #eef2f7;
+  --text-secondary: #8a9bb0;
+  --text-muted: #4f6373;
+  --cyan: #7cb8cf;
+  --cyan-soft: rgba(124, 184, 207, 0.06);
+  --amber: #d4a96a;
+  --amber-soft: rgba(212, 169, 106, 0.05);
+  --emerald: #7bbf9e;
+  --emerald-soft: rgba(123, 191, 158, 0.05);
+  --slate: #64748b;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 3px 12px rgba(0, 0, 0, 0.15);
+  --badge-size: 38px;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+

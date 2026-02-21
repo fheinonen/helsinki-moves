@@ -45,6 +45,7 @@ let busStops = [];
 let busFilterOptions = { lines: [], destinations: [] };
 let suppressBusStopChange = false;
 let errorReportCount = 0;
+let latestLoadToken = 0;
 
 function setLoading(loading) {
   isLoading = loading;
@@ -832,7 +833,11 @@ function updateBusStateFromResponse(responseData) {
 }
 
 async function load(lat, lon) {
-  if (isLoading) return;
+  const loadToken = ++latestLoadToken;
+  const requestMode = mode;
+  const requestBusStopId = busStopId;
+  const requestBusLineFilters = [...busLineFilters];
+  const requestBusDestinationFilters = [...busDestinationFilters];
 
   setLoading(true);
   setStatus("Loading departures...");
@@ -841,15 +846,15 @@ async function load(lat, lon) {
     const params = new URLSearchParams({
       lat: String(lat),
       lon: String(lon),
-      mode: mode.toUpperCase(),
+      mode: requestMode.toUpperCase(),
     });
 
-    if (mode === MODE_BUS && busStopId) {
-      params.set("stopId", busStopId);
-      for (const line of busLineFilters) {
+    if (requestMode === MODE_BUS && requestBusStopId) {
+      params.set("stopId", requestBusStopId);
+      for (const line of requestBusLineFilters) {
         params.append("line", line);
       }
-      for (const destination of busDestinationFilters) {
+      for (const destination of requestBusDestinationFilters) {
         params.append("dest", destination);
       }
     }
@@ -869,7 +874,11 @@ async function load(lat, lon) {
       throw new Error(json.error || "Request failed");
     }
 
-    if (mode === MODE_BUS) {
+    if (loadToken !== latestLoadToken) {
+      return;
+    }
+
+    if (requestMode === MODE_BUS) {
       updateBusStateFromResponse(json);
       persistUiState();
     }
@@ -880,14 +889,20 @@ async function load(lat, lon) {
     setLastUpdated(new Date());
     setStatus(buildStatusFromResponse(json));
   } catch (err) {
+    if (loadToken !== latestLoadToken) {
+      return;
+    }
+
     latestResponse = null;
     console.error("load departures error:", err);
-    reportClientError("load", err, { mode });
+    reportClientError("load", err, { mode: requestMode });
     setStatus(getLoadErrorStatus(err));
     resultEl.classList.add("hidden");
     updateNextSummary(null);
   } finally {
-    setLoading(false);
+    if (loadToken === latestLoadToken) {
+      setLoading(false);
+    }
   }
 }
 

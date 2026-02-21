@@ -45,7 +45,6 @@ function parseDeparture(item, fallbackTrack, expectedMode, fallbackStop = null) 
     stopCode,
     stopName,
     departureIso: departureDate.toISOString(),
-    delaySeconds: item.departureDelay || 0,
   };
 }
 

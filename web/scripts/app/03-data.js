@@ -2,7 +2,11 @@
 (() => {
   const app = window.HMApp;
   const { api, dom, state, constants } = app;
-  const { MODE_BUS } = constants;
+  const { MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
+
+  function isStopMode(mode) {
+    return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO;
+  }
 
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -64,7 +68,7 @@
     };
   }
 
-  function updateBusStateFromResponse(responseData) {
+  function updateStopModeStateFromResponse(responseData) {
     const stops = Array.isArray(responseData?.stops)
       ? responseData.stops
           .filter((stop) => stop && stop.id && stop.name)
@@ -95,7 +99,7 @@
       ? responseData.station.departures
       : [];
     state.busFilterOptions = buildFilterOptionsFromDepartures(departures);
-    api.sanitizeBusSelections();
+    api.sanitizeStopSelections();
   }
 
   async function load(lat, lon) {
@@ -114,7 +118,7 @@
         results: String(api.getActiveResultsLimit(requestMode)),
       });
 
-      if (requestMode === MODE_BUS && requestBusStopId) {
+      if (isStopMode(requestMode) && requestBusStopId) {
         params.set("stopId", requestBusStopId);
       }
 
@@ -137,8 +141,8 @@
         return;
       }
 
-      if (requestMode === MODE_BUS) {
-        updateBusStateFromResponse(json);
+      if (isStopMode(requestMode)) {
+        updateStopModeStateFromResponse(json);
         api.persistUiState();
       }
 
@@ -224,7 +228,7 @@
     api.updateModeLabels();
     api.renderResultsLimitControl();
     api.updateHelsinkiFilterButton();
-    api.renderBusControls();
+    api.renderStopControls();
     api.updateDataScope(state.latestResponse);
   }
 
@@ -232,7 +236,7 @@
     delay,
     fetchWithTimeout,
     fetchWithRetryOnce,
-    updateBusStateFromResponse,
+    updateStopModeStateFromResponse,
     buildFilterOptionsFromDepartures,
     load,
     requestLocationAndLoad,

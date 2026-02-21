@@ -2,7 +2,7 @@
 (() => {
   const app = window.HMApp;
   const { api, dom, state, constants } = app;
-  const { MODE_RAIL, MODE_BUS } = constants;
+  const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
 
   function refreshWithCurrentLocationOrRequest() {
     if (state.currentCoords) {
@@ -20,6 +20,24 @@
   dom.modeRailBtn?.addEventListener("click", () => {
     if (state.mode === MODE_RAIL) return;
     state.mode = MODE_RAIL;
+    api.applyModeUiState();
+    api.persistUiState();
+    refreshWithCurrentLocationOrRequest();
+  });
+
+  dom.modeTramBtn?.addEventListener("click", () => {
+    if (state.mode === MODE_TRAM) return;
+    state.mode = MODE_TRAM;
+    state.helsinkiOnly = false;
+    api.applyModeUiState();
+    api.persistUiState();
+    refreshWithCurrentLocationOrRequest();
+  });
+
+  dom.modeMetroBtn?.addEventListener("click", () => {
+    if (state.mode === MODE_METRO) return;
+    state.mode = MODE_METRO;
+    state.helsinkiOnly = false;
     api.applyModeUiState();
     api.persistUiState();
     refreshWithCurrentLocationOrRequest();
@@ -50,7 +68,12 @@
   });
 
   dom.busStopSelectEl?.addEventListener("change", () => {
-    if (state.suppressBusStopChange || state.mode !== MODE_BUS) return;
+    if (
+      state.suppressBusStopChange ||
+      (state.mode !== MODE_BUS && state.mode !== MODE_TRAM && state.mode !== MODE_METRO)
+    ) {
+      return;
+    }
 
     const nextStopId = String(dom.busStopSelectEl.value || "").trim();
     if (!nextStopId || nextStopId === state.busStopId) return;

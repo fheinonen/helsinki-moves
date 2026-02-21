@@ -6,6 +6,8 @@
   app.dom = {
     locateBtn: document.getElementById("locateBtn"),
     modeRailBtn: document.getElementById("modeRailBtn"),
+    modeTramBtn: document.getElementById("modeTramBtn"),
+    modeMetroBtn: document.getElementById("modeMetroBtn"),
     modeBusBtn: document.getElementById("modeBusBtn"),
     helsinkiOnlyBtn: document.getElementById("helsinkiOnlyBtn"),
     busControlsEl: document.getElementById("busControls"),
@@ -33,6 +35,8 @@
 
   app.constants = {
     MODE_RAIL: "rail",
+    MODE_TRAM: "tram",
+    MODE_METRO: "metro",
     MODE_BUS: "bus",
     STORAGE_MODE_KEY: "prefs:mode",
     STORAGE_HELSINKI_ONLY_KEY: "prefs:helsinkiOnly",
@@ -40,15 +44,19 @@
     STORAGE_BUS_LINES_KEY: "prefs:busLines",
     STORAGE_BUS_DESTINATIONS_KEY: "prefs:busDestinations",
     STORAGE_RESULTS_LIMIT_RAIL_KEY: "prefs:resultsLimitRail",
+    STORAGE_RESULTS_LIMIT_TRAM_KEY: "prefs:resultsLimitTram",
+    STORAGE_RESULTS_LIMIT_METRO_KEY: "prefs:resultsLimitMetro",
     STORAGE_RESULTS_LIMIT_BUS_KEY: "prefs:resultsLimitBus",
     DEFAULT_RESULTS_LIMIT_RAIL: 8,
+    DEFAULT_RESULTS_LIMIT_TRAM: 8,
+    DEFAULT_RESULTS_LIMIT_METRO: 8,
     DEFAULT_RESULTS_LIMIT_BUS: 24,
     RESULT_LIMIT_OPTIONS: [8, 12, 16, 20, 24, 30],
     FETCH_TIMEOUT_MS: 8000,
     ERROR_REPORT_LIMIT: 5,
   };
 
-  const { MODE_RAIL, MODE_BUS } = app.constants;
+  const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = app.constants;
 
   app.state = {
     isLoading: false,
@@ -61,6 +69,8 @@
     busDestinationFilters: [],
     resultsLimitByMode: {
       [MODE_RAIL]: app.constants.DEFAULT_RESULTS_LIMIT_RAIL,
+      [MODE_TRAM]: app.constants.DEFAULT_RESULTS_LIMIT_TRAM,
+      [MODE_METRO]: app.constants.DEFAULT_RESULTS_LIMIT_METRO,
       [MODE_BUS]: app.constants.DEFAULT_RESULTS_LIMIT_BUS,
     },
     busStops: [],
@@ -167,7 +177,9 @@
   function normalizeMode(value) {
     if (!value) return null;
     const lowered = String(value).trim().toLowerCase();
-    if (lowered === MODE_RAIL || lowered === MODE_BUS) return lowered;
+    if (lowered === MODE_RAIL || lowered === MODE_TRAM || lowered === MODE_METRO || lowered === MODE_BUS) {
+      return lowered;
+    }
     return null;
   }
 
@@ -194,9 +206,10 @@
   }
 
   function getDefaultResultsLimit(mode = state.mode) {
-    return mode === MODE_BUS
-      ? constants.DEFAULT_RESULTS_LIMIT_BUS
-      : constants.DEFAULT_RESULTS_LIMIT_RAIL;
+    if (mode === MODE_BUS) return constants.DEFAULT_RESULTS_LIMIT_BUS;
+    if (mode === MODE_METRO) return constants.DEFAULT_RESULTS_LIMIT_METRO;
+    if (mode === MODE_TRAM) return constants.DEFAULT_RESULTS_LIMIT_TRAM;
+    return constants.DEFAULT_RESULTS_LIMIT_RAIL;
   }
 
   function getActiveResultsLimit(mode = state.mode) {
@@ -258,12 +271,22 @@
     const storedRailResultsLimit = parseResultLimit(
       getStorageItem(constants.STORAGE_RESULTS_LIMIT_RAIL_KEY)
     );
+    const storedTramResultsLimit = parseResultLimit(
+      getStorageItem(constants.STORAGE_RESULTS_LIMIT_TRAM_KEY)
+    );
+    const storedMetroResultsLimit = parseResultLimit(
+      getStorageItem(constants.STORAGE_RESULTS_LIMIT_METRO_KEY)
+    );
     const storedBusResultsLimit = parseResultLimit(
       getStorageItem(constants.STORAGE_RESULTS_LIMIT_BUS_KEY)
     );
 
     state.resultsLimitByMode[MODE_RAIL] =
       storedRailResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_RAIL;
+    state.resultsLimitByMode[MODE_TRAM] =
+      storedTramResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_TRAM;
+    state.resultsLimitByMode[MODE_METRO] =
+      storedMetroResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_METRO;
     state.resultsLimitByMode[MODE_BUS] =
       storedBusResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_BUS;
 
@@ -284,6 +307,14 @@
     setStorageItem(
       constants.STORAGE_RESULTS_LIMIT_RAIL_KEY,
       String(getActiveResultsLimit(MODE_RAIL))
+    );
+    setStorageItem(
+      constants.STORAGE_RESULTS_LIMIT_TRAM_KEY,
+      String(getActiveResultsLimit(MODE_TRAM))
+    );
+    setStorageItem(
+      constants.STORAGE_RESULTS_LIMIT_METRO_KEY,
+      String(getActiveResultsLimit(MODE_METRO))
     );
     setStorageItem(
       constants.STORAGE_RESULTS_LIMIT_BUS_KEY,
@@ -318,7 +349,7 @@
     params.delete("line");
     params.delete("dest");
 
-    if (state.mode === MODE_BUS) {
+    if (state.mode === MODE_BUS || state.mode === MODE_TRAM || state.mode === MODE_METRO) {
       if (state.busStopId) {
         params.set("stop", state.busStopId);
       }

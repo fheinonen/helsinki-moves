@@ -2,7 +2,17 @@
 (() => {
   const app = window.HMApp;
   const { api, dom, state, constants } = app;
-  const { MODE_RAIL, MODE_BUS } = constants;
+  const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
+
+  function isStopMode(mode = state.mode) {
+    return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO;
+  }
+
+  function getStopModeLabel(mode = state.mode) {
+    if (mode === MODE_TRAM) return { singular: "tram", plural: "trams", title: "Tram" };
+    if (mode === MODE_METRO) return { singular: "metro", plural: "metros", title: "Metro" };
+    return { singular: "bus", plural: "buses", title: "Bus" };
+  }
 
   function formatMinutes(iso) {
     const diffMin = minutesUntil(iso);
@@ -28,7 +38,7 @@
     return /\bhelsinki\b/i.test(destination);
   }
 
-  function sanitizeBusSelections() {
+  function sanitizeStopSelections() {
     const allowedLines = new Set((state.busFilterOptions.lines || []).map((option) => option.value));
     const allowedDestinations = new Set(
       (state.busFilterOptions.destinations || []).map((option) => option.value)
@@ -46,6 +56,10 @@
     if (state.mode === MODE_RAIL) {
       if (!state.helsinkiOnly) return departures;
       return departures.filter(isHelsinkiBound);
+    }
+
+    if (!isStopMode()) {
+      return departures;
     }
 
     const lineFilterSet = new Set(state.busLineFilters);
@@ -71,6 +85,18 @@
       dom.modeRailBtn.classList.toggle("is-active", railActive);
     }
 
+    if (dom.modeTramBtn) {
+      const tramActive = state.mode === MODE_TRAM;
+      dom.modeTramBtn.setAttribute("aria-pressed", String(tramActive));
+      dom.modeTramBtn.classList.toggle("is-active", tramActive);
+    }
+
+    if (dom.modeMetroBtn) {
+      const metroActive = state.mode === MODE_METRO;
+      dom.modeMetroBtn.setAttribute("aria-pressed", String(metroActive));
+      dom.modeMetroBtn.classList.toggle("is-active", metroActive);
+    }
+
     if (dom.modeBusBtn) {
       const busActive = state.mode === MODE_BUS;
       dom.modeBusBtn.setAttribute("aria-pressed", String(busActive));
@@ -79,13 +105,15 @@
   }
 
   function updateModeLabels() {
+    const modeLabel = isStopMode() ? getStopModeLabel().title : "Rail";
+    const nextLabel = isStopMode() ? `Next ${getStopModeLabel().title}` : "Next Train";
+
     if (dom.modeEyebrowEl) {
-      dom.modeEyebrowEl.textContent =
-        state.mode === MODE_BUS ? "Helsinki Moves • Bus" : "Helsinki Moves • Rail";
+      dom.modeEyebrowEl.textContent = `Helsinki Moves • ${modeLabel}`;
     }
 
     if (dom.nextLabelEl) {
-      dom.nextLabelEl.textContent = state.mode === MODE_BUS ? "Next Bus" : "Next Train";
+      dom.nextLabelEl.textContent = nextLabel;
     }
   }
 
@@ -125,16 +153,16 @@
     dom.helsinkiOnlyBtn.textContent = state.helsinkiOnly ? "Helsinki Only: On" : "Helsinki Only: Off";
   }
 
-  function setBusControlsVisibility(visible) {
+  function setStopControlsVisibility(visible) {
     if (!dom.busControlsEl) return;
     dom.busControlsEl.classList.toggle("hidden", !visible);
   }
 
-  function getBusStopMeta(stopId) {
+  function getStopMeta(stopId) {
     return state.busStops.find((stop) => stop.id === stopId) || null;
   }
 
-  function getBusStopCodes(stop) {
+  function getStopCodes(stop) {
     const stopCodes = api.uniqueNonEmptyStrings([
       ...(Array.isArray(stop?.stopCodes) ? stop.stopCodes : []),
       stop?.code,
@@ -147,14 +175,14 @@
     return stopCodes;
   }
 
-  function buildBusStopDisplay(station, departure = null) {
-    const selectedStop = getBusStopMeta(state.busStopId);
+  function buildStopDisplay(station, departure = null) {
+    const selectedStop = getStopMeta(state.busStopId);
     const stopName = String(departure?.stopName || station?.stopName || selectedStop?.name || "").trim();
     const stopCodes = api.uniqueNonEmptyStrings([
       departure?.stopCode,
       ...(Array.isArray(station?.stopCodes) ? station.stopCodes : []),
       station?.stopCode,
-      ...getBusStopCodes(selectedStop),
+      ...getStopCodes(selectedStop),
     ]);
     const primaryCode = stopCodes[0] || "";
 
@@ -164,20 +192,33 @@
     return "—";
   }
 
+  function buildModeStopDisplay(station, departure = null) {
+    if (isStopMode()) {
+      return buildStopDisplay(station, departure);
+    }
+
+    const stopName = String(departure?.stopName || station?.stopName || "").trim();
+    const stopCode = String(departure?.stopCode || station?.stopCode || "").trim();
+    if (stopName && stopCode) return `${stopName} ${stopCode}`;
+    if (stopName) return stopName;
+    if (stopCode) return stopCode;
+    return "—";
+  }
+
   function updateDataScope(data) {
     if (!dom.dataScopeEl) return;
 
-    if (state.mode !== MODE_BUS) {
+    if (!isStopMode()) {
       dom.dataScopeEl.classList.add("hidden");
       dom.dataScopeEl.textContent = "";
       return;
     }
 
-    const stopName = String(data?.station?.stopName || getBusStopMeta(state.busStopId)?.name || "").trim();
+    const stopName = String(data?.station?.stopName || getStopMeta(state.busStopId)?.name || "").trim();
     const selectedStopCodes = api.uniqueNonEmptyStrings([
       ...(Array.isArray(data?.station?.stopCodes) ? data.station.stopCodes : []),
       data?.station?.stopCode,
-      ...getBusStopCodes(getBusStopMeta(state.busStopId)),
+      ...getStopCodes(getStopMeta(state.busStopId)),
     ]);
     const stopIdsScope = selectedStopCodes.join(", ");
     const lineScope =
@@ -229,9 +270,9 @@
     }
   }
 
-  function renderBusControls() {
-    const visible = state.mode === MODE_BUS;
-    setBusControlsVisibility(visible);
+  function renderStopControls() {
+    const visible = isStopMode();
+    setStopControlsVisibility(visible);
     if (!visible) return;
 
     if (dom.busStopSelectEl) {
@@ -241,7 +282,7 @@
       if (state.busStops.length === 0) {
         const option = document.createElement("option");
         option.value = "";
-        option.textContent = "No nearby bus stops";
+        option.textContent = `No nearby ${getStopModeLabel().singular} stops`;
         dom.busStopSelectEl.appendChild(option);
         dom.busStopSelectEl.disabled = true;
       } else {
@@ -319,8 +360,8 @@
     dom.nextLineEl.textContent = nextDeparture.line || "—";
     dom.nextLineEl.classList.toggle("next-letter-now", diffMin < 5);
     dom.nextTrackEl.textContent =
-      state.mode === MODE_BUS
-        ? `Stop ${buildBusStopDisplay(station, nextDeparture)}`
+      isStopMode()
+        ? `Stop ${buildModeStopDisplay(station, nextDeparture)}`
         : nextDeparture.track
           ? `Track ${nextDeparture.track}`
           : "Track —";
@@ -338,8 +379,8 @@
 
   function buildStatusFromResponse(data) {
     if (!data || !data.station) {
-      if (state.mode === MODE_BUS) {
-        return data?.message || "No nearby bus stops found.";
+      if (isStopMode()) {
+        return data?.message || `No nearby ${getStopModeLabel().singular} stops found.`;
       }
 
       return data?.message || "No nearby train stations found.";
@@ -348,11 +389,12 @@
     const visibleDepartures = getVisibleDepartures(data.station.departures);
     const next = visibleDepartures[0];
     if (!next) {
-      if (state.mode === MODE_BUS) {
+      if (isStopMode()) {
+        const servicePlural = getStopModeLabel().plural;
         if (state.busLineFilters.length > 0 || state.busDestinationFilters.length > 0) {
-          return "No upcoming buses match selected filters.";
+          return `No upcoming ${servicePlural} match selected filters.`;
         }
-        return "No upcoming buses right now.";
+        return `No upcoming ${servicePlural} right now.`;
       }
 
       return state.helsinkiOnly
@@ -367,9 +409,9 @@
           ? ` • Track ${next.track}`
           : ""
         : data.station.stopName || data.station.stopCode
-          ? ` • ${buildBusStopDisplay(data.station)}`
+          ? ` • ${buildModeStopDisplay(data.station, next)}`
           : "";
-    const serviceName = state.mode === MODE_BUS ? "bus" : "train";
+    const serviceName = isStopMode() ? getStopModeLabel().singular : "train";
     return `Next ${next.line || serviceName} in ${formatMinutes(next.departureIso)}${destination}${nextTrack}`;
   }
 
@@ -438,7 +480,7 @@
   }
 
   function render(data) {
-    renderBusControls();
+    renderStopControls();
     updateDataScope(data);
 
     if (!data || !data.station) {
@@ -460,11 +502,12 @@
       updateNextSummary(null);
       const li = document.createElement("li");
       li.className = "empty-row";
-      if (state.mode === MODE_BUS) {
+      if (isStopMode()) {
+        const servicePlural = getStopModeLabel().plural;
         li.textContent =
           state.busLineFilters.length > 0 || state.busDestinationFilters.length > 0
-            ? "No upcoming buses match selected filters."
-            : "No upcoming buses right now.";
+            ? `No upcoming ${servicePlural} match selected filters.`
+            : `No upcoming ${servicePlural} right now.`;
       } else {
         li.textContent = state.helsinkiOnly
           ? "No Helsinki-bound trains in upcoming departures."
@@ -481,8 +524,8 @@
       const li = document.createElement("li");
       li.className = "empty-row";
       li.textContent =
-        state.mode === MODE_BUS
-          ? "No additional upcoming buses right now."
+        isStopMode()
+          ? `No additional upcoming ${getStopModeLabel().plural} right now.`
           : "No additional upcoming commuter trains right now.";
       dom.departuresEl.appendChild(li);
       return;
@@ -529,8 +572,8 @@
 
       const track = document.createElement("span");
       track.className = "track";
-      if (state.mode === MODE_BUS) {
-        track.textContent = `Stop ${buildBusStopDisplay(station, item)}`;
+      if (isStopMode()) {
+        track.textContent = `Stop ${buildModeStopDisplay(station, item)}`;
       } else {
         track.textContent = item.track ? `Track ${item.track}` : "Track —";
       }
@@ -559,19 +602,20 @@
     minutesUntil,
     departureRowClass,
     isHelsinkiBound,
-    sanitizeBusSelections,
+    sanitizeStopSelections,
     getVisibleDepartures,
     updateModeButtons,
     updateModeLabels,
     renderResultsLimitControl,
     updateHelsinkiFilterButton,
-    setBusControlsVisibility,
-    getBusStopMeta,
-    getBusStopCodes,
-    buildBusStopDisplay,
+    setStopControlsVisibility,
+    getStopMeta,
+    getStopCodes,
+    buildStopDisplay,
+    buildModeStopDisplay,
     updateDataScope,
     renderFilterButtons,
-    renderBusControls,
+    renderStopControls,
     updateNextSummary,
     buildStatusFromResponse,
     getLoadErrorStatus,

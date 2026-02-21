@@ -35,6 +35,8 @@
         <div class="controls">
           <div class="mode-switch" role="group" aria-label="Transport mode">
             <button id="modeRailBtn" class="mode-toggle" aria-pressed="true">Rail</button>
+            <button id="modeTramBtn" class="mode-toggle" aria-pressed="false">Tram</button>
+            <button id="modeMetroBtn" class="mode-toggle" aria-pressed="false">Metro</button>
             <button id="modeBusBtn" class="mode-toggle" aria-pressed="false">Bus</button>
           </div>
           <button id="locateBtn">Refresh Location</button>
@@ -42,14 +44,14 @@
             Helsinki Only: Off
           </button>
         </div>
-        <section id="busControls" class="bus-controls hidden" aria-label="Bus controls">
+        <section id="busControls" class="bus-controls hidden" aria-label="Stop controls">
           <label class="bus-control" for="busStopSelect">
             <span class="bus-label">Stop</span>
             <select id="busStopSelect" class="bus-select"></select>
           </label>
           <div class="bus-filter-group">
             <p class="bus-label">Lines</p>
-            <div id="busLineFilters" class="chip-group" role="group" aria-label="Bus line filters"></div>
+            <div id="busLineFilters" class="chip-group" role="group" aria-label="Line filters"></div>
           </div>
           <div class="bus-filter-group">
             <p class="bus-label">Destinations</p>
@@ -57,7 +59,7 @@
               id="busDestinationFilters"
               class="chip-group"
               role="group"
-              aria-label="Bus destination filters"
+              aria-label="Destination filters"
             ></div>
           </div>
         </section>

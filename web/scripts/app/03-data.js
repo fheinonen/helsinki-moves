@@ -95,6 +95,7 @@
         lat: String(lat),
         lon: String(lon),
         mode: requestMode.toUpperCase(),
+        results: String(api.getActiveResultsLimit(requestMode)),
       });
 
       if (requestMode === MODE_BUS && requestBusStopId) {
@@ -211,6 +212,7 @@
   function applyModeUiState() {
     api.updateModeButtons();
     api.updateModeLabels();
+    api.renderResultsLimitControl();
     api.updateHelsinkiFilterButton();
     api.renderBusControls();
     api.updateDataScope(state.latestResponse);

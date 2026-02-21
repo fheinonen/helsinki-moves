@@ -34,6 +34,21 @@
     refreshWithCurrentLocationOrRequest();
   });
 
+  dom.resultsLimitSelectEl?.addEventListener("change", () => {
+    const nextLimit = api.parseResultLimit(dom.resultsLimitSelectEl.value);
+    if (nextLimit == null) {
+      api.renderResultsLimitControl();
+      return;
+    }
+
+    const currentLimit = api.getActiveResultsLimit();
+    if (currentLimit === nextLimit) return;
+
+    state.resultsLimitByMode[state.mode] = nextLimit;
+    api.persistUiState();
+    refreshWithCurrentLocationOrRequest();
+  });
+
   dom.busStopSelectEl?.addEventListener("change", () => {
     if (state.suppressBusStopChange || state.mode !== MODE_BUS) return;
 

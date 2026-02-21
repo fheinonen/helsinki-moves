@@ -39,7 +39,9 @@
 [data-theme="light"] button.secondary { background: rgba(74, 155, 122, 0.04); color: var(--emerald); border-color: rgba(74, 155, 122, 0.14); }
 [data-theme="light"] button.secondary:hover { background: rgba(74, 155, 122, 0.08); border-color: rgba(74, 155, 122, 0.22); }
 
-[data-theme="light"] .bus-select { border-color: rgba(61, 138, 156, 0.16); background: rgba(61, 138, 156, 0.04); color: var(--text); }
+[data-theme="light"] .bus-select { border-color: rgba(61, 138, 156, 0.16); background: var(--bg); color: var(--text); color-scheme: light; }
+[data-theme="light"] .bus-select:focus { border-color: rgba(61, 138, 156, 0.35); }
+[data-theme="light"] .bus-select option { background: var(--bg); color: var(--text); }
 
 [data-theme="light"] .chip-toggle { border-color: rgba(61, 138, 156, 0.12); background: rgba(61, 138, 156, 0.03); color: var(--text-secondary); }
 [data-theme="light"] .chip-toggle:hover { border-color: rgba(61, 138, 156, 0.22); background: rgba(61, 138, 156, 0.07); color: var(--text); }

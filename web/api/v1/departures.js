@@ -9,6 +9,7 @@ const {
 const {
   parseRequestedMode,
   parseMultiQueryParam,
+  parseRequestedResultLimit,
   parseDeparture,
   buildFilterOptions,
 } = require("../lib/departures-utils");
@@ -133,6 +134,10 @@ function getNearestRailCandidate(modeStops) {
   return [...candidateMap.values()].sort((a, b) => a.distance - b.distance)[0] || null;
 }
 
+function getDefaultResultLimit(mode) {
+  return mode === MODE_BUS ? 24 : 8;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -157,6 +162,14 @@ module.exports = async (req, res) => {
 
   if (!mode) {
     return res.status(400).json({ error: "Invalid mode" });
+  }
+
+  const requestedResultLimit = parseRequestedResultLimit(
+    req.query.results,
+    getDefaultResultLimit(mode)
+  );
+  if (requestedResultLimit == null) {
+    return res.status(400).json({ error: "Invalid results" });
   }
 
   try {
@@ -204,7 +217,9 @@ module.exports = async (req, res) => {
 
       const stopIds = selectedStop.memberStopIds || [selectedStop.id];
       const stopDataList = await Promise.all(
-        stopIds.map((id) => graphqlRequest(stopDeparturesQuery, { id, departures: 24 }))
+        stopIds.map((id) =>
+          graphqlRequest(stopDeparturesQuery, { id, departures: requestedResultLimit })
+        )
       );
 
       const allDepartures = filterUpcoming(
@@ -222,7 +237,7 @@ module.exports = async (req, res) => {
         allDepartures,
         requestedLines,
         requestedDestinations
-      ).slice(0, 24);
+      ).slice(0, requestedResultLimit);
 
       return res.status(200).json({
         mode,
@@ -257,13 +272,13 @@ module.exports = async (req, res) => {
     if (nearest.kind === "station") {
       const stationData = await graphqlRequest(stationDeparturesQuery, {
         id: nearest.key,
-        departures: 20,
+        departures: requestedResultLimit,
       });
       items = stationData?.station?.stoptimesWithoutPatterns || [];
     } else {
       const stopData = await graphqlRequest(stopDeparturesQuery, {
         id: nearest.stopId,
-        departures: 20,
+        departures: requestedResultLimit,
       });
       items = stopData?.stop?.stoptimesWithoutPatterns || [];
       fallbackTrack = stopData?.stop?.platformCode || null;
@@ -271,7 +286,7 @@ module.exports = async (req, res) => {
 
     const departures = filterUpcoming(items.map((item) => parseDeparture(item, fallbackTrack, mode))).slice(
       0,
-      8
+      requestedResultLimit
     );
 
     return res.status(200).json({

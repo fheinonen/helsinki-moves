@@ -1,4 +1,6 @@
 const { MODE_RAIL, MODE_BUS } = require("./digitransit");
+const MIN_RESULT_LIMIT = 1;
+const MAX_RESULT_LIMIT = 60;
 
 function parseRequestedMode(rawMode) {
   const mode = String(rawMode || MODE_RAIL).trim().toUpperCase();
@@ -16,6 +18,15 @@ function parseMultiQueryParam(rawValue) {
   );
 
   return [...new Set(parts.filter(Boolean))];
+}
+
+function parseRequestedResultLimit(rawValue, defaultValue) {
+  if (rawValue == null || rawValue === "") return defaultValue;
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed)) return null;
+  if (parsed < MIN_RESULT_LIMIT || parsed > MAX_RESULT_LIMIT) return null;
+  return parsed;
 }
 
 function parseDeparture(item, fallbackTrack, expectedMode, fallbackStop = null) {
@@ -78,6 +89,7 @@ function buildFilterOptions(departures) {
 module.exports = {
   parseRequestedMode,
   parseMultiQueryParam,
+  parseRequestedResultLimit,
   parseDeparture,
   buildFilterOptions,
 };

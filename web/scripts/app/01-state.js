@@ -12,6 +12,7 @@
     busStopSelectEl: document.getElementById("busStopSelect"),
     busLineFiltersEl: document.getElementById("busLineFilters"),
     busDestinationFiltersEl: document.getElementById("busDestinationFilters"),
+    resultsLimitSelectEl: document.getElementById("resultsLimitSelect"),
     modeEyebrowEl: document.getElementById("modeEyebrow"),
     statusEl: document.getElementById("status"),
     dataScopeEl: document.getElementById("dataScope"),
@@ -38,6 +39,11 @@
     STORAGE_BUS_STOP_KEY: "prefs:busStopId",
     STORAGE_BUS_LINES_KEY: "prefs:busLines",
     STORAGE_BUS_DESTINATIONS_KEY: "prefs:busDestinations",
+    STORAGE_RESULTS_LIMIT_RAIL_KEY: "prefs:resultsLimitRail",
+    STORAGE_RESULTS_LIMIT_BUS_KEY: "prefs:resultsLimitBus",
+    DEFAULT_RESULTS_LIMIT_RAIL: 8,
+    DEFAULT_RESULTS_LIMIT_BUS: 24,
+    RESULT_LIMIT_OPTIONS: [8, 12, 16, 20, 24, 30],
     FETCH_TIMEOUT_MS: 8000,
     ERROR_REPORT_LIMIT: 5,
   };
@@ -53,6 +59,10 @@
     busStopId: null,
     busLineFilters: [],
     busDestinationFilters: [],
+    resultsLimitByMode: {
+      [MODE_RAIL]: app.constants.DEFAULT_RESULTS_LIMIT_RAIL,
+      [MODE_BUS]: app.constants.DEFAULT_RESULTS_LIMIT_BUS,
+    },
     busStops: [],
     busFilterOptions: { lines: [], destinations: [] },
     suppressBusStopChange: false,
@@ -174,6 +184,27 @@
     return [...new Set(list.map((item) => String(item || "").trim()).filter(Boolean))];
   }
 
+  function parseResultLimit(rawValue) {
+    if (rawValue == null || rawValue === "") return null;
+
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed)) return null;
+    if (!constants.RESULT_LIMIT_OPTIONS.includes(parsed)) return null;
+    return parsed;
+  }
+
+  function getDefaultResultsLimit(mode = state.mode) {
+    return mode === MODE_BUS
+      ? constants.DEFAULT_RESULTS_LIMIT_BUS
+      : constants.DEFAULT_RESULTS_LIMIT_RAIL;
+  }
+
+  function getActiveResultsLimit(mode = state.mode) {
+    const selected = parseResultLimit(state.resultsLimitByMode?.[mode]);
+    if (selected != null) return selected;
+    return getDefaultResultsLimit(mode);
+  }
+
   function parseStoredArray(key) {
     const raw = getStorageItem(key);
     if (!raw) return [];
@@ -198,6 +229,8 @@
       busLines: uniqueNonEmptyStrings(params.getAll("line")),
       destinationsProvided: params.has("dest"),
       busDestinations: uniqueNonEmptyStrings(params.getAll("dest")),
+      resultsProvided: params.has("results"),
+      resultsLimit: parseResultLimit(params.get("results")),
     };
   }
 
@@ -221,6 +254,22 @@
     state.busDestinationFilters = urlState.destinationsProvided
       ? urlState.busDestinations
       : storedDestinations;
+
+    const storedRailResultsLimit = parseResultLimit(
+      getStorageItem(constants.STORAGE_RESULTS_LIMIT_RAIL_KEY)
+    );
+    const storedBusResultsLimit = parseResultLimit(
+      getStorageItem(constants.STORAGE_RESULTS_LIMIT_BUS_KEY)
+    );
+
+    state.resultsLimitByMode[MODE_RAIL] =
+      storedRailResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_RAIL;
+    state.resultsLimitByMode[MODE_BUS] =
+      storedBusResultsLimit ?? constants.DEFAULT_RESULTS_LIMIT_BUS;
+
+    if (urlState.resultsProvided && urlState.resultsLimit != null) {
+      state.resultsLimitByMode[state.mode] = urlState.resultsLimit;
+    }
   }
 
   function syncStateToStorage() {
@@ -231,6 +280,14 @@
     setStorageItem(
       constants.STORAGE_BUS_DESTINATIONS_KEY,
       JSON.stringify(state.busDestinationFilters)
+    );
+    setStorageItem(
+      constants.STORAGE_RESULTS_LIMIT_RAIL_KEY,
+      String(getActiveResultsLimit(MODE_RAIL))
+    );
+    setStorageItem(
+      constants.STORAGE_RESULTS_LIMIT_BUS_KEY,
+      String(getActiveResultsLimit(MODE_BUS))
     );
   }
 
@@ -247,6 +304,14 @@
       params.set("helsinkiOnly", "1");
     } else {
       params.delete("helsinkiOnly");
+    }
+
+    const activeResultsLimit = getActiveResultsLimit();
+    const defaultResultsLimit = getDefaultResultsLimit();
+    if (activeResultsLimit === defaultResultsLimit) {
+      params.delete("results");
+    } else {
+      params.set("results", String(activeResultsLimit));
     }
 
     params.delete("stop");
@@ -290,6 +355,9 @@
     normalizeMode,
     parseBoolean,
     uniqueNonEmptyStrings,
+    parseResultLimit,
+    getDefaultResultsLimit,
+    getActiveResultsLimit,
     parseStoredArray,
     readStateFromUrl,
     hydrateInitialState,

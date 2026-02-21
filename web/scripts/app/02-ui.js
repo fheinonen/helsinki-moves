@@ -77,6 +77,25 @@
     }
   }
 
+  function renderResultsLimitControl() {
+    if (!dom.resultsLimitSelectEl) return;
+
+    const options = Array.isArray(constants.RESULT_LIMIT_OPTIONS)
+      ? constants.RESULT_LIMIT_OPTIONS
+      : [];
+    const activeValue = api.getActiveResultsLimit();
+    dom.resultsLimitSelectEl.innerHTML = "";
+
+    for (const value of options) {
+      const option = document.createElement("option");
+      option.value = String(value);
+      option.textContent = `${value}`;
+      dom.resultsLimitSelectEl.appendChild(option);
+    }
+
+    dom.resultsLimitSelectEl.value = String(activeValue);
+  }
+
   function updateHelsinkiFilterButton() {
     if (!dom.helsinkiOnlyBtn) return;
 
@@ -157,11 +176,12 @@
       state.busDestinationFilters.length === 0
         ? "all destinations"
         : `${state.busDestinationFilters.length} destination${state.busDestinationFilters.length === 1 ? "" : "s"} selected`;
+    const resultScope = `${api.getActiveResultsLimit()} results`;
 
     if (!stopName) {
-      dom.dataScopeEl.textContent = `Selecting stop... (${lineScope}, ${destinationScope})`;
+      dom.dataScopeEl.textContent = `Selecting stop... (${lineScope}, ${destinationScope}, ${resultScope})`;
     } else {
-      dom.dataScopeEl.textContent = `Selected stop ${stopName} (${stopIdsScope || "—"}) - ${lineScope}, ${destinationScope}`;
+      dom.dataScopeEl.textContent = `Selected stop ${stopName} (${stopIdsScope || "—"}) - ${lineScope}, ${destinationScope}, ${resultScope}`;
     }
 
     dom.dataScopeEl.classList.remove("hidden");
@@ -450,9 +470,11 @@
       return;
     }
 
-    for (const item of listDepartures) {
+    for (let i = 0; i < listDepartures.length; i++) {
+      const item = listDepartures[i];
       const li = document.createElement("li");
       li.className = `departure-row ${departureRowClass(item.departureIso)}`;
+      li.style.setProperty("--i", i);
 
       const letterBadge = document.createElement("div");
       letterBadge.className = "letter-badge";
@@ -523,6 +545,7 @@
     getVisibleDepartures,
     updateModeButtons,
     updateModeLabels,
+    renderResultsLimitControl,
     updateHelsinkiFilterButton,
     setBusControlsVisibility,
     getBusStopMeta,

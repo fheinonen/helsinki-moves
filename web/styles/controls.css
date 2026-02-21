@@ -26,6 +26,10 @@
   gap: 4px;
 }
 
+.results-control {
+  min-width: 90px;
+}
+
 .bus-filter-group {
   display: grid;
   gap: 5px;
@@ -42,12 +46,23 @@
 
 .bus-select {
   border: 1px solid rgba(124, 184, 207, 0.15);
-  background: rgba(124, 184, 207, 0.05);
+  background: var(--bg);
   color: var(--text);
+  color-scheme: dark;
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 0.82rem;
   font-family: "Outfit", sans-serif;
+}
+
+.bus-select:focus {
+  outline: none;
+  border-color: rgba(124, 184, 207, 0.35);
+}
+
+.bus-select option {
+  background: var(--bg);
+  color: var(--text);
 }
 
 .chip-group {
@@ -154,4 +169,3 @@ button:disabled {
   transform: none !important;
   box-shadow: none !important;
 }
-

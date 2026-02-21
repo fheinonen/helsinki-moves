@@ -37,6 +37,33 @@
     return res;
   }
 
+  function buildFilterOptionsFromDepartures(departures) {
+    const lines = new Map();
+    const destinations = new Map();
+
+    for (const departure of departures || []) {
+      const line = String(departure?.line || "").trim();
+      if (line) {
+        lines.set(line, (lines.get(line) || 0) + 1);
+      }
+
+      const destination = String(departure?.destination || "").trim();
+      if (destination) {
+        destinations.set(destination, (destinations.get(destination) || 0) + 1);
+      }
+    }
+
+    const toSortedOptions = (sourceMap) =>
+      [...sourceMap.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([value, count]) => ({ value, count }));
+
+    return {
+      lines: toSortedOptions(lines),
+      destinations: toSortedOptions(destinations),
+    };
+  }
+
   function updateBusStateFromResponse(responseData) {
     const stops = Array.isArray(responseData?.stops)
       ? responseData.stops
@@ -64,19 +91,10 @@
       state.busStopId = stops[0]?.id || null;
     }
 
-    const lines = Array.isArray(responseData?.filterOptions?.lines)
-      ? responseData.filterOptions.lines
-          .filter((item) => item && item.value)
-          .map((item) => ({ value: String(item.value), count: Number(item.count) || 0 }))
+    const departures = Array.isArray(responseData?.station?.departures)
+      ? responseData.station.departures
       : [];
-
-    const destinations = Array.isArray(responseData?.filterOptions?.destinations)
-      ? responseData.filterOptions.destinations
-          .filter((item) => item && item.value)
-          .map((item) => ({ value: String(item.value), count: Number(item.count) || 0 }))
-      : [];
-
-    state.busFilterOptions = { lines, destinations };
+    state.busFilterOptions = buildFilterOptionsFromDepartures(departures);
     api.sanitizeBusSelections();
   }
 
@@ -84,8 +102,6 @@
     const loadToken = ++state.latestLoadToken;
     const requestMode = state.mode;
     const requestBusStopId = state.busStopId;
-    const requestBusLineFilters = [...state.busLineFilters];
-    const requestBusDestinationFilters = [...state.busDestinationFilters];
 
     api.setLoading(true);
     api.setStatus("Loading departures...");
@@ -100,12 +116,6 @@
 
       if (requestMode === MODE_BUS && requestBusStopId) {
         params.set("stopId", requestBusStopId);
-        for (const line of requestBusLineFilters) {
-          params.append("line", line);
-        }
-        for (const destination of requestBusDestinationFilters) {
-          params.append("dest", destination);
-        }
       }
 
       const res = await fetchWithRetryOnce(`/api/v1/departures?${params.toString()}`);
@@ -223,6 +233,7 @@
     fetchWithTimeout,
     fetchWithRetryOnce,
     updateBusStateFromResponse,
+    buildFilterOptionsFromDepartures,
     load,
     requestLocationAndLoad,
     refreshDeparturesOnly,

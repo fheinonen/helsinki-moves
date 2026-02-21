@@ -48,8 +48,20 @@
       return departures.filter(isHelsinkiBound);
     }
 
-    // BUS filtering is applied server-side via query params.
-    return departures;
+    const lineFilterSet = new Set(state.busLineFilters);
+    const destinationFilterSet = new Set(state.busDestinationFilters);
+
+    return departures
+      .filter((departure) => {
+        if (lineFilterSet.size === 0) return true;
+        const line = String(departure?.line || "").trim();
+        return lineFilterSet.has(line);
+      })
+      .filter((departure) => {
+        if (destinationFilterSet.size === 0) return true;
+        const destination = String(departure?.destination || "").trim();
+        return destinationFilterSet.has(destination);
+      });
   }
 
   function updateModeButtons() {
@@ -263,7 +275,10 @@
         }
 
         api.persistUiState();
-        api.refreshDeparturesOnly?.();
+        if (state.latestResponse) {
+          api.render(state.latestResponse);
+          api.setStatus(api.buildStatusFromResponse(state.latestResponse));
+        }
       }
     );
 
@@ -279,7 +294,10 @@
         }
 
         api.persistUiState();
-        api.refreshDeparturesOnly?.();
+        if (state.latestResponse) {
+          api.render(state.latestResponse);
+          api.setStatus(api.buildStatusFromResponse(state.latestResponse));
+        }
       }
     );
   }

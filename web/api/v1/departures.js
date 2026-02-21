@@ -4,6 +4,7 @@ const {
   nearbyStopsQuery,
   stopDeparturesQuery,
   stationDeparturesQuery,
+  buildMultiStopDeparturesQuery,
   graphqlRequest,
 } = require("../lib/digitransit");
 const {
@@ -216,11 +217,12 @@ module.exports = async (req, res) => {
       }
 
       const stopIds = selectedStop.memberStopIds || [selectedStop.id];
-      const stopDataList = await Promise.all(
-        stopIds.map((id) =>
-          graphqlRequest(stopDeparturesQuery, { id, departures: requestedResultLimit })
-        )
+      const { query, variables, aliases } = buildMultiStopDeparturesQuery(
+        stopIds,
+        requestedResultLimit
       );
+      const multiStopData = await graphqlRequest(query, variables);
+      const stopDataList = aliases.map((alias) => ({ stop: multiStopData?.[alias] || null }));
 
       const allDepartures = filterUpcoming(
         dedupeBusDepartures(

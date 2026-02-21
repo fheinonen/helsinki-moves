@@ -76,6 +76,63 @@ const stationDeparturesQuery = `
   }
 `;
 
+function buildMultiStopDeparturesQuery(stopIds, departures) {
+  const ids = [...new Set((stopIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    throw new Error("buildMultiStopDeparturesQuery requires at least one stop id");
+  }
+
+  if (!Number.isInteger(departures) || departures < 1) {
+    throw new Error("buildMultiStopDeparturesQuery requires a positive integer departures limit");
+  }
+
+  const variableDefs = ["$departures: Int!"];
+  const stopFields = [];
+  const aliases = [];
+  const variables = { departures };
+
+  ids.forEach((id, index) => {
+    const alias = `s${index}`;
+    const variable = `id${index}`;
+    aliases.push(alias);
+    variableDefs.push(`$${variable}: String!`);
+    variables[variable] = id;
+    stopFields.push(`
+      ${alias}: stop(id: $${variable}) {
+        name
+        platformCode
+        stoptimesWithoutPatterns(numberOfDepartures: $departures) {
+          serviceDay
+          scheduledDeparture
+          realtimeDeparture
+          departureDelay
+          headsign
+          stop {
+            gtfsId
+            name
+            code
+            platformCode
+          }
+          trip {
+            route {
+              mode
+              shortName
+            }
+          }
+        }
+      }
+    `);
+  });
+
+  const query = `
+    query MultiStopDepartures(${variableDefs.join(", ")}) {
+${stopFields.join("\n")}
+    }
+  `;
+
+  return { query, variables, aliases };
+}
+
 async function graphqlRequest(query, variables) {
   const key = process.env.DIGITRANSIT_API_KEY;
   if (!key) {
@@ -129,5 +186,6 @@ module.exports = {
   nearbyStopsQuery,
   stopDeparturesQuery,
   stationDeparturesQuery,
+  buildMultiStopDeparturesQuery,
   graphqlRequest,
 };

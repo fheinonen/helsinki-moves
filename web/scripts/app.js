@@ -265,7 +265,7 @@ function updateModeButtons() {
 
 function updateModeLabels() {
   if (modeEyebrowEl) {
-    modeEyebrowEl.textContent = mode === MODE_BUS ? "HSL Bus Departures" : "HSL Commuter Rail";
+    modeEyebrowEl.textContent = mode === MODE_BUS ? "Helsinki Moves • Bus" : "Helsinki Moves • Rail";
   }
 
   if (nextLabelEl) {
@@ -787,7 +787,7 @@ async function load(lat, lon) {
       }
     }
 
-    const res = await fetchWithRetryOnce(`/api/next-trains?${params.toString()}`);
+    const res = await fetchWithRetryOnce(`/api/v1/departures?${params.toString()}`);
     const json = await res.json();
 
     if (!res.ok) {

@@ -1,6 +1,7 @@
 # Stylesheet Structure
 
 `main.css` is now an entrypoint that imports focused modules in strict order.
+`index.html` loads the bundled output generated at `web/dist/main.css`.
 
 ## Files
 
@@ -18,7 +19,7 @@
 - Add new styles to the closest module instead of `main.css`.
 - Keep import order in `main.css` stable unless there is a cascade reason to change it.
 - Put shared values in `tokens.css` before adding repeated literals.
-- Theme mode is resolved to a concrete `data-theme` value by `web/scripts/theme-init.js`.
+- Theme mode is resolved to a concrete `data-theme` value by the inline bootstrap in `web/index.html`.
 - If changing light theme visuals, update only `[data-theme="light"]` rules in `theme-light.css`.
 
 ## Why this split

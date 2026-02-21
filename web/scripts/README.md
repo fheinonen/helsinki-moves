@@ -7,6 +7,8 @@ Each file is wrapped in an IIFE and communicates through a shared `window.HMApp`
 - `HMApp.state` (mutable app state)
 - `HMApp.api` (cross-module function surface)
 
+`web/scripts/app/entry.js` is the bundle entry used by `npm run build`.
+
 ## Load order (must stay stable)
 
 1. `app/01-state.js`
@@ -14,7 +16,8 @@ Each file is wrapped in an IIFE and communicates through a shared `window.HMApp`
 3. `app/03-data.js`
 4. `app/04-init.js`
 
-`index.html` loads these files with `defer` in that exact order.
+`entry.js` imports these files in that exact order.
+`index.html` loads the bundled output (`/dist/app.js`).
 
 ## Responsibilities
 

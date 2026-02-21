@@ -8,13 +8,15 @@ This repo is a **web-only** project.
 
 - Frontend:
   - `web/index.html`
-  - `web/scripts/app.js` (legacy placeholder)
   - `web/scripts/app/*.js` (ordered runtime modules)
+  - `web/scripts/app/entry.js` (bundle entry importing runtime modules in order)
   - `web/scripts/README.md` (script module boundaries/load order)
-  - `web/scripts/theme-init.js`
+  - `web/index.html` inline head theme bootstrap (before CSS load)
   - `web/styles/main.css` (stylesheet entrypoint/import manifest)
   - `web/styles/*.css` (modular stylesheets)
   - `web/styles/README.md` (stylesheet maintenance rules)
+  - `web/dist/*` (generated frontend bundles served by `index.html`)
+  - `web/tools/build-assets.mjs` (asset bundling script)
   - `web/assets/icons/*`
 - API (Vercel serverless):
   - `web/api/v1/departures.js`
@@ -105,18 +107,20 @@ From `web/`:
 
 1. `cp .env.example .env`
 2. set `DIGITRANSIT_API_KEY`
-3. `vercel dev`
+3. `npm install`
+4. `npm run build`
+5. `vercel dev`
 
 Quick sanity checks:
 
 From repository root:
 
-- `node --check web/scripts/app.js`
+- `node --check web/scripts/app/entry.js`
 - `node --check web/scripts/app/01-state.js`
 - `node --check web/scripts/app/02-ui.js`
 - `node --check web/scripts/app/03-data.js`
 - `node --check web/scripts/app/04-init.js`
-- `node --check web/scripts/theme-init.js`
+- `node --check web/tools/build-assets.mjs`
 - `node --check web/api/v1/departures.js`
 - `node --check web/api/v1/client-error.js`
 - `node --check web/api/lib/digitransit.js`

@@ -14,13 +14,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: "web/package.json"
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+      - name: Build frontend bundles
+        run: npm run build
+        working-directory: web
       - name: Syntax Check (Client)
         run: |
-          node --check web/scripts/theme-init.js
+          node --check web/scripts/app/entry.js
           node --check web/scripts/app/01-state.js
           node --check web/scripts/app/02-ui.js
           node --check web/scripts/app/03-data.js
           node --check web/scripts/app/04-init.js
+          node --check web/tools/build-assets.mjs
       - name: Syntax Check (API)
         run: node --check web/api/v1/departures.js
       - name: Syntax Check (Client Error)

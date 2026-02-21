@@ -15,7 +15,7 @@ Web app for showing nearby Helsinki public transport departures using browser ge
   - destination filters
 - UI state is persisted in URL query params and localStorage
 - Light/dark theme toggle with system preference fallback
-- Theme is initialized before CSS load to avoid flash/mismatch
+- Theme is initialized inline in `index.html` head before CSS load to avoid flash/mismatch
 - Frontend reports client errors to server-side logging endpoint
 
 ## API routes
@@ -30,11 +30,12 @@ Web app for showing nearby Helsinki public transport departures using browser ge
 ## Project structure
 
 - `web/index.html` app shell
-- `web/scripts/app/*.js` frontend runtime modules (ordered in `index.html`)
+- `web/scripts/app/*.js` frontend runtime modules (ordered via `web/scripts/app/entry.js`)
 - `web/scripts/README.md` module boundaries/load order (`window.HMApp` contract)
-- `web/scripts/theme-init.js` early theme initialization
 - `web/styles/main.css` stylesheet entrypoint
 - `web/styles/*.css` modular stylesheets (see `web/styles/README.md`)
+- `web/tools/build-assets.mjs` asset bundling script
+- `web/dist/` generated JS/CSS bundles loaded by `index.html`
 - `web/assets/icons/` static icons
 - `web/api/v1/departures.js` departures API
 - `web/api/v1/client-error.js` client error reporting API
@@ -48,7 +49,9 @@ From `web/`:
 
 1. `cp .env.example .env`
 2. Set `DIGITRANSIT_API_KEY` in `.env`
-3. Run `vercel dev`
+3. `npm install`
+4. `npm run build`
+5. Run `vercel dev`
 
 Quick checks:
 
@@ -58,7 +61,8 @@ From repository root:
 - `node --check web/scripts/app/02-ui.js`
 - `node --check web/scripts/app/03-data.js`
 - `node --check web/scripts/app/04-init.js`
-- `node --check web/scripts/theme-init.js`
+- `node --check web/scripts/app/entry.js`
+- `node --check web/tools/build-assets.mjs`
 - `node --check web/api/v1/departures.js`
 - `node --check web/api/v1/client-error.js`
 - `node --check web/api/lib/digitransit.js`

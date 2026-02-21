@@ -3,13 +3,15 @@
 ## Structure
 
 - `index.html` app shell
-- `scripts/app.js` legacy placeholder
-- `scripts/app/*.js` frontend runtime modules (loaded in order from `index.html`)
+- `scripts/app/*.js` frontend runtime modules
+- `scripts/app/entry.js` JS bundle entry (imports app modules in order)
 - `scripts/README.md` script module boundaries/load order (`window.HMApp` contract)
-- `scripts/theme-init.js` early theme initialization (sets `data-theme` before CSS load)
+- inline theme bootstrap in `index.html` head (sets `data-theme` before CSS load)
 - `styles/main.css` stylesheet entrypoint/import manifest
 - `styles/*.css` modular stylesheets
 - `styles/README.md` stylesheet maintenance guide
+- `dist/` generated frontend bundles served by `index.html`
+- `tools/build-assets.mjs` frontend bundling script
 - `assets/icons/` app icons
 - `api/v1/departures.js` departures Vercel serverless API
 - `api/v1/client-error.js` client error report API
@@ -25,19 +27,22 @@
    - `cp .env.example .env`
 3. Set your key in `.env`:
    - `DIGITRANSIT_API_KEY=...`
-4. Run:
+4. Install dependencies and build assets:
+   - `npm install`
+   - `npm run build`
+5. Run:
    - `vercel dev`
 
 ## Quick checks
 
 From repository root:
 
-- `node --check web/scripts/app.js`
+- `node --check web/scripts/app/entry.js`
 - `node --check web/scripts/app/01-state.js`
 - `node --check web/scripts/app/02-ui.js`
 - `node --check web/scripts/app/03-data.js`
 - `node --check web/scripts/app/04-init.js`
-- `node --check web/scripts/theme-init.js`
+- `node --check web/tools/build-assets.mjs`
 - `node --check web/api/v1/departures.js`
 - `node --check web/api/v1/client-error.js`
 - `node --check web/api/lib/digitransit.js`
@@ -51,6 +56,8 @@ From repository root:
 4. Add environment variable:
    - `DIGITRANSIT_API_KEY`
 5. Deploy.
+
+Vercel runs `npm run build` (configured in `vercel.json`) before deployment.
 
 ## API used
 

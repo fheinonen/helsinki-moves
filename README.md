@@ -1,6 +1,6 @@
-# Helsinki Next Trains (Web)
+# Helsinki Moves (Web)
 
-Simple Vercel app that shows next Helsinki commuter trains from the closest station to your location.
+Simple Vercel app that shows live Helsinki departures (rail + bus) from the closest stops to your location.
 
 ## Project structure
 
@@ -9,7 +9,7 @@ Simple Vercel app that shows next Helsinki commuter trains from the closest stat
 - `web/scripts/app.js` frontend behavior
 - `web/styles/main.css` frontend styles
 - `web/assets/icons/` static app icons
-- `web/api/next-trains.js` Vercel serverless API
+- `web/api/v1/departures.js` Vercel serverless API
 
 ## Deploy on Vercel
 

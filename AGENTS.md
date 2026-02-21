@@ -11,28 +11,28 @@ This repo is a **web-only** project.
   - `web/scripts/app.js`
   - `web/styles/main.css`
   - `web/assets/icons/*`
-- API (Vercel serverless): `web/api/next-trains.js`
+- API (Vercel serverless): `web/api/v1/departures.js`
 - Vercel config: `web/vercel.json`
 
 ## Purpose
 
-Show nearest Helsinki commuter train departures based on browser geolocation.
+Show nearest Helsinki public transport departures (currently rail + bus) based on browser geolocation.
 
 Key UX requirements currently in use:
 
 - Auto-load location on page open.
 - Show departures clearly with:
-  - train letter
-  - track/platform
+  - line identifier
+  - track/platform or stop
   - remaining time
 
 ## API Behavior
 
-`/api/next-trains` currently:
+`/api/v1/departures` currently:
 
 - Uses Digitransit GraphQL (`routing/v2/hsl/gtfs/v1`).
-- Filters to rail only (`mode/vehicleMode = RAIL`).
-- Resolves nearest rail station/stop and returns up to 3 departures.
+- Supports `mode` query param (`RAIL`, `BUS`).
+- Resolves nearest relevant station/stop(s) and returns upcoming departures.
 - Returns sanitized 500 errors to clients.
 
 When modifying API behavior, preserve:
@@ -67,7 +67,7 @@ From `web/`:
 Quick sanity checks:
 
 - `node --check web/scripts/app.js`
-- `node --check web/api/next-trains.js`
+- `node --check web/api/v1/departures.js`
 
 ## Deploy
 
@@ -75,9 +75,9 @@ Deploy from `web/`:
 
 - `vercel --prod --yes`
 
-Production domain is aliased to:
+Primary production domain is aliased to:
 
-- `https://train.fheinonen.eu`
+- `https://helsinkimoves.fheinonen.eu`
 
 ## Version Control
 
@@ -92,7 +92,7 @@ Production domain is aliased to:
 
 ## Common Safe Tests
 
-- `curl -i 'https://train.fheinonen.eu/api/next-trains?lat=60.1708&lon=24.9375'`
+- `curl -i 'https://helsinkimoves.fheinonen.eu/api/v1/departures?lat=60.1708&lon=24.9375&mode=RAIL'`
 - Probe expected rejection behavior:
   - invalid params -> `400`
   - invalid method -> `405`

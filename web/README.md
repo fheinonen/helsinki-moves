@@ -1,4 +1,4 @@
-# Simple Vercel App: Helsinki Next Trains
+# Simple Vercel App: Helsinki Moves
 
 ## Structure
 
@@ -6,7 +6,7 @@
 - `scripts/app.js` frontend behavior
 - `styles/main.css` styling
 - `assets/icons/` app icons
-- `api/next-trains.js` Vercel serverless API
+- `api/v1/departures.js` Vercel serverless API
 - `vercel.json` Vercel config
 
 ## Local run
@@ -36,5 +36,5 @@
 
 ## Notes
 
-- Frontend requests your browser location and calls `/api/next-trains`.
-- API filters to commuter trains (`mode = RAIL`).
+- Frontend requests your browser location and calls `/api/v1/departures`.
+- API supports multiple modes via `mode` (currently `RAIL` and `BUS`).

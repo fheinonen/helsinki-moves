@@ -83,7 +83,9 @@ function filterUpcoming(departures, now = Date.now()) {
 }
 
 function dedupeStopDepartures(departures) {
-  return departures.filter(
+  const validDepartures = (departures || []).filter(Boolean);
+
+  return validDepartures.filter(
     (departure, index, array) =>
       array.findIndex(
         (candidate) =>

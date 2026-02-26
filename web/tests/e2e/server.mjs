@@ -21,12 +21,21 @@ const contentTypes = {
 };
 
 function resolvePath(requestPath) {
-  const decoded = decodeURIComponent(requestPath);
-  const normalized = path.normalize(decoded).replace(/^\/+/, "");
-  const candidate = normalized === "" ? "index.html" : normalized;
-  const absolute = path.resolve(rootDir, candidate);
+  const rawPath = String(requestPath || "/").replace(/\\/g, "/");
+  let decoded;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    return null;
+  }
 
-  if (!absolute.startsWith(rootDir)) {
+  const normalizedPosix = path.posix.normalize(decoded);
+  const stripped = normalizedPosix.replace(/^\/+/, "");
+  const candidate = stripped === "" ? "index.html" : stripped;
+  const absolute = path.resolve(rootDir, candidate);
+  const relative = path.relative(rootDir, absolute);
+
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     return null;
   }
 

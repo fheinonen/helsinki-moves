@@ -136,8 +136,8 @@
   function setLoading(loading) {
     state.isLoading = loading;
     updateLocationActionButtons();
-    if (loading && dom.skeletonEl) {
-      dom.skeletonEl.classList.remove("hidden");
+    if (dom.skeletonEl) {
+      dom.skeletonEl.classList.toggle("hidden", !loading);
     }
   }
 

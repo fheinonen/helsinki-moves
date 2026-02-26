@@ -40,10 +40,42 @@
             <button id="modeBusBtn" class="mode-toggle" aria-pressed="false">Bus</button>
           </div>
           <button id="locateBtn">Refresh Location</button>
+          <button
+            id="voiceLocateBtn"
+            class="secondary voice-locate-btn"
+            type="button"
+            aria-label="Describe location by voice"
+            aria-pressed="false"
+          >
+            <svg
+              class="voice-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+              <path d="M5 10a7 7 0 0 0 14 0"></path>
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <line x1="8" y1="22" x2="16" y2="22"></line>
+            </svg>
+            <span id="voiceLocateBtnLabel">Describe Location</span>
+          </button>
           <button id="helsinkiOnlyBtn" class="secondary filter-toggle" aria-pressed="false">
             Helsinki Only: Off
           </button>
         </div>
+        <p id="resolvedLocation" class="resolved-location hidden" aria-live="polite"></p>
+        <section id="voiceLocationChoices" class="voice-location-choices hidden" aria-live="polite">
+          <p id="voiceLocationChoicesTitle" class="voice-location-choices-title"></p>
+          <div id="voiceLocationChoicesOptions" class="voice-location-choices-options"></div>
+          <button id="voiceLocationChoicesCancel" class="secondary" type="button">Cancel</button>
+        </section>
         <section id="busControls" class="bus-controls hidden" aria-label="Stop controls">
           <label class="bus-control" for="busStopSelect">
             <span class="bus-label">Stop</span>

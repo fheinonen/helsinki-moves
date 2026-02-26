@@ -55,6 +55,10 @@
 [data-theme="light"] .live-pill { background: rgba(74, 155, 122, 0.05); color: var(--emerald); border-color: rgba(74, 155, 122, 0.1); }
 [data-theme="light"] .live-pill::before { background: var(--emerald); }
 
+[data-theme="light"] .resolved-location { border-color: rgba(61, 138, 156, 0.12); border-left-color: var(--cyan); background: rgba(255, 255, 255, 0.62); }
+[data-theme="light"] .voice-location-choices { border-color: rgba(184, 148, 77, 0.16); border-left-color: var(--amber); background: rgba(255, 255, 255, 0.64); }
+[data-theme="light"] .voice-location-choice-option { border-color: rgba(61, 138, 156, 0.16); color: var(--text); }
+
 [data-theme="light"] .next-summary { border-color: var(--border); border-left-color: var(--cyan); background: rgba(255, 255, 255, 0.6); }
 [data-theme="light"] .next-summary-now { background: linear-gradient(180deg, rgba(184, 148, 77, 0.04), rgba(184, 148, 77, 0.015)); border-color: rgba(184, 148, 77, 0.12); border-left-color: var(--amber); box-shadow: var(--shadow-sm); }
 [data-theme="light"] .next-summary-soon { background: linear-gradient(180deg, rgba(61, 138, 156, 0.03), rgba(61, 138, 156, 0.01)); border-color: rgba(61, 138, 156, 0.1); border-left-color: var(--cyan); }

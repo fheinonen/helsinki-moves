@@ -102,6 +102,491 @@
     api.sanitizeStopSelections();
   }
 
+  function createVoiceError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
+  function getVoiceErrorCode(error) {
+    return String(error?.code || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function getVoiceRecognitionLanguages() {
+    return api.uniqueNonEmptyStrings([
+      "fi-FI",
+      "en-US",
+      ...(Array.isArray(navigator.languages) ? navigator.languages : []),
+      navigator.language,
+    ]);
+  }
+
+  function getSpeechRecognitionConstructor() {
+    if (typeof window.SpeechRecognition === "function") return window.SpeechRecognition;
+    if (typeof window.webkitSpeechRecognition === "function") return window.webkitSpeechRecognition;
+    return null;
+  }
+
+  function supportsVoiceLocation() {
+    return Boolean(getSpeechRecognitionConstructor());
+  }
+
+  function mapSpeechError(errorCode) {
+    if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
+      return createVoiceError("voice_permission_denied", "Microphone permission denied.");
+    }
+    if (errorCode === "audio-capture") {
+      return createVoiceError("voice_no_microphone", "No microphone available.");
+    }
+    if (errorCode === "language-not-supported") {
+      return createVoiceError("voice_language_not_supported", "Speech language is not supported.");
+    }
+    if (errorCode === "network") {
+      return createVoiceError("voice_recognition_network", "Voice recognition network error.");
+    }
+    if (errorCode === "no-speech") {
+      return createVoiceError("voice_no_speech", "No speech detected.");
+    }
+    return createVoiceError("voice_not_understood", "Voice recognition failed.");
+  }
+
+  function captureVoiceQuery(language) {
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (!SpeechRecognition) {
+      return Promise.reject(
+        createVoiceError("voice_unsupported", "Voice recognition not supported.")
+      );
+    }
+
+    return new Promise((resolve, reject) => {
+      const recognition = new SpeechRecognition();
+      const preferredLanguage = String(language || navigator.language || "fi-FI").trim();
+      recognition.lang = preferredLanguage || "fi-FI";
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      let settled = false;
+      let transcript = "";
+      let silenceStopTimerId = null;
+      let stopRequested = false;
+
+      const clearSilenceStopTimer = () => {
+        clearTimeout(silenceStopTimerId);
+        silenceStopTimerId = null;
+      };
+
+      const requestStop = () => {
+        if (stopRequested || settled) return;
+        stopRequested = true;
+        try {
+          recognition.stop();
+        } catch {
+          // Ignore stop errors; timeout/onend handlers still guard completion.
+        }
+      };
+
+      const scheduleSilenceStop = () => {
+        clearSilenceStopTimer();
+        silenceStopTimerId = setTimeout(requestStop, constants.VOICE_SILENCE_STOP_MS);
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        clearSilenceStopTimer();
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.onspeechend = null;
+        recognition.onsoundend = null;
+        recognition.onaudioend = null;
+        recognition.onnomatch = null;
+      };
+
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback(value);
+      };
+
+      const timeoutId = setTimeout(() => {
+        try {
+          recognition.abort();
+        } catch {
+          // Ignore abort errors during timeout cleanup.
+        }
+        finish(
+          reject,
+          createVoiceError("voice_recognition_timeout", "Voice recognition timed out.")
+        );
+      }, constants.VOICE_RECOGNITION_TIMEOUT_MS);
+
+      recognition.onresult = (event) => {
+        for (let index = event?.resultIndex || 0; index < (event?.results?.length || 0); index += 1) {
+          const result = event.results[index];
+          const nextTranscript = String(result?.[0]?.transcript || "").trim();
+          if (!nextTranscript) continue;
+          transcript = nextTranscript;
+          scheduleSilenceStop();
+          if (result?.isFinal) {
+            requestStop();
+            return;
+          }
+        }
+      };
+
+      recognition.onerror = (event) => {
+        const speechCode = String(event?.error || "")
+          .trim()
+          .toLowerCase();
+        finish(reject, mapSpeechError(speechCode));
+      };
+
+      recognition.onend = () => {
+        if (settled) return;
+
+        const cleaned = String(transcript || "").trim();
+        if (!cleaned) {
+          finish(reject, createVoiceError("voice_no_speech", "No speech detected."));
+          return;
+        }
+
+        finish(resolve, cleaned);
+      };
+
+      recognition.onspeechend = () => {
+        requestStop();
+      };
+
+      recognition.onsoundend = () => {
+        scheduleSilenceStop();
+      };
+
+      recognition.onaudioend = () => {
+        scheduleSilenceStop();
+      };
+
+      recognition.onnomatch = () => {
+        finish(reject, createVoiceError("voice_not_understood", "Could not understand speech."));
+      };
+
+      try {
+        recognition.start();
+      } catch (error) {
+        const errorName = String(error?.name || "")
+          .trim()
+          .toLowerCase();
+        if (errorName === "notallowederror" || errorName === "securityerror") {
+          finish(reject, createVoiceError("voice_permission_denied", "Microphone permission denied."));
+          return;
+        }
+        finish(reject, createVoiceError("voice_not_understood", "Unable to start voice recognition."));
+      }
+    });
+  }
+
+  function shouldRetryVoiceRecognition(errorCode) {
+    return (
+      errorCode === "voice_no_speech" ||
+      errorCode === "voice_not_understood" ||
+      errorCode === "voice_recognition_timeout" ||
+      errorCode === "voice_language_not_supported"
+    );
+  }
+
+  async function captureVoiceQueryWithRetry() {
+    const languages = getVoiceRecognitionLanguages();
+    let lastError = null;
+
+    for (const language of languages) {
+      try {
+        return await captureVoiceQuery(language);
+      } catch (error) {
+        lastError = error;
+        if (!shouldRetryVoiceRecognition(getVoiceErrorCode(error))) {
+          break;
+        }
+      }
+    }
+
+    throw lastError || createVoiceError("voice_not_understood", "Voice recognition failed.");
+  }
+
+  function normalizeVoiceLocationChoices(rawChoices) {
+    if (!Array.isArray(rawChoices)) return [];
+
+    return rawChoices
+      .map((choice) => {
+        const lat = Number(choice?.lat);
+        const lon = Number(choice?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+        return {
+          lat,
+          lon,
+          label: String(choice?.label || "").trim(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function hideVoiceLocationChoices() {
+    if (dom.voiceLocationChoicesEl) {
+      dom.voiceLocationChoicesEl.classList.add("hidden");
+    }
+    if (dom.voiceLocationChoicesTitleEl) {
+      dom.voiceLocationChoicesTitleEl.textContent = "";
+    }
+    if (dom.voiceLocationChoicesOptionsEl) {
+      dom.voiceLocationChoicesOptionsEl.innerHTML = "";
+    }
+    if (dom.voiceLocationChoicesCancelEl) {
+      dom.voiceLocationChoicesCancelEl.onclick = null;
+    }
+  }
+
+  function promptVoiceLocationChoiceWithPrompt(query, choices) {
+    if (typeof window.prompt !== "function") {
+      throw createVoiceError(
+        "voice_location_selection_cancelled",
+        "Location selection was cancelled."
+      );
+    }
+
+    const optionsText = choices
+      .map((choice, index) => `${index + 1}. ${choice.label || `${choice.lat}, ${choice.lon}`}`)
+      .join("\n");
+    const response = window.prompt(
+      `Multiple matches found for "${api.safeString(query, 80)}". Select number:\n${optionsText}`,
+      "1"
+    );
+
+    if (response == null) {
+      throw createVoiceError(
+        "voice_location_selection_cancelled",
+        "Location selection was cancelled."
+      );
+    }
+
+    const parsed = Number.parseInt(String(response).trim(), 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > choices.length) {
+      throw createVoiceError("voice_location_selection_invalid", "Invalid location selection.");
+    }
+
+    return choices[parsed - 1];
+  }
+
+  async function promptVoiceLocationChoice(query, choices) {
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw createVoiceError("voice_location_not_found", "No matching location found.");
+    }
+
+    if (
+      !dom.voiceLocationChoicesEl ||
+      !dom.voiceLocationChoicesTitleEl ||
+      !dom.voiceLocationChoicesOptionsEl ||
+      !dom.voiceLocationChoicesCancelEl
+    ) {
+      return promptVoiceLocationChoiceWithPrompt(query, choices);
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        hideVoiceLocationChoices();
+        callback(value);
+      };
+
+      dom.voiceLocationChoicesTitleEl.textContent = `Multiple matches for "${api.safeString(
+        query,
+        80
+      )}". Choose one:`;
+      api.setStatus("Multiple matches found. Choose one below.");
+      dom.voiceLocationChoicesOptionsEl.innerHTML = "";
+
+      for (const choice of choices) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "voice-location-choice-option";
+        button.textContent = choice.label || `${choice.lat.toFixed(5)}, ${choice.lon.toFixed(5)}`;
+        button.addEventListener("click", () => finish(resolve, choice), { once: true });
+        dom.voiceLocationChoicesOptionsEl.appendChild(button);
+      }
+
+      dom.voiceLocationChoicesCancelEl.onclick = () =>
+        finish(
+          reject,
+          createVoiceError("voice_location_selection_cancelled", "Location selection was cancelled.")
+        );
+
+      dom.voiceLocationChoicesEl.classList.remove("hidden");
+    });
+  }
+
+  async function resolveVoiceLocationQuery(rawQuery) {
+    const query = String(rawQuery || "").trim();
+    if (query.length < constants.VOICE_QUERY_MIN_LENGTH) {
+      throw createVoiceError("voice_query_too_short", "Voice query too short.");
+    }
+
+    const params = new URLSearchParams({ text: query });
+    if (state.currentCoords) {
+      params.set("lat", String(state.currentCoords.lat));
+      params.set("lon", String(state.currentCoords.lon));
+    }
+
+    const preferredLanguage =
+      (Array.isArray(navigator.languages) && navigator.languages[0]) || navigator.language || "";
+    if (preferredLanguage) {
+      params.set("lang", String(preferredLanguage));
+    }
+
+    let res;
+    try {
+      res = await fetchWithRetryOnce(`/api/v1/geocode?${params.toString()}`);
+    } catch {
+      throw createVoiceError("voice_geocode_failed", "Location lookup failed.");
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      throw createVoiceError("voice_geocode_failed", "Unexpected location lookup response.");
+    }
+
+    const json = await res.json();
+    if (!res.ok) {
+      throw createVoiceError(
+        "voice_geocode_failed",
+        String(json?.error || "Location lookup failed.").trim()
+      );
+    }
+
+    const choices = normalizeVoiceLocationChoices(json?.choices);
+    if (json?.ambiguous && choices.length > 1) {
+      const selected = await promptVoiceLocationChoice(query, choices);
+      return {
+        lat: selected.lat,
+        lon: selected.lon,
+        label: selected.label,
+        query,
+      };
+    }
+
+    const lat = Number(json?.location?.lat);
+    const lon = Number(json?.location?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      throw createVoiceError("voice_location_not_found", "No matching location found.");
+    }
+
+    return {
+      lat,
+      lon,
+      label: String(json?.location?.label || "").trim(),
+      query,
+    };
+  }
+
+  function shouldOfferVoiceTypedFallback(errorCode) {
+    return (
+      errorCode === "voice_unsupported" ||
+      errorCode === "voice_no_speech" ||
+      errorCode === "voice_recognition_timeout" ||
+      errorCode === "voice_recognition_network" ||
+      errorCode === "voice_not_understood"
+    );
+  }
+
+  function promptVoiceTypedFallback(errorCode) {
+    if (!shouldOfferVoiceTypedFallback(errorCode) || typeof window.prompt !== "function") {
+      return null;
+    }
+
+    const hint =
+      errorCode === "voice_unsupported"
+        ? "Voice input is limited in this browser. Type your location instead:"
+        : "Could not capture your voice on this device. Type your location:";
+    const input = window.prompt(`${hint}\nExample: Kamppi Helsinki`, "");
+    const cleaned = String(input || "").trim();
+    return cleaned || null;
+  }
+
+  async function resolveVoiceQueryAndLoad(rawQuery) {
+    const transcript = String(rawQuery || "").trim();
+    hideVoiceLocationChoices();
+    api.setStatus(`Looking up "${api.safeString(transcript, 80)}"...`);
+    const location = await resolveVoiceLocationQuery(transcript);
+    api.setResolvedLocationHint({
+      query: transcript,
+      label: location.label,
+      lat: location.lat,
+      lon: location.lon,
+    });
+    state.currentCoords = { lat: location.lat, lon: location.lon };
+    api.setPermissionRequired(false);
+    await load(location.lat, location.lon);
+    return true;
+  }
+
+  async function requestVoiceLocationAndLoad() {
+    if (state.isLoading || state.isVoiceListening) return false;
+
+    hideVoiceLocationChoices();
+    api.setVoiceListening(true);
+    api.setStatus("Listening... speak now, then pause.");
+
+    try {
+      if (!supportsVoiceLocation()) {
+        const unsupportedError = createVoiceError(
+          "voice_unsupported",
+          "Voice recognition not supported."
+        );
+        const fallbackQuery = promptVoiceTypedFallback(getVoiceErrorCode(unsupportedError));
+        if (!fallbackQuery) {
+          api.setStatus(api.getVoiceLocationErrorStatus(unsupportedError));
+          return false;
+        }
+        return resolveVoiceQueryAndLoad(fallbackQuery);
+      }
+
+      const transcript = await captureVoiceQueryWithRetry();
+      return resolveVoiceQueryAndLoad(transcript);
+    } catch (error) {
+      const errorCode = getVoiceErrorCode(error);
+      const fallbackQuery = promptVoiceTypedFallback(errorCode);
+      if (fallbackQuery) {
+        try {
+          return await resolveVoiceQueryAndLoad(fallbackQuery);
+        } catch (fallbackError) {
+          console.error("voice fallback location error:", fallbackError);
+          api.reportClientError("voice-location-fallback", fallbackError, {
+            mode: state.mode,
+            sourceCode: errorCode || "unknown",
+          });
+          api.setStatus(api.getVoiceLocationErrorStatus(fallbackError));
+          return false;
+        }
+      }
+
+      if (!errorCode || errorCode === "unknown") {
+        console.error("voice location error:", error);
+      }
+      api.reportClientError("voice-location", error, {
+        mode: state.mode,
+        code: errorCode || "unknown",
+      });
+      api.setStatus(api.getVoiceLocationErrorStatus(error));
+      return false;
+    } finally {
+      api.setVoiceListening(false);
+    }
+  }
+
   async function load(lat, lon) {
     const loadToken = ++state.latestLoadToken;
     const requestMode = state.mode;
@@ -170,13 +655,16 @@
   }
 
   function requestLocationAndLoad() {
+    hideVoiceLocationChoices();
+    api.setResolvedLocationHint(null);
+
     if (!navigator.geolocation) {
       api.setStatus("Geolocation not supported in this browser.");
       api.setPermissionRequired(true);
       return false;
     }
 
-    if (state.isLoading) return false;
+    if (state.isLoading || state.isVoiceListening) return false;
 
     api.setStatus("Getting your location...");
     api.setLoading(true);
@@ -215,6 +703,8 @@
   }
 
   function refreshDeparturesOnly() {
+    if (state.isVoiceListening) return;
+
     if (state.currentCoords) {
       load(state.currentCoords.lat, state.currentCoords.lon);
       return;
@@ -240,6 +730,13 @@
     buildFilterOptionsFromDepartures,
     load,
     requestLocationAndLoad,
+    requestVoiceLocationAndLoad,
+    supportsVoiceLocation,
+    captureVoiceQuery,
+    captureVoiceQueryWithRetry,
+    getVoiceRecognitionLanguages,
+    shouldRetryVoiceRecognition,
+    resolveVoiceLocationQuery,
     refreshDeparturesOnly,
     applyModeUiState,
   });

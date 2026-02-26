@@ -17,6 +17,10 @@
     api.requestLocationAndLoad();
   });
 
+  dom.voiceLocateBtn?.addEventListener("click", () => {
+    api.requestVoiceLocationAndLoad();
+  });
+
   dom.modeRailBtn?.addEventListener("click", () => {
     if (state.mode === MODE_RAIL) return;
     state.mode = MODE_RAIL;

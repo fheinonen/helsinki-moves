@@ -5,6 +5,8 @@
 
   app.dom = {
     locateBtn: document.getElementById("locateBtn"),
+    voiceLocateBtn: document.getElementById("voiceLocateBtn"),
+    voiceLocateBtnLabel: document.getElementById("voiceLocateBtnLabel"),
     modeRailBtn: document.getElementById("modeRailBtn"),
     modeTramBtn: document.getElementById("modeTramBtn"),
     modeMetroBtn: document.getElementById("modeMetroBtn"),
@@ -17,6 +19,11 @@
     resultsLimitSelectEl: document.getElementById("resultsLimitSelect"),
     modeEyebrowEl: document.getElementById("modeEyebrow"),
     statusEl: document.getElementById("status"),
+    resolvedLocationEl: document.getElementById("resolvedLocation"),
+    voiceLocationChoicesEl: document.getElementById("voiceLocationChoices"),
+    voiceLocationChoicesTitleEl: document.getElementById("voiceLocationChoicesTitle"),
+    voiceLocationChoicesOptionsEl: document.getElementById("voiceLocationChoicesOptions"),
+    voiceLocationChoicesCancelEl: document.getElementById("voiceLocationChoicesCancel"),
     dataScopeEl: document.getElementById("dataScope"),
     resultEl: document.getElementById("result"),
     permissionCardEl: document.getElementById("permissionCard"),
@@ -52,6 +59,9 @@
     DEFAULT_RESULTS_LIMIT_METRO: 8,
     DEFAULT_RESULTS_LIMIT_BUS: 24,
     RESULT_LIMIT_OPTIONS: [8, 12, 16, 20, 24, 30],
+    VOICE_RECOGNITION_TIMEOUT_MS: 8000,
+    VOICE_SILENCE_STOP_MS: 1200,
+    VOICE_QUERY_MIN_LENGTH: 3,
     FETCH_TIMEOUT_MS: 8000,
     ERROR_REPORT_LIMIT: 5,
   };
@@ -60,6 +70,7 @@
 
   app.state = {
     isLoading: false,
+    isVoiceListening: false,
     currentCoords: null,
     latestResponse: null,
     mode: MODE_RAIL,
@@ -75,6 +86,7 @@
     },
     busStops: [],
     busFilterOptions: { lines: [], destinations: [] },
+    resolvedLocationHint: null,
     suppressBusStopChange: false,
     errorReportCount: 0,
     latestLoadToken: 0,
@@ -82,16 +94,74 @@
 
   const { dom, state, constants } = app;
 
+  function updateLocationActionButtons() {
+    const disableLocate = state.isLoading || state.isVoiceListening;
+    const disableVoice = state.isLoading;
+    if (dom.locateBtn) {
+      dom.locateBtn.disabled = disableLocate;
+    }
+
+    if (dom.voiceLocateBtn) {
+      dom.voiceLocateBtn.disabled = disableVoice;
+      dom.voiceLocateBtn.classList.toggle("is-listening", state.isVoiceListening);
+      dom.voiceLocateBtn.setAttribute("aria-pressed", String(state.isVoiceListening));
+    }
+
+    if (dom.voiceLocateBtnLabel) {
+      dom.voiceLocateBtnLabel.textContent = state.isVoiceListening
+        ? "Listening..."
+        : "Describe Location";
+    }
+  }
+
   function setLoading(loading) {
     state.isLoading = loading;
-    if (dom.locateBtn) {
-      dom.locateBtn.disabled = loading;
-    }
+    updateLocationActionButtons();
+  }
+
+  function setVoiceListening(listening) {
+    state.isVoiceListening = Boolean(listening);
+    updateLocationActionButtons();
   }
 
   function setStatus(text) {
     if (!dom.statusEl) return;
     dom.statusEl.textContent = text;
+  }
+
+  function formatCoordinate(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed.toFixed(5);
+  }
+
+  function setResolvedLocationHint(hint) {
+    const isValidHint = hint && typeof hint === "object";
+    state.resolvedLocationHint = isValidHint
+      ? {
+          query: safeString(hint.query, 120).trim(),
+          label: safeString(hint.label, 180).trim(),
+          lat: Number(hint.lat),
+          lon: Number(hint.lon),
+        }
+      : null;
+
+    if (!dom.resolvedLocationEl) return;
+
+    if (!state.resolvedLocationHint) {
+      dom.resolvedLocationEl.classList.add("hidden");
+      dom.resolvedLocationEl.textContent = "";
+      return;
+    }
+
+    const label = state.resolvedLocationHint.label || "Unknown place";
+    const query = state.resolvedLocationHint.query;
+    const lat = formatCoordinate(state.resolvedLocationHint.lat);
+    const lon = formatCoordinate(state.resolvedLocationHint.lon);
+    const queryPart = query ? ` (from "${query}")` : "";
+    const coordinatePart = lat && lon ? ` - ${lat}, ${lon}` : "";
+    dom.resolvedLocationEl.textContent = `Resolved location: ${label}${queryPart}${coordinatePart}`;
+    dom.resolvedLocationEl.classList.remove("hidden");
   }
 
   function setPermissionRequired(required) {
@@ -373,9 +443,14 @@
     syncStateToUrl();
   }
 
+  updateLocationActionButtons();
+
   Object.assign(api, {
+    updateLocationActionButtons,
     setLoading,
+    setVoiceListening,
     setStatus,
+    setResolvedLocationHint,
     setPermissionRequired,
     setLastUpdated,
     getStorageItem,

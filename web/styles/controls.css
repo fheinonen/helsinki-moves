@@ -15,6 +15,22 @@
   min-width: 58px;
 }
 
+.voice-locate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voice-icon {
+  flex-shrink: 0;
+}
+
+.voice-locate-btn.is-listening {
+  color: var(--amber);
+  border-color: rgba(212, 169, 106, 0.25);
+  background: rgba(212, 169, 106, 0.1);
+}
+
 .bus-controls {
   margin: 0 0 8px;
   display: grid;

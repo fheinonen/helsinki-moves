@@ -445,6 +445,45 @@
     return "Unable to get your location.";
   }
 
+  function getVoiceLocationErrorStatus(error) {
+    const code = String(error?.code || "").trim();
+
+    if (code === "voice_unsupported") {
+      return "Voice location is not supported in this browser.";
+    }
+    if (code === "voice_permission_denied") {
+      return "Microphone permission denied.";
+    }
+    if (code === "voice_no_microphone") {
+      return "No microphone was found for voice location.";
+    }
+    if (code === "voice_no_speech") {
+      return "No speech detected. Please try again.";
+    }
+    if (code === "voice_recognition_timeout") {
+      return "Voice listening timed out. Please try again.";
+    }
+    if (code === "voice_language_not_supported") {
+      return "Voice language was not supported on this device.";
+    }
+    if (code === "voice_query_too_short") {
+      return "Please describe your location with a few words.";
+    }
+    if (code === "voice_location_not_found") {
+      return "Could not match that place. Try a nearby landmark or street.";
+    }
+    if (code === "voice_location_selection_cancelled") {
+      return "Location selection was cancelled.";
+    }
+    if (code === "voice_location_selection_invalid") {
+      return "Please choose one of the suggested locations.";
+    }
+    if (code === "voice_recognition_network") {
+      return "Voice recognition failed due to a network error. On iPhone, try enabling Siri & Dictation.";
+    }
+    return "Could not use voice location. Please try again.";
+  }
+
   function alignDepartureColumns() {
     const rows = [...document.querySelectorAll(".departure-row .train-top")];
     if (rows.length === 0) return;
@@ -620,6 +659,7 @@
     buildStatusFromResponse,
     getLoadErrorStatus,
     getGeolocationErrorStatus,
+    getVoiceLocationErrorStatus,
     alignDepartureColumns,
     render,
     updateClock,

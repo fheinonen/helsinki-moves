@@ -1,5 +1,7 @@
 .DS_Store
 web/.env
 web/.vercel
+web/playwright-report/
+web/test-results/
 node_modules/
 .vercel

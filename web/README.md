@@ -48,6 +48,19 @@ From repository root:
 - `node --check web/api/lib/digitransit.js`
 - `node --check web/api/lib/departures-utils.js`
 
+## Cross-browser E2E (voice/microphone flows)
+
+From `web/`:
+
+- `npm run test:e2e:install`
+- `npm run test:e2e`
+
+Target a single engine:
+
+- `npm run test:e2e:chromium`
+- `npm run test:e2e:firefox`
+- `npm run test:e2e:webkit`
+
 ## Deploy
 
 1. Push this repo to GitHub/GitLab/Bitbucket.

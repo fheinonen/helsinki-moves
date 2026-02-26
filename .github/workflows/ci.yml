@@ -15,10 +15,13 @@ jobs:
         with:
           node-version-file: "web/package.json"
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         working-directory: web
       - name: Build frontend bundles
         run: npm run build
+        working-directory: web
+      - name: Unit tests
+        run: npm test
         working-directory: web
       - name: Syntax Check (Client)
         run: |
@@ -30,9 +33,63 @@ jobs:
           node --check web/tools/build-assets.mjs
       - name: Syntax Check (API)
         run: node --check web/api/v1/departures.js
+      - name: Syntax Check (Geocode API)
+        run: node --check web/api/v1/geocode.js
       - name: Syntax Check (Client Error)
         run: node --check web/api/v1/client-error.js
       - name: Syntax Check (Digitransit)
         run: node --check web/api/lib/digitransit.js
       - name: Syntax Check (Utils)
         run: node --check web/api/lib/departures-utils.js
+
+  e2e:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            project: chromium
+            browser: chromium
+          - os: ubuntu-latest
+            project: firefox
+            browser: firefox
+          - os: windows-latest
+            project: chromium
+            browser: chromium
+          - os: macos-latest
+            project: webkit
+            browser: webkit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "web/package.json"
+      - name: Install dependencies
+        run: npm install
+        working-directory: web
+      - name: Build frontend bundles
+        run: npm run build
+        working-directory: web
+      - name: Install Playwright browser dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: web
+      - name: Install Playwright browser
+        if: matrix.os != 'ubuntu-latest'
+        run: npx playwright install ${{ matrix.browser }}
+        working-directory: web
+      - name: Run browser E2E tests
+        run: npx playwright test --project=${{ matrix.project }}
+        working-directory: web
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}-${{ matrix.project }}
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore

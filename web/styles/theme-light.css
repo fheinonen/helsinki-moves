@@ -84,8 +84,6 @@
 
 [data-theme="light"] .bus-select,
 [data-theme="light"] .custom-select-trigger {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--text);
   border-color: rgba(63, 127, 147, 0.28);
 }
 

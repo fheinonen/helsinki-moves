@@ -158,6 +158,12 @@ h2 {
   color: var(--text);
 }
 
+.segment:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+  border-radius: calc(var(--radius-xs) - 3px);
+}
+
 .segment.is-active {
   color: var(--interactive-active-text);
 }

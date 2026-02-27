@@ -12,6 +12,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .voice-icon {
@@ -61,6 +62,22 @@
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
   padding: var(--space-4);
+  max-height: 500px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height var(--duration-medium) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default),
+    padding var(--duration-medium) var(--ease-default);
+}
+
+.stop-filters-panel.hidden {
+  display: grid !important;
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-color: transparent;
+  pointer-events: none;
 }
 
 .bus-control {
@@ -88,9 +105,8 @@
 
 .bus-select {
   border: 1px solid rgba(134, 179, 191, 0.32);
-  background: rgba(9, 13, 23, 0.9);
+  background: var(--bg-elevated);
   color: var(--text);
-  color-scheme: dark;
   border-radius: var(--radius-xs);
   padding: 8px var(--space-4);
   font-size: var(--text-base);
@@ -119,7 +135,7 @@
   width: 100%;
   text-align: left;
   border: 1px solid rgba(134, 179, 191, 0.28);
-  background: rgba(9, 13, 23, 0.74);
+  background: var(--bg-elevated);
   color: var(--text);
   border-radius: var(--radius-xs);
   padding: 8px var(--space-4);
@@ -212,12 +228,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-default);
 }
 
 .chip-toggle:hover {
   background: rgba(134, 179, 191, 0.12);
   border-color: var(--interactive-border-hover);
   color: var(--text);
+}
+
+.chip-toggle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
 }
 
 .chip-toggle.is-active {

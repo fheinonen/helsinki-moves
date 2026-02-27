@@ -60,14 +60,13 @@
 
 .next-hero {
   background:
-    radial-gradient(circle at 86% -12%, rgba(241, 191, 111, 0.22), transparent 40%),
-    radial-gradient(circle at 5% 120%, rgba(134, 179, 191, 0.2), transparent 54%),
+    radial-gradient(circle at 86% -12%, rgba(134, 179, 191, 0.16), transparent 40%),
+    radial-gradient(circle at 5% 120%, rgba(134, 179, 191, 0.12), transparent 54%),
     var(--bg-elevated);
 }
 
 .next-summary-now {
   background:
-    radial-gradient(circle at 80% -18%, rgba(241, 191, 111, 0.28), transparent 46%),
     var(--departure-now-bg);
   border-color: var(--departure-now-border);
   border-left-color: var(--departure-now-accent);
@@ -75,7 +74,6 @@
 
 .next-summary-soon {
   background:
-    radial-gradient(circle at 76% -16%, rgba(134, 179, 191, 0.24), transparent 44%),
     var(--departure-soon-bg);
   border-color: var(--departure-soon-border);
   border-left-color: var(--departure-soon-accent);

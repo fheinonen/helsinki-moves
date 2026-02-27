@@ -205,15 +205,18 @@ li {
 .letter-badge {
   min-width: var(--badge-size);
   height: var(--badge-size);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-badge);
   display: grid;
   place-items: center;
   font-family: var(--font-body);
   font-weight: var(--weight-extrabold);
-  font-size: var(--text-2xl);
+  font-size: clamp(0.95rem, 3.8vw, 1.25rem);
   color: #fff;
   background: var(--departure-default-badge);
   box-shadow: var(--departure-default-badge-shadow);
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .departure-now .letter-badge {

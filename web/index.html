@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Helsinki Moves</title>
-    <meta name="theme-color" content="#080c16" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#090d17" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f2f4f1" media="(prefers-color-scheme: light)" />
     <meta name="color-scheme" content="light dark" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400..800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;700&family=Manrope:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg" />
@@ -21,8 +21,11 @@
   <body>
     <main class="page" aria-live="polite">
       <section class="board card">
-        <div class="board-top">
-          <p id="modeEyebrow" class="eyebrow">Helsinki Moves</p>
+        <header class="board-top">
+          <div class="board-brand">
+            <p id="modeEyebrow" class="eyebrow">Helsinki Moves</p>
+            <p class="board-subtitle">Live departures in one glance</p>
+          </div>
           <div class="board-top-right">
             <p id="nowClock" class="clock">--:--</p>
             <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode" type="button">
@@ -30,9 +33,9 @@
               <svg class="theme-icon sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
             </button>
           </div>
-        </div>
+        </header>
 
-        <div class="controls">
+        <div class="controls" role="group" aria-label="Departure controls">
           <div class="segment-control" role="radiogroup" aria-label="Transport mode">
             <button id="modeRailBtn" class="segment" role="radio" aria-checked="true">Rail</button>
             <button id="modeTramBtn" class="segment" role="radio" aria-checked="false">Tram</button>
@@ -71,42 +74,64 @@
             Helsinki Only: Off
           </button>
         </div>
+
         <p id="resolvedLocation" class="resolved-location hidden" aria-live="polite"></p>
         <section id="voiceLocationChoices" class="voice-location-choices hidden" aria-live="polite">
           <p id="voiceLocationChoicesTitle" class="voice-location-choices-title"></p>
           <div id="voiceLocationChoicesOptions" class="voice-location-choices-options"></div>
           <button id="voiceLocationChoicesCancel" class="secondary" type="button">Cancel</button>
         </section>
+
         <section id="busControls" class="bus-controls hidden" aria-label="Stop controls">
-          <div class="bus-control">
-            <span class="bus-label">Stop</span>
-            <div class="custom-select" id="busStopSelectWrap">
-              <button type="button" id="busStopSelect" class="custom-select-trigger"
-                      role="combobox" aria-expanded="false" aria-haspopup="listbox">
-                <span id="busStopSelectLabel">Select stop</span>
-                <svg class="custom-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </button>
-              <ul id="busStopSelectList" class="custom-select-list hidden" role="listbox"></ul>
+          <div class="stop-toolbar">
+            <div class="bus-control">
+              <span class="bus-label">Stop</span>
+              <div class="custom-select" id="busStopSelectWrap">
+                <button
+                  type="button"
+                  id="busStopSelect"
+                  class="custom-select-trigger"
+                  role="combobox"
+                  aria-expanded="false"
+                  aria-haspopup="listbox"
+                >
+                  <span id="busStopSelectLabel">Select stop</span>
+                  <svg class="custom-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <ul id="busStopSelectList" class="custom-select-list hidden" role="listbox"></ul>
+              </div>
             </div>
+            <button
+              id="stopFiltersToggleBtn"
+              class="secondary stop-filters-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="stopFiltersPanel"
+            >
+              Filters
+              <span id="stopFilterSummary" class="filter-summary">No filters</span>
+            </button>
           </div>
-          <div class="bus-filter-group">
-            <p class="bus-label">Lines</p>
-            <div id="busLineFilters" class="chip-group" role="group" aria-label="Line filters"></div>
-          </div>
-          <div class="bus-filter-group">
-            <p class="bus-label">Destinations</p>
-            <div
-              id="busDestinationFilters"
-              class="chip-group"
-              role="group"
-              aria-label="Destination filters"
-            ></div>
+          <div id="stopFiltersPanel" class="stop-filters-panel hidden">
+            <div class="bus-filter-group">
+              <p class="bus-label">Lines</p>
+              <div id="busLineFilters" class="chip-group" role="group" aria-label="Line filters"></div>
+            </div>
+            <div class="bus-filter-group">
+              <p class="bus-label">Destinations</p>
+              <div
+                id="busDestinationFilters"
+                class="chip-group"
+                role="group"
+                aria-label="Destination filters"
+              ></div>
+            </div>
           </div>
         </section>
 
         <p id="status" class="status">Getting your location...</p>
-        <p id="dataScope" class="data-scope hidden">Selected stop: —</p>
-        <p id="lastUpdated" class="last-updated">Last updated: —</p>
+        <p id="dataScope" class="data-scope hidden">Selected stop: -</p>
+        <p id="lastUpdated" class="last-updated">Last updated: -</p>
 
         <div id="skeleton" class="skeleton hidden">
           <div class="skeleton-next"></div>
@@ -115,6 +140,7 @@
           <div class="skeleton-row"></div>
           <div class="skeleton-row"></div>
         </div>
+
         <section id="result" class="result hidden">
           <div class="result-head">
             <div>
@@ -122,21 +148,27 @@
               <p id="stationMeta" class="muted"></p>
             </div>
             <div class="result-head-right">
-              <label class="bus-control results-control" for="resultsLimitSelect">
-                <select id="resultsLimitSelect" class="bus-select" aria-label="Number of departures"></select>
-              </label>
+              <div class="custom-select results-control" id="resultsLimitSelectWrap">
+                <button type="button" id="resultsLimitSelect" class="custom-select-trigger"
+                  role="combobox" aria-expanded="false" aria-haspopup="listbox"
+                  aria-label="Number of departures">
+                  <span id="resultsLimitSelectLabel">8</span>
+                  <svg class="custom-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <ul id="resultsLimitSelectList" class="custom-select-list hidden" role="listbox"></ul>
+              </div>
               <span class="live-pill">Realtime</span>
             </div>
           </div>
-          <div id="nextSummary" class="next-summary hidden" aria-live="polite">
+          <div id="nextSummary" class="next-summary next-hero hidden" aria-live="polite">
             <p id="nextLabel" class="next-label">Next Departure</p>
             <div class="next-grid">
-              <span id="nextLine" class="letter-badge next-letter">—</span>
-              <p class="next-mins"><span id="nextMins">—</span></p>
+              <span id="nextLine" class="letter-badge next-letter">-</span>
+              <p class="next-mins"><span id="nextMins">-</span></p>
             </div>
-            <p id="nextDestination" class="next-destination">—</p>
+            <p id="nextDestination" class="next-destination">-</p>
             <p class="next-track-row">
-              <span id="nextTrack" class="next-chip">Track —</span>
+              <span id="nextTrack" class="next-chip">Track -</span>
             </p>
           </div>
           <ul id="departures" class="departures"></ul>

@@ -62,23 +62,67 @@
     refreshWithCurrentLocationOrRequest();
   });
 
-  dom.resultsLimitSelectEl?.addEventListener("change", () => {
-    const nextLimit = api.parseResultLimit(dom.resultsLimitSelectEl.value);
-    if (nextLimit == null) {
-      api.renderResultsLimitControl();
+  /* ─── Custom Results Limit Dropdown ─── */
+  dom.resultsLimitSelectEl?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    api.toggleResultsLimitDropdown();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!dom.resultsLimitSelectWrapEl) return;
+    if (!dom.resultsLimitSelectWrapEl.contains(e.target)) {
+      api.toggleResultsLimitDropdown(false);
+    }
+  });
+
+  dom.resultsLimitSelectEl?.addEventListener("keydown", (e) => {
+    const listEl = dom.resultsLimitSelectListEl;
+    if (!listEl) return;
+
+    const isOpen = dom.resultsLimitSelectEl.getAttribute("aria-expanded") === "true";
+
+    if (e.key === "Escape") {
+      api.toggleResultsLimitDropdown(false);
+      dom.resultsLimitSelectEl.focus();
+      e.preventDefault();
       return;
     }
 
-    const currentLimit = api.getActiveResultsLimit();
-    if (currentLimit === nextLimit) return;
+    if (e.key === "Enter" || e.key === " ") {
+      if (!isOpen) {
+        api.toggleResultsLimitDropdown(true);
+        e.preventDefault();
+        return;
+      }
+      const focused = listEl.querySelector(".is-focused");
+      if (focused?.dataset?.value) {
+        api.selectResultsLimit(focused.dataset.value);
+      }
+      e.preventDefault();
+      return;
+    }
 
-    api.trackFirstManualInteraction("results_limit_change", {
-      nextLimit,
-      currentMode: state.mode,
-    });
-    state.resultsLimitByMode[state.mode] = nextLimit;
-    api.persistUiState();
-    refreshWithCurrentLocationOrRequest();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen) {
+        api.toggleResultsLimitDropdown(true);
+        return;
+      }
+      const items = [...listEl.querySelectorAll("li[role='option']")];
+      if (items.length === 0) return;
+
+      const currentIdx = items.findIndex((item) => item.classList.contains("is-focused"));
+      let nextIdx;
+      if (e.key === "ArrowDown") {
+        nextIdx = currentIdx < items.length - 1 ? currentIdx + 1 : 0;
+      } else {
+        nextIdx = currentIdx > 0 ? currentIdx - 1 : items.length - 1;
+      }
+
+      for (const item of items) item.classList.remove("is-focused");
+      items[nextIdx].classList.add("is-focused");
+      items[nextIdx].scrollIntoView({ block: "nearest" });
+    }
   });
 
   /* ─── Custom Stop Dropdown ─── */
@@ -142,6 +186,11 @@
       items[nextIdx].classList.add("is-focused");
       items[nextIdx].scrollIntoView({ block: "nearest" });
     }
+  });
+
+  dom.stopFiltersToggleBtnEl?.addEventListener("click", () => {
+    api.trackFirstManualInteraction("stop_filters_panel_toggle", { currentMode: state.mode });
+    api.toggleStopFiltersPanel();
   });
 
   dom.helsinkiOnlyBtn?.addEventListener("click", () => {

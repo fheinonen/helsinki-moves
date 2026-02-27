@@ -28,8 +28,8 @@
   function departureRowClass(iso) {
     const diffMin = minutesUntil(iso);
 
-    if (diffMin <= 0 || diffMin < 5) return "departure-now";
-    if (diffMin <= 15) return "departure-soon";
+    if (diffMin <= 0 || diffMin < 3) return "departure-now";
+    if (diffMin <= 10) return "departure-soon";
     return "departure-later";
   }
 
@@ -111,23 +111,65 @@
     }
   }
 
+  function toggleResultsLimitDropdown(forceOpen) {
+    if (!dom.resultsLimitSelectEl || !dom.resultsLimitSelectListEl) return;
+    const isOpen = dom.resultsLimitSelectEl.getAttribute("aria-expanded") === "true";
+    const nextOpen = typeof forceOpen === "boolean" ? forceOpen : !isOpen;
+    dom.resultsLimitSelectEl.setAttribute("aria-expanded", String(nextOpen));
+    dom.resultsLimitSelectListEl.classList.toggle("hidden", !nextOpen);
+  }
+
+  function selectResultsLimit(value) {
+    const nextLimit = api.parseResultLimit(value);
+    if (nextLimit == null) return;
+
+    toggleResultsLimitDropdown(false);
+
+    const currentLimit = api.getActiveResultsLimit();
+    if (currentLimit === nextLimit) return;
+
+    api.trackFirstManualInteraction("results_limit_change", {
+      nextLimit,
+      currentMode: state.mode,
+    });
+    state.resultsLimitByMode[state.mode] = nextLimit;
+    api.persistUiState();
+
+    if (dom.resultsLimitSelectLabelEl) {
+      dom.resultsLimitSelectLabelEl.textContent = String(nextLimit);
+    }
+
+    if (state.currentCoords) {
+      api.load(state.currentCoords.lat, state.currentCoords.lon);
+    } else {
+      api.requestLocationAndLoad();
+    }
+  }
+
   function renderResultsLimitControl() {
-    if (!dom.resultsLimitSelectEl) return;
+    if (!dom.resultsLimitSelectListEl) return;
 
     const options = Array.isArray(constants.RESULT_LIMIT_OPTIONS)
       ? constants.RESULT_LIMIT_OPTIONS
       : [];
     const activeValue = api.getActiveResultsLimit();
-    dom.resultsLimitSelectEl.innerHTML = "";
+    dom.resultsLimitSelectListEl.innerHTML = "";
 
     for (const value of options) {
-      const option = document.createElement("option");
-      option.value = String(value);
-      option.textContent = `${value}`;
-      dom.resultsLimitSelectEl.appendChild(option);
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.dataset.value = String(value);
+      li.textContent = String(value);
+      if (value === activeValue) {
+        li.setAttribute("aria-selected", "true");
+      }
+      li.addEventListener("click", () => selectResultsLimit(String(value)));
+      dom.resultsLimitSelectListEl.appendChild(li);
     }
 
-    dom.resultsLimitSelectEl.value = String(activeValue);
+    if (dom.resultsLimitSelectLabelEl) {
+      dom.resultsLimitSelectLabelEl.textContent = String(activeValue);
+    }
   }
 
   function updateHelsinkiFilterButton() {
@@ -147,9 +189,45 @@
     dom.helsinkiOnlyBtn.textContent = state.helsinkiOnly ? "Helsinki Only: On" : "Helsinki Only: Off";
   }
 
+  function countActiveStopFilters() {
+    return Math.max(0, state.busLineFilters.length) + Math.max(0, state.busDestinationFilters.length);
+  }
+
+  function buildStopFilterSummary(lineFilterCount = state.busLineFilters.length, destinationFilterCount = state.busDestinationFilters.length) {
+    const totalFilters = Math.max(0, Number(lineFilterCount) || 0) + Math.max(0, Number(destinationFilterCount) || 0);
+    if (totalFilters === 0) return "No filters";
+    if (totalFilters === 1) return "1 filter";
+    return `${totalFilters} filters`;
+  }
+
+  function syncStopFiltersPanelUi() {
+    if (dom.stopFilterSummaryEl) {
+      dom.stopFilterSummaryEl.textContent = buildStopFilterSummary();
+    }
+
+    if (!dom.stopFiltersToggleBtnEl || !dom.stopFiltersPanelEl) return;
+
+    dom.stopFiltersToggleBtnEl.setAttribute("aria-expanded", String(Boolean(state.stopFiltersPanelOpen)));
+    dom.stopFiltersPanelEl.classList.toggle("hidden", !state.stopFiltersPanelOpen);
+  }
+
+  function setStopFiltersPanelOpen(nextOpen) {
+    state.stopFiltersPanelOpen = Boolean(nextOpen);
+    syncStopFiltersPanelUi();
+  }
+
+  function toggleStopFiltersPanel(forceOpen) {
+    const nextOpen = typeof forceOpen === "boolean" ? forceOpen : !state.stopFiltersPanelOpen;
+    setStopFiltersPanelOpen(nextOpen);
+  }
+
   function setStopControlsVisibility(visible) {
     if (!dom.busControlsEl) return;
     dom.busControlsEl.classList.toggle("hidden", !visible);
+    if (!visible) {
+      state.stopFiltersPanelOpen = false;
+    }
+    syncStopFiltersPanelUi();
   }
 
   function getStopMeta(stopId) {
@@ -301,6 +379,7 @@
     const visible = isStopMode();
     setStopControlsVisibility(visible);
     if (!visible) return;
+    syncStopFiltersPanelUi();
 
     if (dom.busStopSelectListEl) {
       state.suppressBusStopChange = true;
@@ -356,6 +435,7 @@
         api.trackFirstManualInteraction("line_filter_toggle", { currentMode: state.mode });
         api.trackFirstManualStopContextChange("line_filter_toggle");
         api.persistUiState();
+        syncStopFiltersPanelUi();
         if (state.latestResponse) {
           api.render(state.latestResponse);
           api.setStatus(api.buildStatusFromResponse(state.latestResponse));
@@ -377,6 +457,7 @@
         api.trackFirstManualInteraction("destination_filter_toggle", { currentMode: state.mode });
         api.trackFirstManualStopContextChange("destination_filter_toggle");
         api.persistUiState();
+        syncStopFiltersPanelUi();
         if (state.latestResponse) {
           api.render(state.latestResponse);
           api.setStatus(api.buildStatusFromResponse(state.latestResponse));
@@ -400,7 +481,7 @@
 
     dom.nextMinsEl.textContent = formatMinutes(nextDeparture.departureIso);
     dom.nextLineEl.textContent = nextDeparture.line || "—";
-    dom.nextLineEl.classList.toggle("next-letter-now", diffMin < 5);
+    dom.nextLineEl.classList.toggle("next-letter-now", diffMin < 3);
     dom.nextTrackEl.textContent =
       isStopMode()
         ? `Stop ${buildModeStopDisplay(station, nextDeparture)}`
@@ -409,9 +490,9 @@
           : "Track —";
     dom.nextDestinationEl.textContent = nextDeparture.destination || "—";
     dom.nextSummaryEl.classList.remove("next-summary-now", "next-summary-soon", "next-summary-later");
-    if (diffMin < 5) {
+    if (diffMin < 3) {
       dom.nextSummaryEl.classList.add("next-summary-now");
-    } else if (diffMin <= 15) {
+    } else if (diffMin <= 10) {
       dom.nextSummaryEl.classList.add("next-summary-soon");
     } else {
       dom.nextSummaryEl.classList.add("next-summary-later");
@@ -656,8 +737,15 @@
     getVisibleDepartures,
     updateModeButtons,
     updateModeLabels,
+    toggleResultsLimitDropdown,
+    selectResultsLimit,
     renderResultsLimitControl,
     updateHelsinkiFilterButton,
+    countActiveStopFilters,
+    buildStopFilterSummary,
+    syncStopFiltersPanelUi,
+    setStopFiltersPanelOpen,
+    toggleStopFiltersPanel,
     setStopControlsVisibility,
     getStopMeta,
     getStopCodes,

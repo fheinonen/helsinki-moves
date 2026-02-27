@@ -1,9 +1,9 @@
-/* ─── Status ─── */
 .status {
   min-height: 21px;
   font-size: var(--text-md);
   color: var(--text-secondary);
   margin: 0;
+  font-family: var(--font-mono);
 }
 
 .resolved-location {
@@ -15,25 +15,24 @@
   border: 1px solid var(--border);
   border-left: 3px solid var(--cyan);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.03);
   font-family: var(--font-mono);
 }
 
-/* ─── Voice Location Choices ─── */
 .voice-location-choices {
   margin: var(--space-2) 0 0;
   padding: var(--space-3) var(--space-4) var(--space-4);
   border: 1px solid var(--border);
   border-left: 3px solid var(--amber);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.03);
   display: grid;
   gap: var(--space-3);
 }
 
 .voice-location-choices-title {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: var(--leading-relaxed);
 }
@@ -46,18 +45,10 @@
 .voice-location-choice-option {
   text-align: left;
   color: var(--text);
-  border-color: rgba(124, 184, 207, 0.16);
+  border-color: rgba(134, 179, 191, 0.3);
 }
 
-/* ─── Data Metadata ─── */
-.data-scope {
-  margin: 2px 0 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  letter-spacing: var(--tracking-normal);
-  font-family: var(--font-mono);
-}
-
+.data-scope,
 .last-updated {
   margin: 2px 0 0;
   font-size: var(--text-sm);
@@ -66,16 +57,15 @@
   font-family: var(--font-mono);
 }
 
-/* ─── Permission ─── */
 .permission {
-  padding: var(--space-7);
+  padding: var(--space-8);
   border-left: 3px solid var(--amber);
-  background: linear-gradient(180deg, rgba(212, 169, 106, 0.04), rgba(212, 169, 106, 0.015));
+  background: linear-gradient(160deg, rgba(241, 191, 111, 0.14), rgba(241, 191, 111, 0.06));
 }
 
 .permission h2 {
   color: var(--amber);
-  font-size: 1.1rem;
+  font-size: 1.25rem;
 }
 
 .permission .muted {

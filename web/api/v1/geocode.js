@@ -354,8 +354,14 @@ function parseFeature(feature) {
   };
 }
 
-async function geocode(text, biasLat, biasLon, lang) {
-  const key = process.env.DIGITRANSIT_API_KEY;
+async function geocode(
+  text,
+  biasLat,
+  biasLon,
+  lang,
+  { fetchImpl = fetch, getApiKey = () => process.env.DIGITRANSIT_API_KEY } = {}
+) {
+  const key = getApiKey();
   if (!key) {
     throw new Error("Missing DIGITRANSIT_API_KEY environment variable.");
   }
@@ -365,7 +371,7 @@ async function geocode(text, biasLat, biasLon, lang) {
   let response;
 
   try {
-    response = await fetch(getGeocodingUrl({ text, biasLat, biasLon, lang }), {
+    response = await fetchImpl(getGeocodingUrl({ text, biasLat, biasLon, lang }), {
       method: "GET",
       headers: {
         accept: "application/json",
@@ -399,8 +405,12 @@ async function geocode(text, biasLat, biasLon, lang) {
   return candidates;
 }
 
-async function hasNearbyHslStop(lat, lon) {
-  const nearbyData = await graphqlRequest(nearbyStopsQuery, {
+async function hasNearbyHslStop(
+  lat,
+  lon,
+  { graphqlRequestImpl = graphqlRequest } = {}
+) {
+  const nearbyData = await graphqlRequestImpl(nearbyStopsQuery, {
     lat,
     lon,
     radius: HSL_STOP_VALIDATION_RADIUS_METERS,
@@ -409,7 +419,10 @@ async function hasNearbyHslStop(lat, lon) {
   return edges.some((edge) => edge?.node?.stop?.gtfsId);
 }
 
-async function filterHslValidCandidates(candidates) {
+async function filterHslValidCandidates(
+  candidates,
+  { hasNearbyStop = hasNearbyHslStop } = {}
+) {
   const stopValidationCache = new Map();
   const validCandidates = [];
 
@@ -417,7 +430,7 @@ async function filterHslValidCandidates(candidates) {
     const cacheKey = `${candidate.lat.toFixed(6)},${candidate.lon.toFixed(6)}`;
     let isValid = stopValidationCache.get(cacheKey);
     if (isValid == null) {
-      isValid = await hasNearbyHslStop(candidate.lat, candidate.lon);
+      isValid = await hasNearbyStop(candidate.lat, candidate.lon);
       stopValidationCache.set(cacheKey, isValid);
     }
 
@@ -428,78 +441,105 @@ async function filterHslValidCandidates(candidates) {
   return validCandidates;
 }
 
-async function handler(req, res) {
-  res.setHeader("Cache-Control", "no-store");
+function createGeocodeHandler({
+  fetchImpl = fetch,
+  graphqlRequestImpl = graphqlRequest,
+  getApiKey = () => process.env.DIGITRANSIT_API_KEY,
+  logError = console.error,
+} = {}) {
+  return async function handler(req, res) {
+    res.setHeader("Cache-Control", "no-store");
 
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
 
-  const text = safeString(req.query.text, MAX_QUERY_LENGTH).trim();
-  if (text.length < MIN_QUERY_LENGTH) {
-    return res.status(400).json({ error: "Invalid text" });
-  }
+    const text = safeString(req.query.text, MAX_QUERY_LENGTH).trim();
+    if (text.length < MIN_QUERY_LENGTH) {
+      return res.status(400).json({ error: "Invalid text" });
+    }
 
-  const rawLat = parseCoordinate(req.query.lat);
-  const rawLon = parseCoordinate(req.query.lon);
-  const hasBias = rawLat != null || rawLon != null;
+    const rawLat = parseCoordinate(req.query.lat);
+    const rawLon = parseCoordinate(req.query.lon);
+    const hasBias = rawLat != null || rawLon != null;
 
-  if (hasBias && (rawLat == null || rawLon == null || !isValidLatLon(rawLat, rawLon))) {
-    return res.status(400).json({ error: "Invalid lat/lon" });
-  }
+    if (hasBias && (rawLat == null || rawLon == null || !isValidLatLon(rawLat, rawLon))) {
+      return res.status(400).json({ error: "Invalid lat/lon" });
+    }
 
-  const biasLat = hasBias ? rawLat : DEFAULT_BIAS_LAT;
-  const biasLon = hasBias ? rawLon : DEFAULT_BIAS_LON;
-  const lang = normalizeLanguage(req.query.lang);
-  const textVariants = buildGeocodeTextVariants(text);
+    const biasLat = hasBias ? rawLat : DEFAULT_BIAS_LAT;
+    const biasLon = hasBias ? rawLon : DEFAULT_BIAS_LON;
+    const lang = normalizeLanguage(req.query.lang);
+    const textVariants = buildGeocodeTextVariants(text);
 
-  try {
-    const allCandidates = [];
-    for (let variantIndex = 0; variantIndex < textVariants.length; variantIndex += 1) {
-      const variant = textVariants[variantIndex];
-      const candidates = await geocode(variant, biasLat, biasLon, lang);
-      for (const candidate of candidates) {
-        allCandidates.push({
-          ...candidate,
-          variantIndex,
-          queryVariant: variant,
+    try {
+      const allCandidates = [];
+      for (let variantIndex = 0; variantIndex < textVariants.length; variantIndex += 1) {
+        const variant = textVariants[variantIndex];
+        const candidates = await geocode(variant, biasLat, biasLon, lang, {
+          fetchImpl,
+          getApiKey,
+        });
+        for (const candidate of candidates) {
+          allCandidates.push({
+            ...candidate,
+            variantIndex,
+            queryVariant: variant,
+          });
+        }
+      }
+
+      const validCandidates = await filterHslValidCandidates(allCandidates, {
+        hasNearbyStop: (lat, lon) =>
+          hasNearbyHslStop(lat, lon, {
+            graphqlRequestImpl,
+          }),
+      });
+      const rankedCandidates = rankCandidatesForQuery(validCandidates, text);
+      const bestMatch = rankedCandidates[0] || null;
+      const location = bestMatch ? buildLocationPayload(bestMatch.candidate) : null;
+      const choices = buildAmbiguousChoices(rankedCandidates);
+      const ambiguous = choices.length > 1;
+
+      if (!location) {
+        return res.status(200).json({
+          query: text,
+          location: null,
+          choices: [],
+          ambiguous: false,
+          message: "No matching location found in HSL area.",
         });
       }
-    }
 
-    const validCandidates = await filterHslValidCandidates(allCandidates);
-    const rankedCandidates = rankCandidatesForQuery(validCandidates, text);
-    const bestMatch = rankedCandidates[0] || null;
-    const location = bestMatch ? buildLocationPayload(bestMatch.candidate) : null;
-    const choices = buildAmbiguousChoices(rankedCandidates);
-    const ambiguous = choices.length > 1;
-
-    if (!location) {
       return res.status(200).json({
         query: text,
-        location: null,
-        choices: [],
-        ambiguous: false,
-        message: "No matching location found in HSL area.",
+        location,
+        choices,
+        ambiguous,
       });
+    } catch (error) {
+      // Keep detailed error only in server logs; avoid leaking internals to clients.
+      logError("v1/geocode API error:", error);
+      return res.status(500).json({ error: "Could not approximate location. Please try again." });
     }
-
-    return res.status(200).json({
-      query: text,
-      location,
-      choices,
-      ambiguous,
-    });
-  } catch (error) {
-    // Keep detailed error only in server logs; avoid leaking internals to clients.
-    console.error("v1/geocode API error:", error);
-    return res.status(500).json({ error: "Could not approximate location. Please try again." });
-  }
+  };
 }
+
+const handler = createGeocodeHandler();
 
 module.exports = handler;
 module.exports._private = {
+  parseCoordinate,
+  isValidLatLon,
+  normalizeLanguage,
+  normalizeGeocodeQuery,
+  getGeocodingUrl,
+  parseFeature,
+  geocode,
+  hasNearbyHslStop,
+  filterHslValidCandidates,
+  createGeocodeHandler,
   buildGeocodeTextVariants,
   normalizeForMatch,
   tokenMatches,

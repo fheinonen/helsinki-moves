@@ -94,48 +94,63 @@ function readBody(req) {
   });
 }
 
-module.exports = async (req, res) => {
-  res.setHeader("Cache-Control", "no-store");
+function createClientErrorHandler({ logError = console.error } = {}) {
+  return async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
 
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
 
-  try {
-    let payload = req.body;
+    try {
+      let payload = req.body;
 
-    if (!payload || typeof payload === "string") {
-      const raw = typeof payload === "string" ? payload : await readBody(req);
-      if (!raw) {
-        return res.status(400).json({ error: "Invalid payload" });
+      if (!payload || typeof payload === "string") {
+        const raw = typeof payload === "string" ? payload : await readBody(req);
+        if (!raw) {
+          return res.status(400).json({ error: "Invalid payload" });
+        }
+        if (Buffer.byteLength(raw, "utf8") > MAX_BODY_SIZE) {
+          return res.status(413).json({ error: "Payload too large" });
+        }
+        payload = JSON.parse(raw);
       }
-      if (Buffer.byteLength(raw, "utf8") > MAX_BODY_SIZE) {
+
+      if (getPayloadByteSize(payload) > MAX_BODY_SIZE) {
         return res.status(413).json({ error: "Payload too large" });
       }
-      payload = JSON.parse(raw);
-    }
 
-    if (getPayloadByteSize(payload) > MAX_BODY_SIZE) {
-      return res.status(413).json({ error: "Payload too large" });
-    }
+      const sanitized = sanitizePayload(payload);
+      if (!sanitized) {
+        return res.status(400).json({ error: "Invalid payload" });
+      }
 
-    const sanitized = sanitizePayload(payload);
-    if (!sanitized) {
+      if (getPayloadByteSize(sanitized) > MAX_BODY_SIZE) {
+        return res.status(413).json({ error: "Payload too large" });
+      }
+
+      logError("client error report:", sanitized);
+      return res.status(204).end();
+    } catch (error) {
+      if (error?.message === "Payload too large") {
+        return res.status(413).json({ error: "Payload too large" });
+      }
+      logError("client error report failed:", error);
       return res.status(400).json({ error: "Invalid payload" });
     }
+  };
+}
 
-    if (getPayloadByteSize(sanitized) > MAX_BODY_SIZE) {
-      return res.status(413).json({ error: "Payload too large" });
-    }
+const handler = createClientErrorHandler();
 
-    console.error("client error report:", sanitized);
-    return res.status(204).end();
-  } catch (error) {
-    if (error?.message === "Payload too large") {
-      return res.status(413).json({ error: "Payload too large" });
-    }
-    console.error("client error report failed:", error);
-    return res.status(400).json({ error: "Invalid payload" });
-  }
+module.exports = handler;
+module.exports._private = {
+  safeString,
+  isPlainObject,
+  sanitizeContext,
+  getPayloadByteSize,
+  sanitizePayload,
+  readBody,
+  createClientErrorHandler,
 };

@@ -1,15 +1,16 @@
-/* ─── Controls ─── */
 .controls {
-  margin: var(--space-3) 0 var(--space-2);
-  display: flex;
+  position: relative;
+  z-index: 1;
+  margin: var(--space-5) 0 var(--space-3);
+  display: grid;
+  grid-template-columns: 1fr;
   gap: var(--space-3);
-  flex-wrap: wrap;
 }
-
 
 .voice-locate-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
 }
 
@@ -19,24 +20,56 @@
 
 .voice-locate-btn.is-listening {
   color: var(--amber);
-  border-color: rgba(212, 169, 106, 0.25);
-  background: rgba(212, 169, 106, 0.1);
+  border-color: rgba(241, 191, 111, 0.5);
+  background: rgba(241, 191, 111, 0.16);
 }
 
-/* ─── Stop Controls ─── */
 .bus-controls {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
   display: grid;
   gap: var(--space-3);
 }
 
+.stop-toolbar {
+  display: grid;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.stop-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: fit-content;
+}
+
+.filter-summary {
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1px var(--space-3);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.stop-filters-panel {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  padding: var(--space-4);
+}
+
 .bus-control {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .results-control {
-  min-width: 90px;
+  min-width: 96px;
 }
 
 .bus-filter-group {
@@ -54,19 +87,19 @@
 }
 
 .bus-select {
-  border: 1px solid rgba(124, 184, 207, 0.15);
-  background: var(--bg);
+  border: 1px solid rgba(134, 179, 191, 0.32);
+  background: rgba(9, 13, 23, 0.9);
   color: var(--text);
   color-scheme: dark;
   border-radius: var(--radius-xs);
-  padding: 7px var(--space-4);
+  padding: 8px var(--space-4);
   font-size: var(--text-base);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
 }
 
 .bus-select:focus {
   outline: none;
-  border-color: rgba(124, 184, 207, 0.35);
+  border-color: rgba(241, 191, 111, 0.6);
 }
 
 .bus-select option {
@@ -74,7 +107,6 @@
   color: var(--text);
 }
 
-/* ─── Custom Select ─── */
 .custom-select {
   position: relative;
 }
@@ -86,26 +118,24 @@
   gap: var(--space-3);
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(124, 184, 207, 0.15);
-  background: var(--bg);
+  border: 1px solid rgba(134, 179, 191, 0.28);
+  background: rgba(9, 13, 23, 0.74);
   color: var(--text);
   border-radius: var(--radius-xs);
-  padding: 7px var(--space-4);
+  padding: 8px var(--space-4);
   font-size: var(--text-base);
-  font-family: var(--font-sans);
-  font-weight: var(--weight-normal);
+  font-family: var(--font-body);
+  font-weight: var(--weight-semibold);
   cursor: pointer;
   transition: border-color var(--duration-normal) var(--ease-default);
 }
 
 .custom-select-trigger:hover {
-  border-color: rgba(124, 184, 207, 0.25);
-  background: var(--bg);
+  border-color: rgba(134, 179, 191, 0.48);
 }
 
 .custom-select-trigger[aria-expanded="true"] {
-  border-color: rgba(124, 184, 207, 0.35);
-  background: var(--bg);
+  border-color: rgba(241, 191, 111, 0.62);
 }
 
 .custom-select-chevron {
@@ -120,7 +150,7 @@
 
 .custom-select-list {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
   z-index: 10;
@@ -130,8 +160,8 @@
   background: var(--bg-card-solid);
   border: 1px solid var(--interactive-border);
   border-radius: var(--radius-xs);
-  box-shadow: var(--shadow);
-  max-height: 200px;
+  box-shadow: var(--shadow-sm);
+  max-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -144,12 +174,11 @@
   color: var(--text-secondary);
   cursor: pointer;
   border: none;
-  border-left: none;
   border-radius: 0;
   background: transparent;
   animation: none;
   transition: background var(--duration-fast) var(--ease-default),
-              color var(--duration-fast) var(--ease-default);
+    color var(--duration-fast) var(--ease-default);
 }
 
 .custom-select-list li:hover,
@@ -163,7 +192,6 @@
   font-weight: var(--weight-semibold);
 }
 
-/* ─── Chip Toggles ─── */
 .chip-group {
   display: flex;
   flex-wrap: wrap;
@@ -172,18 +200,18 @@
 
 .chip-toggle {
   border: 1px solid var(--interactive-border);
-  background: rgba(124, 184, 207, 0.03);
+  background: rgba(134, 179, 191, 0.06);
   color: var(--text-secondary);
   border-radius: var(--radius-pill);
-  padding: var(--space-1) 9px;
+  padding: var(--space-1) 10px;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   line-height: var(--leading-snug);
 }
 
 .chip-toggle:hover {
-  background: rgba(124, 184, 207, 0.08);
+  background: rgba(134, 179, 191, 0.12);
   border-color: var(--interactive-border-hover);
   color: var(--text);
 }
@@ -196,19 +224,18 @@
 
 .chip-empty {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
 }
 
-/* ─── Buttons ─── */
 button {
   border: 1px solid var(--interactive-border);
   background: var(--interactive-bg);
   color: var(--interactive-text);
-  padding: 7px var(--space-5);
+  padding: 8px var(--space-5);
   border-radius: var(--radius-xs);
   cursor: pointer;
   font-weight: var(--weight-semibold);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-base);
   letter-spacing: var(--tracking-normal);
   transition: all var(--duration-medium) var(--ease-default);
@@ -217,14 +244,15 @@ button {
 button:hover {
   background: var(--interactive-bg-hover);
   border-color: var(--interactive-border-hover);
+  transform: translateY(-1px);
 }
 
 button:active {
-  transform: none;
+  transform: translateY(0);
 }
 
 button:focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
 
@@ -245,10 +273,24 @@ button.secondary:hover {
   border-color: var(--interactive-active-border);
 }
 
-
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: not-allowed;
   transform: none !important;
   box-shadow: none !important;
+}
+
+@media (min-width: 680px) {
+  .controls {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+  }
+
+  .controls .segment-control {
+    grid-column: 1 / -1;
+  }
+
+  .stop-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }

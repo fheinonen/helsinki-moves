@@ -20,27 +20,9 @@ jobs:
       - name: Build frontend bundles
         run: npm run build
         working-directory: web
-      - name: Unit tests
-        run: npm test
+      - name: Unit + syntax checks
+        run: npm run test:quick
         working-directory: web
-      - name: Syntax Check (Client)
-        run: |
-          node --check web/scripts/app/entry.js
-          node --check web/scripts/app/01-state.js
-          node --check web/scripts/app/02-ui.js
-          node --check web/scripts/app/03-data.js
-          node --check web/scripts/app/04-init.js
-          node --check web/tools/build-assets.mjs
-      - name: Syntax Check (API)
-        run: node --check web/api/v1/departures.js
-      - name: Syntax Check (Geocode API)
-        run: node --check web/api/v1/geocode.js
-      - name: Syntax Check (Client Error)
-        run: node --check web/api/v1/client-error.js
-      - name: Syntax Check (Digitransit)
-        run: node --check web/api/lib/digitransit.js
-      - name: Syntax Check (Utils)
-        run: node --check web/api/lib/departures-utils.js
 
   e2e:
     runs-on: ${{ matrix.os }}

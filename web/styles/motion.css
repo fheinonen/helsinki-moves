@@ -49,6 +49,14 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  .filter-summary.is-attention,
+  .stop-filters-toggle.is-attention {
+    animation: none !important;
+    background: rgba(241, 191, 111, 0.2);
+    border-color: rgba(241, 191, 111, 0.7);
+    box-shadow: none;
+  }
 }
 
 @media (max-width: 760px) {

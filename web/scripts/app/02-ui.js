@@ -3,6 +3,9 @@
   const app = window.HMApp;
   const { api, dom, state, constants } = app;
   const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
+  const STOP_FILTER_PANEL_LOCK_MS = 1500;
+  const FILTER_ATTENTION_DURATION_MS = 1300;
+  let filterAttentionTimeoutId = null;
 
   function isStopMode(mode = state.mode) {
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO;
@@ -200,6 +203,36 @@
     return `${totalFilters} filters`;
   }
 
+  function clearStopFilterAttention() {
+    dom.stopFilterSummaryEl?.classList?.remove?.("is-attention");
+    dom.stopFiltersToggleBtnEl?.classList?.remove?.("is-attention");
+  }
+
+  function triggerStopFilterAttention() {
+    if (!isStopMode()) return;
+
+    state.stopFiltersPanelLockUntilMs = Date.now() + STOP_FILTER_PANEL_LOCK_MS;
+    setStopFiltersPanelOpen(true);
+    clearStopFilterAttention();
+
+    dom.stopFilterSummaryEl?.classList?.add?.("is-attention");
+    dom.stopFiltersToggleBtnEl?.classList?.add?.("is-attention");
+
+    if (filterAttentionTimeoutId) {
+      clearTimeout(filterAttentionTimeoutId);
+      filterAttentionTimeoutId = null;
+    }
+
+    filterAttentionTimeoutId = setTimeout(() => {
+      clearStopFilterAttention();
+      filterAttentionTimeoutId = null;
+    }, FILTER_ATTENTION_DURATION_MS);
+  }
+
+  function isStopFiltersPanelLocked() {
+    return Number(state.stopFiltersPanelLockUntilMs || 0) > Date.now();
+  }
+
   function syncStopFiltersPanelUi() {
     if (dom.stopFilterSummaryEl) {
       dom.stopFilterSummaryEl.textContent = buildStopFilterSummary();
@@ -217,6 +250,9 @@
   }
 
   function toggleStopFiltersPanel(forceOpen) {
+    if ((forceOpen === false || (forceOpen == null && state.stopFiltersPanelOpen)) && isStopFiltersPanelLocked()) {
+      return;
+    }
     const nextOpen = typeof forceOpen === "boolean" ? forceOpen : !state.stopFiltersPanelOpen;
     setStopFiltersPanelOpen(nextOpen);
   }
@@ -226,8 +262,93 @@
     dom.busControlsEl.classList.toggle("hidden", !visible);
     if (!visible) {
       state.stopFiltersPanelOpen = false;
+      state.stopFiltersPanelLockUntilMs = 0;
+      clearStopFilterAttention();
     }
     syncStopFiltersPanelUi();
+  }
+
+  function rerenderFromLatestResponse() {
+    if (!state.latestResponse) return;
+    api.render(state.latestResponse);
+    api.setStatus(api.buildStatusFromResponse(state.latestResponse));
+  }
+
+  function refreshAfterStopContextChange({
+    interactionType,
+    changeType,
+    showAttention = false,
+    requireLoad = false,
+    extraContext = null,
+  }) {
+    api.trackFirstManualInteraction(interactionType, {
+      currentMode: state.mode,
+      ...(extraContext && typeof extraContext === "object" ? extraContext : {}),
+    });
+    api.trackFirstManualStopContextChange(changeType, extraContext);
+    api.persistUiState();
+    syncStopFiltersPanelUi();
+    if (showAttention) {
+      triggerStopFilterAttention();
+    }
+
+    if (requireLoad) {
+      if (state.currentCoords) {
+        api.load(state.currentCoords.lat, state.currentCoords.lon);
+      } else {
+        api.requestLocationAndLoad();
+      }
+      return;
+    }
+
+    rerenderFromLatestResponse();
+  }
+
+  function toggleStringFilter(currentValues, value) {
+    const normalized = String(value || "").trim();
+    if (!normalized) return currentValues;
+    if (currentValues.includes(normalized)) {
+      return currentValues.filter((item) => item !== normalized);
+    }
+    return [...currentValues, normalized];
+  }
+
+  function toggleLineFilter(
+    value,
+    { interactionType = "line_filter_toggle", changeType = "line_filter_toggle", showAttention = false } = {}
+  ) {
+    if (!isStopMode()) return false;
+
+    const nextFilters = toggleStringFilter(state.busLineFilters, value);
+    if (nextFilters.length === state.busLineFilters.length) return false;
+    state.busLineFilters = nextFilters;
+    refreshAfterStopContextChange({
+      interactionType,
+      changeType,
+      showAttention,
+    });
+    return true;
+  }
+
+  function toggleDestinationFilter(
+    value,
+    {
+      interactionType = "destination_filter_toggle",
+      changeType = "destination_filter_toggle",
+      showAttention = false,
+    } = {}
+  ) {
+    if (!isStopMode()) return false;
+
+    const nextFilters = toggleStringFilter(state.busDestinationFilters, value);
+    if (nextFilters.length === state.busDestinationFilters.length) return false;
+    state.busDestinationFilters = nextFilters;
+    refreshAfterStopContextChange({
+      interactionType,
+      changeType,
+      showAttention,
+    });
+    return true;
   }
 
   function getStopMeta(stopId) {
@@ -357,10 +478,7 @@
       return;
     }
 
-    api.trackFirstManualInteraction("stop_select", { currentMode: state.mode });
-    api.trackFirstManualStopContextChange("stop_select", { selectedStopId: stopId });
     state.busStopId = stopId;
-    api.persistUiState();
     toggleStopDropdown(false);
 
     if (dom.busStopSelectLabelEl) {
@@ -370,9 +488,112 @@
         : stopId;
     }
 
-    if (state.currentCoords) {
-      api.load(state.currentCoords.lat, state.currentCoords.lon);
+    refreshAfterStopContextChange({
+      interactionType: "stop_select",
+      changeType: "stop_select",
+      requireLoad: true,
+      extraContext: { selectedStopId: stopId },
+    });
+  }
+
+  function getNearestStopId() {
+    return state.busStops[0]?.id || null;
+  }
+
+  function toggleStopFromResultCard(stopId) {
+    if (!isStopMode()) return false;
+    const normalizedStopId = String(stopId || "").trim();
+    if (!normalizedStopId) return false;
+
+    const nearestStopId = getNearestStopId();
+    let nextStopId = normalizedStopId;
+    if (state.busStopId === normalizedStopId) {
+      nextStopId = nearestStopId && nearestStopId !== normalizedStopId ? nearestStopId : null;
     }
+
+    if (nextStopId === state.busStopId) return false;
+    state.busStopId = nextStopId;
+
+    if (dom.busStopSelectLabelEl) {
+      const activeStop = getStopMeta(state.busStopId);
+      dom.busStopSelectLabelEl.textContent = activeStop
+        ? `${activeStop.name} (${activeStop.distanceMeters}m)`
+        : "Nearest stop";
+    }
+
+    refreshAfterStopContextChange({
+      interactionType: "result_card_stop_toggle",
+      changeType: "result_card_stop_toggle",
+      showAttention: true,
+      requireLoad: true,
+      extraContext: { selectedStopId: state.busStopId || "" },
+    });
+    return true;
+  }
+
+  function resolveStopIdFromDeparture(departure, station = null) {
+    const stopCodeCandidates = api.uniqueNonEmptyStrings([
+      departure?.stopCode,
+      ...(Array.isArray(station?.stopCodes) ? station.stopCodes : []),
+      station?.stopCode,
+    ]);
+
+    for (const code of stopCodeCandidates) {
+      const matchedStop = state.busStops.find((stop) => getStopCodes(stop).includes(code));
+      if (matchedStop?.id) return matchedStop.id;
+    }
+
+    return state.busStopId || getNearestStopId();
+  }
+
+  function clearResultFilterTrigger(element) {
+    if (!element) return;
+    element.classList?.remove?.("result-filter-trigger", "is-active");
+    element.removeAttribute?.("role");
+    element.removeAttribute?.("tabindex");
+    element.removeAttribute?.("aria-pressed");
+    element.removeAttribute?.("aria-label");
+    element.onclick = null;
+    element.onkeydown = null;
+  }
+
+  function setResultFilterTrigger(element, { active = false, onActivate, ariaLabel }) {
+    if (!element || typeof onActivate !== "function") {
+      clearResultFilterTrigger(element);
+      return;
+    }
+
+    element.classList?.add?.("result-filter-trigger");
+    element.classList?.toggle?.("is-active", Boolean(active));
+    element.setAttribute?.("role", "button");
+    element.setAttribute?.("tabindex", "0");
+    element.setAttribute?.("aria-pressed", String(Boolean(active)));
+    element.setAttribute?.("aria-label", String(ariaLabel || "Toggle filter"));
+
+    const activate = () => onActivate();
+    element.onclick = () => activate();
+    element.onkeydown = (event) => {
+      const key = event?.key;
+      if (key !== "Enter" && key !== " " && key !== "Spacebar") return;
+      event?.preventDefault?.();
+      activate();
+    };
+  }
+
+  function toggleLineFilterFromResultCard(value) {
+    return toggleLineFilter(value, {
+      interactionType: "result_card_line_toggle",
+      changeType: "result_card_line_toggle",
+      showAttention: true,
+    });
+  }
+
+  function toggleDestinationFilterFromResultCard(value) {
+    return toggleDestinationFilter(value, {
+      interactionType: "result_card_destination_toggle",
+      changeType: "result_card_destination_toggle",
+      showAttention: true,
+    });
   }
 
   function renderStopControls() {
@@ -425,44 +646,14 @@
       dom.busLineFiltersEl,
       state.busFilterOptions.lines,
       state.busLineFilters,
-      (value) => {
-        if (state.busLineFilters.includes(value)) {
-          state.busLineFilters = state.busLineFilters.filter((item) => item !== value);
-        } else {
-          state.busLineFilters = [...state.busLineFilters, value];
-        }
-
-        api.trackFirstManualInteraction("line_filter_toggle", { currentMode: state.mode });
-        api.trackFirstManualStopContextChange("line_filter_toggle");
-        api.persistUiState();
-        syncStopFiltersPanelUi();
-        if (state.latestResponse) {
-          api.render(state.latestResponse);
-          api.setStatus(api.buildStatusFromResponse(state.latestResponse));
-        }
-      }
+      (value) => toggleLineFilter(value)
     );
 
     renderFilterButtons(
       dom.busDestinationFiltersEl,
       state.busFilterOptions.destinations,
       state.busDestinationFilters,
-      (value) => {
-        if (state.busDestinationFilters.includes(value)) {
-          state.busDestinationFilters = state.busDestinationFilters.filter((item) => item !== value);
-        } else {
-          state.busDestinationFilters = [...state.busDestinationFilters, value];
-        }
-
-        api.trackFirstManualInteraction("destination_filter_toggle", { currentMode: state.mode });
-        api.trackFirstManualStopContextChange("destination_filter_toggle");
-        api.persistUiState();
-        syncStopFiltersPanelUi();
-        if (state.latestResponse) {
-          api.render(state.latestResponse);
-          api.setStatus(api.buildStatusFromResponse(state.latestResponse));
-        }
-      }
+      (value) => toggleDestinationFilter(value)
     );
   }
 
@@ -474,6 +665,9 @@
     if (!nextDeparture) {
       dom.nextSummaryEl.classList.add("hidden");
       dom.nextSummaryEl.classList.remove("next-summary-now", "next-summary-soon", "next-summary-later");
+      clearResultFilterTrigger(dom.nextLineEl);
+      clearResultFilterTrigger(dom.nextDestinationEl);
+      clearResultFilterTrigger(dom.nextTrackEl);
       return;
     }
 
@@ -489,6 +683,32 @@
           ? `Track ${nextDeparture.track}`
           : "Track —";
     dom.nextDestinationEl.textContent = nextDeparture.destination || "—";
+
+    if (isStopMode()) {
+      const lineValue = String(nextDeparture.line || "").trim();
+      const destinationValue = String(nextDeparture.destination || "").trim();
+      const stopId = resolveStopIdFromDeparture(nextDeparture, station);
+      setResultFilterTrigger(dom.nextLineEl, {
+        active: lineValue ? state.busLineFilters.includes(lineValue) : false,
+        onActivate: () => toggleLineFilterFromResultCard(lineValue),
+        ariaLabel: `Toggle line filter ${lineValue || "unknown"}`,
+      });
+      setResultFilterTrigger(dom.nextDestinationEl, {
+        active: destinationValue ? state.busDestinationFilters.includes(destinationValue) : false,
+        onActivate: () => toggleDestinationFilterFromResultCard(destinationValue),
+        ariaLabel: `Toggle destination filter ${destinationValue || "unknown"}`,
+      });
+      setResultFilterTrigger(dom.nextTrackEl, {
+        active: stopId ? state.busStopId === stopId : false,
+        onActivate: () => toggleStopFromResultCard(stopId),
+        ariaLabel: "Toggle stop filter",
+      });
+    } else {
+      clearResultFilterTrigger(dom.nextLineEl);
+      clearResultFilterTrigger(dom.nextDestinationEl);
+      clearResultFilterTrigger(dom.nextTrackEl);
+    }
+
     dom.nextSummaryEl.classList.remove("next-summary-now", "next-summary-soon", "next-summary-later");
     if (diffMin < 3) {
       dom.nextSummaryEl.classList.add("next-summary-now");
@@ -676,6 +896,14 @@
       const letterBadge = document.createElement("div");
       letterBadge.className = "letter-badge";
       letterBadge.textContent = item.line || "?";
+      const lineValue = String(item.line || "").trim();
+      if (isStopMode()) {
+        setResultFilterTrigger(letterBadge, {
+          active: lineValue ? state.busLineFilters.includes(lineValue) : false,
+          onActivate: () => toggleLineFilterFromResultCard(lineValue),
+          ariaLabel: `Toggle line filter ${lineValue || "unknown"}`,
+        });
+      }
 
       const train = document.createElement("div");
       train.className = "train";
@@ -683,12 +911,26 @@
       const destination = document.createElement("div");
       destination.className = "destination";
       destination.textContent = item.destination || "—";
+      const destinationValue = String(item.destination || "").trim();
+      if (isStopMode()) {
+        setResultFilterTrigger(destination, {
+          active: destinationValue ? state.busDestinationFilters.includes(destinationValue) : false,
+          onActivate: () => toggleDestinationFilterFromResultCard(destinationValue),
+          ariaLabel: `Toggle destination filter ${destinationValue || "unknown"}`,
+        });
+      }
       train.appendChild(destination);
 
       const track = document.createElement("span");
       track.className = "track";
       if (isStopMode()) {
         track.textContent = `Stop ${buildModeStopDisplay(station, item)}`;
+        const stopId = resolveStopIdFromDeparture(item, station);
+        setResultFilterTrigger(track, {
+          active: stopId ? state.busStopId === stopId : false,
+          onActivate: () => toggleStopFromResultCard(stopId),
+          ariaLabel: "Toggle stop filter",
+        });
       } else {
         track.textContent = item.track ? `Track ${item.track}` : "Track —";
       }
@@ -755,6 +997,15 @@
     renderFilterButtons,
     toggleStopDropdown,
     selectStop,
+    toggleLineFilter,
+    toggleDestinationFilter,
+    toggleLineFilterFromResultCard,
+    toggleDestinationFilterFromResultCard,
+    toggleStopFromResultCard,
+    resolveStopIdFromDeparture,
+    setResultFilterTrigger,
+    clearResultFilterTrigger,
+    triggerStopFilterAttention,
     renderStopControls,
     updateNextSummary,
     buildStatusFromResponse,

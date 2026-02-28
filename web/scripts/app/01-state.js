@@ -96,6 +96,7 @@
     busLineFilters: [],
     busDestinationFilters: [],
     stopFiltersPanelOpen: false,
+    stopFiltersPanelLockUntilMs: 0,
     deferInitialStopContext: false,
     deferredBusStopId: null,
     deferredBusLineFilters: [],

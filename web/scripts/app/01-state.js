@@ -19,6 +19,7 @@
     busStopSelectLabelEl: document.getElementById("busStopSelectLabel"),
     busStopSelectListEl: document.getElementById("busStopSelectList"),
     busStopSelectWrapEl: document.getElementById("busStopSelectWrap"),
+    busStopFiltersEl: document.getElementById("busStopFilters"),
     busLineFiltersEl: document.getElementById("busLineFilters"),
     busDestinationFiltersEl: document.getElementById("busDestinationFilters"),
     stopFiltersToggleBtnEl: document.getElementById("stopFiltersToggleBtn"),

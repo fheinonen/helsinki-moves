@@ -42,6 +42,11 @@ Scenario: Tapping alternative stop applies stop filter state
   Then selected stop equals "custom-stop"
   And stop filter summary text equals "1 filter"
 
+Scenario: Filters dropdown lists available stops
+  Given stop mode with nearest stop "nearest-stop" and alternative stop "custom-stop"
+  When stop filters panel controls are rendered
+  Then filters panel stop options equal "nearest-stop,custom-stop"
+
 Scenario: Real departure stop id resolves and toggles matching selectable stop
   Given stop mode with nearest stop "nearest-stop", alternative stop "custom-stop", and departure stop id "HSL:2002"
   When result card stop target is resolved from departure stop id
@@ -189,6 +194,7 @@ function createUiHarness({
     busStopSelectEl: createMockElement("button"),
     busStopSelectLabelEl: createMockElement("span"),
     busStopSelectListEl: createMockElement("ul"),
+    busStopFiltersEl: createMockElement("div"),
     busLineFiltersEl: createMockElement("div"),
     busDestinationFiltersEl: createMockElement("div"),
     stopFiltersToggleBtnEl: createMockElement("button"),
@@ -564,6 +570,22 @@ defineFeature(test, featureText, {
         world.lastVisibleDepartures = world.harness.app.api.getVisibleDepartures(
           world.harness.app.state.latestResponse.station.departures
         );
+      },
+    },
+    {
+      pattern: /^When stop filters panel controls are rendered$/,
+      run: ({ world }) => {
+        world.harness.app.api.renderStopControls();
+      },
+    },
+    {
+      pattern: /^Then filters panel stop options equal "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        const expected = args[0].split(",").map((value) => value.trim()).filter(Boolean);
+        const actual = (world.harness.dom.busStopFiltersEl.children || [])
+          .map((item) => String(item?.dataset?.value || "").trim())
+          .filter(Boolean);
+        assert.deepEqual(actual, expected);
       },
     },
     {

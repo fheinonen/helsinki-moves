@@ -555,6 +555,41 @@
     }
   }
 
+  function renderStopFilterButtons() {
+    if (!dom.busStopFiltersEl) return;
+    dom.busStopFiltersEl.innerHTML = "";
+
+    if (!Array.isArray(state.busStops) || state.busStops.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "chip-empty";
+      empty.textContent = "No nearby stops";
+      dom.busStopFiltersEl.appendChild(empty);
+      return;
+    }
+
+    const activeStopId = String(state.busStopId || "").trim();
+    const stopFilterActive = hasActiveStopFilter();
+    for (const stop of state.busStops) {
+      const stopId = String(stop?.id || "").trim();
+      if (!stopId) continue;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chip-toggle";
+      button.dataset.value = stopId;
+      if (stopFilterActive && stopId === activeStopId) {
+        button.classList.add("is-active");
+        button.setAttribute("aria-pressed", "true");
+      } else {
+        button.setAttribute("aria-pressed", "false");
+      }
+
+      button.textContent = `${stop.name} (${stop.distanceMeters}m)`;
+      button.addEventListener("click", () => toggleStopFromResultCard(stopId));
+      dom.busStopFiltersEl.appendChild(button);
+    }
+  }
+
   function toggleStopDropdown(forceOpen) {
     if (!dom.busStopSelectEl || !dom.busStopSelectListEl) return;
     const isOpen = dom.busStopSelectEl.getAttribute("aria-expanded") === "true";
@@ -795,6 +830,8 @@
 
       state.suppressBusStopChange = false;
     }
+
+    renderStopFilterButtons();
 
     renderFilterButtons(
       dom.busLineFiltersEl,

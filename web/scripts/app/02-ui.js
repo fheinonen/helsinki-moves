@@ -14,6 +14,10 @@
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO || mode === MODE_RAIL;
   }
 
+  function showsTrack(mode = state.mode) {
+    return mode === MODE_RAIL;
+  }
+
   function getStopModeLabel(mode = state.mode) {
     if (mode === MODE_RAIL) return { singular: "train", plural: "trains", title: "Rail" };
     if (mode === MODE_TRAM) return { singular: "tram", plural: "trams", title: "Tram" };
@@ -965,11 +969,13 @@
     dom.nextLineEl.textContent = nextDeparture.line || "—";
     dom.nextLineEl.classList.toggle("next-letter-now", diffMin < 3);
     dom.nextTrackEl.textContent =
-      isStopMode()
-        ? buildModeStopDisplay(station, nextDeparture)
-        : nextDeparture.track
-          ? `Track ${nextDeparture.track}`
-          : "Track —";
+      showsTrack()
+        ? nextDeparture.track ? `Track ${nextDeparture.track}` : "Track —"
+        : isStopMode()
+          ? buildModeStopDisplay(station, nextDeparture)
+          : nextDeparture.track
+            ? `Track ${nextDeparture.track}`
+            : "Track —";
     dom.nextDestinationEl.textContent = nextDeparture.destination || "—";
 
     if (isStopMode()) {
@@ -1177,7 +1183,9 @@
 
       const track = document.createElement("span");
       track.className = "track";
-      if (isStopMode()) {
+      if (showsTrack()) {
+        track.textContent = item.track ? `Track ${item.track}` : "Track —";
+      } else if (isStopMode()) {
         track.textContent = buildModeStopDisplay(station, item);
         const stopTarget = resolveStopTargetFromDeparture(item, station);
         setStopResultFilterTrigger(track, stopTarget.selectableStopId, stopTarget.memberStopId);

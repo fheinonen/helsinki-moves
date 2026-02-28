@@ -1091,9 +1091,12 @@ defineFeature(test, featureText, {
       run: ({ assert, world }) => {
         assert.equal(
           world.modeSelectorChecks.activeSegmentLeft,
-          "calc(9px + (var(--active-index) * ((100% - 10px) / 4)))"
+          "calc(var(--_inset) + var(--_seg-gap) / 2 + var(--active-index) * var(--_slot))"
         );
-        assert.equal(world.modeSelectorChecks.activeSegmentWidth, "calc((100% - 10px) / 4 - 7px)");
+        assert.equal(
+          world.modeSelectorChecks.activeSegmentWidth,
+          "calc(var(--_slot) - var(--_seg-gap))"
+        );
       },
     },
     {
@@ -1114,7 +1117,7 @@ defineFeature(test, featureText, {
       pattern: /^Then the selector uses mockup capsule height and spacing$/,
       run: ({ assert, world }) => {
         assert.equal(world.modeSelectorChecks.segmentMinHeight, "48px");
-        assert.equal(world.modeSelectorChecks.controlPadding, "5px");
+        assert.equal(world.modeSelectorChecks.controlPadding, "2px");
       },
     },
     {

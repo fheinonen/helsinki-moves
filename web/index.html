@@ -129,9 +129,8 @@
           </div>
         </section>
 
-        <p id="status" class="status" role="status">Getting your location...</p>
+        <p id="status" class="status hidden" role="status"></p>
         <p id="dataScope" class="data-scope hidden"></p>
-        <p id="lastUpdated" class="last-updated">Last updated: -</p>
 
         <div id="skeleton" class="grid gap-2 mt-4 hidden" role="progressbar" aria-label="Loading departures">
           <div class="skeleton-next"></div>
@@ -143,9 +142,10 @@
 
         <section id="result" class="result hidden">
           <div class="result-head">
-            <div>
+            <div class="result-head-meta">
               <h2 id="stationTitle"></h2>
               <p id="stationMeta" class="muted"></p>
+              <p id="lastUpdated" class="last-updated">Last updated: -</p>
             </div>
             <div class="result-head-right">
               <div class="relative min-w-[96px]" id="resultsLimitSelectWrap">

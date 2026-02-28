@@ -160,7 +160,9 @@
 
   function setStatus(text) {
     if (!dom.statusEl) return;
-    dom.statusEl.textContent = text;
+    const normalizedText = String(text || "").trim();
+    dom.statusEl.textContent = normalizedText;
+    dom.statusEl.classList?.toggle?.("hidden", normalizedText.length === 0);
   }
 
   function formatCoordinate(value) {

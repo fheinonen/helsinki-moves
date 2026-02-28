@@ -323,7 +323,7 @@
   function rerenderFromLatestResponse() {
     if (!state.latestResponse) return;
     api.render(state.latestResponse);
-    api.setStatus(api.buildStatusFromResponse(state.latestResponse));
+    api.setStatus("");
   }
 
   function refreshAfterStopContextChange({

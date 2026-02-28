@@ -689,7 +689,7 @@
       api.render(json);
       api.setPermissionRequired(false);
       api.setLastUpdated(new Date());
-      api.setStatus(api.buildStatusFromResponse(json));
+      api.setStatus("");
       api.trackFirstSuccessfulRender(json, requestMode);
     } catch (err) {
       if (loadToken !== state.latestLoadToken) {

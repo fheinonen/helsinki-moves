@@ -23,6 +23,11 @@ Scenario: Next departure is framed as a hero card
   And the departures list appears after the next departure card
   And the next label default text equals ""
 
+Scenario: Board subtitle copy is removed
+  Given the app shell markup
+  When the board subtitle is inspected
+  Then the board subtitle text equals ""
+
 Scenario: Typography tokens define a distinct display and body pair
   Given the design token stylesheet
   When typography tokens are inspected
@@ -98,6 +103,7 @@ defineFeature(test, featureText, {
     statusText: "",
     controls: null,
     departureLayout: null,
+    boardSubtitleText: "",
     typographyTokens: null,
   }),
   stepDefinitions: [
@@ -178,6 +184,19 @@ defineFeature(test, featureText, {
       pattern: /^Then the next label default text equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.departureLayout.nextLabelText, args[0]);
+      },
+    },
+    {
+      pattern: /^When the board subtitle is inspected$/,
+      run: ({ world }) => {
+        world.boardSubtitleText =
+          /<p class="board-subtitle">([^<]*)<\/p>/.exec(world.html)?.[1]?.trim?.() || "";
+      },
+    },
+    {
+      pattern: /^Then the board subtitle text equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.boardSubtitleText, args[0]);
       },
     },
     {

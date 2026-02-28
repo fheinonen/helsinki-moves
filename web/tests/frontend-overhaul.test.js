@@ -23,6 +23,11 @@ Scenario: Next departure is framed as a hero card
   And the departures list appears after the next departure card
   And the next label default text equals ""
 
+Scenario: Eyebrow label remains static across modes
+  Given mode label UI targets are wired
+  When mode labels are refreshed for "bus" mode
+  Then mode eyebrow text equals "Helsinki Moves"
+
 Scenario: Board subtitle copy is removed
   Given the app shell markup
   When the board subtitle is inspected
@@ -104,6 +109,8 @@ defineFeature(test, featureText, {
     controls: null,
     departureLayout: null,
     boardSubtitleText: "",
+    modeLabelApp: null,
+    modeEyebrowText: "",
     typographyTokens: null,
   }),
   stepDefinitions: [
@@ -184,6 +191,30 @@ defineFeature(test, featureText, {
       pattern: /^Then the next label default text equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.departureLayout.nextLabelText, args[0]);
+      },
+    },
+    {
+      pattern: /^Given mode label UI targets are wired$/,
+      run: ({ world }) => {
+        const app = bootUiApi();
+        app.dom.modeEyebrowEl = { textContent: "" };
+        app.dom.nextLabelEl = { textContent: "" };
+        world.modeLabelApp = app;
+      },
+    },
+    {
+      pattern: /^When mode labels are refreshed for "([^"]*)" mode$/,
+      run: ({ args, world }) => {
+        const app = world.modeLabelApp;
+        app.state.mode = args[0];
+        app.api.updateModeLabels();
+        world.modeEyebrowText = app.dom.modeEyebrowEl.textContent;
+      },
+    },
+    {
+      pattern: /^Then mode eyebrow text equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.modeEyebrowText, args[0]);
       },
     },
     {

@@ -102,11 +102,10 @@
   }
 
   function updateModeLabels() {
-    const modeLabel = isStopMode() ? getStopModeLabel().title : "Rail";
     const nextLabel = "";
 
     if (dom.modeEyebrowEl) {
-      dom.modeEyebrowEl.textContent = `Helsinki Moves • ${modeLabel}`;
+      dom.modeEyebrowEl.textContent = "Helsinki Moves";
     }
 
     if (dom.nextLabelEl) {

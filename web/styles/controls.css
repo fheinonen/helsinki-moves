@@ -248,7 +248,6 @@
 }
 
 .chip-toggle {
-  min-height: var(--tap-target-min);
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--interactive-border);
@@ -290,7 +289,6 @@
 }
 
 button {
-  min-height: var(--tap-target-min);
   border: 1px solid var(--interactive-border);
   background: var(--interactive-bg);
   color: var(--interactive-text);

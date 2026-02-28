@@ -54,6 +54,12 @@ Scenario: Light theme defines skeleton tokens
   Then the stylesheet contains a --skeleton-base override
   And the stylesheet contains a --skeleton-shine override
 
+Scenario: Light theme list item backgrounds are scoped to departures
+  Given the light theme stylesheet
+  When light theme list item background overrides are inspected
+  Then the stylesheet does not define a global light-theme list item background
+  And the stylesheet scopes light-theme list item background to departure rows
+
 Scenario: Results limit uses custom dropdown instead of native select
   Given the app shell markup
   When the results limit control is inspected
@@ -144,6 +150,7 @@ defineFeature(test, featureText, {
     html: "",
     summaryClasses: null,
     skeletonTokens: null,
+    lightThemeListItemRules: null,
     resultsLimitControl: null,
   }),
   stepDefinitions: [
@@ -266,6 +273,29 @@ defineFeature(test, featureText, {
       pattern: /^Then the stylesheet contains a --skeleton-shine override$/,
       run: ({ assert, world }) => {
         assert.equal(world.skeletonTokens?.hasShine, true);
+      },
+    },
+    {
+      pattern: /^When light theme list item background overrides are inspected$/,
+      run: ({ world }) => {
+        world.lightThemeListItemRules = {
+          hasGlobalListRule: /\[data-theme="light"\]\s+li\s*\{/.test(world.css),
+          hasDepartureListRule: /\[data-theme="light"\]\s+#departures\s*>\s*li\s*\{/.test(
+            world.css
+          ),
+        };
+      },
+    },
+    {
+      pattern: /^Then the stylesheet does not define a global light-theme list item background$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.lightThemeListItemRules?.hasGlobalListRule, false);
+      },
+    },
+    {
+      pattern: /^Then the stylesheet scopes light-theme list item background to departure rows$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.lightThemeListItemRules?.hasDepartureListRule, true);
       },
     },
     {

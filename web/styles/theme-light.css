@@ -97,7 +97,7 @@
   background: rgba(255, 255, 255, 0.72);
 }
 
-[data-theme="light"] li {
+[data-theme="light"] #departures > li {
   background: rgba(255, 255, 255, 0.78);
 }
 

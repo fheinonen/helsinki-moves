@@ -26,11 +26,10 @@ Scenario: Firefox drops heavy glass blur on cards
   Then the stylesheet defines a Firefox-specific supports block
   And card backdrop blur is disabled inside the Firefox block
 
-Scenario: Firefox reduces live pulse dot paint cost
+Scenario: Legacy realtime pulse styles are removed
   Given the departures stylesheet
-  When Firefox pulse overrides are inspected
-  Then the stylesheet defines a Firefox-specific pulse override block
-  And live pulse dot animation is disabled inside the Firefox block
+  When legacy realtime pulse styles are inspected
+  Then the stylesheet does not include live-pill pulse styles
 `;
 
 function createEventTarget() {
@@ -169,8 +168,7 @@ defineFeature(test, featureText, {
     hasTransformShimmer: false,
     hasFirefoxBlock: false,
     hasFirefoxBackdropDisable: false,
-    hasFirefoxPulseBlock: false,
-    hasFirefoxPulseDisabled: false,
+    hasLivePillPulseStyles: false,
   }),
   stepDefinitions: [
     {
@@ -265,28 +263,15 @@ defineFeature(test, featureText, {
       },
     },
     {
-      pattern: /^When Firefox pulse overrides are inspected$/,
+      pattern: /^When legacy realtime pulse styles are inspected$/,
       run: ({ world }) => {
-        const firefoxPulseMatch = world.css.match(
-          /@supports\s*\(\s*-moz-appearance:\s*none\s*\)\s*\{([\s\S]*?)\}\s*$/
-        );
-        world.hasFirefoxPulseBlock = Boolean(firefoxPulseMatch);
-        world.hasFirefoxPulseDisabled = Boolean(
-          firefoxPulseMatch &&
-            /\.live-pill::before\s*\{[\s\S]*animation:\s*none;/.test(firefoxPulseMatch[1])
-        );
+        world.hasLivePillPulseStyles = /\.live-pill::before/.test(world.css);
       },
     },
     {
-      pattern: /^Then the stylesheet defines a Firefox-specific pulse override block$/,
+      pattern: /^Then the stylesheet does not include live-pill pulse styles$/,
       run: ({ assert, world }) => {
-        assert.equal(world.hasFirefoxPulseBlock, true);
-      },
-    },
-    {
-      pattern: /^Then live pulse dot animation is disabled inside the Firefox block$/,
-      run: ({ assert, world }) => {
-        assert.equal(world.hasFirefoxPulseDisabled, true);
+        assert.equal(world.hasLivePillPulseStyles, false);
       },
     },
   ],

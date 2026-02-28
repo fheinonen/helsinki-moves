@@ -14,6 +14,11 @@ Scenario: Voice action label uses Voice Search
   When the controls row is rendered
   Then the voice action button label is "Voice Search"
 
+Scenario: Voice action accessibility label matches control text
+  Given the app shell is loaded
+  When controls accessibility labels are inspected
+  Then the voice action aria-label is "Voice Search"
+
 Scenario: Refresh and Voice Search controls use tightened row layout
   Given a mobile viewport
   When the controls row is displayed
@@ -62,6 +67,11 @@ Scenario: Realtime badge is removed from result header
   Given departures are rendered
   When the result header is displayed
   Then no "Realtime" badge or pill is shown
+
+Scenario: Legacy realtime badge styles are removed
+  Given the departures stylesheet
+  When legacy realtime badge styles are inspected
+  Then no live-pill style rules are present
 
 Scenario: Transit mode selector matches mockup segmented style
   Given the app shell is rendered
@@ -407,6 +417,9 @@ defineFeature(test, featureText, {
     secondCard: null,
     iconChecks: null,
     modeSelectorChecks: null,
+    accessibilityChecks: null,
+    departureStyles: "",
+    hasLivePillStyles: null,
   }),
   stepDefinitions: [
     {
@@ -433,6 +446,20 @@ defineFeature(test, featureText, {
         const markupLabel = world.html.match(/id="voiceLocateBtnLabel"[^>]*>([^<]+)</)?.[1]?.trim() || "";
         assert.equal(markupLabel, args[0]);
         assert.equal(world.stateHarness.dom.voiceLocateBtnLabel.textContent, args[0]);
+      },
+    },
+    {
+      pattern: /^When controls accessibility labels are inspected$/,
+      run: ({ world }) => {
+        world.accessibilityChecks = {
+          voiceAriaLabel: world.html.match(/id="voiceLocateBtn"[^>]*aria-label="([^"]+)"/)?.[1] || null,
+        };
+      },
+    },
+    {
+      pattern: /^Then the voice action aria-label is "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.accessibilityChecks?.voiceAriaLabel, args[0]);
       },
     },
     {
@@ -728,6 +755,24 @@ defineFeature(test, featureText, {
       pattern: /^Then no "Realtime" badge or pill is shown$/,
       run: ({ assert, world }) => {
         assert.equal(world.resultHeaderHasRealtime, false);
+      },
+    },
+    {
+      pattern: /^Given the departures stylesheet$/,
+      run: ({ world }) => {
+        world.departureStyles = fs.readFileSync(path.resolve(__dirname, "../styles/departures.css"), "utf8");
+      },
+    },
+    {
+      pattern: /^When legacy realtime badge styles are inspected$/,
+      run: ({ world }) => {
+        world.hasLivePillStyles = /\.live-pill\b|\.live-pill::before/.test(world.departureStyles);
+      },
+    },
+    {
+      pattern: /^Then no live-pill style rules are present$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.hasLivePillStyles, false);
       },
     },
     {

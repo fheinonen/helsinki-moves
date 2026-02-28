@@ -80,39 +80,6 @@
   flex-shrink: 0;
 }
 
-.live-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  background: var(--emerald-soft);
-  color: var(--emerald);
-  border: 1px solid rgba(119, 193, 167, 0.28);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  padding: 5px var(--space-4) 5px var(--space-3);
-  flex-shrink: 0;
-}
-
-.live-pill::before {
-  content: "";
-  width: var(--space-2);
-  height: var(--space-2);
-  border-radius: 50%;
-  background: var(--emerald);
-  flex-shrink: 0;
-  animation: pulse-dot 3s ease-in-out infinite;
-}
-
-@supports (-moz-appearance: none) {
-  .live-pill::before {
-    animation: none;
-    opacity: 0.88;
-  }
-}
-
 .next-summary {
   position: relative;
   margin: var(--space-4) 0 var(--space-5);

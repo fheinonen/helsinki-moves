@@ -165,6 +165,13 @@
 .next-filter-pill.result-filter-trigger {
   justify-content: space-between;
   gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.next-filter-pill.result-filter-trigger:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(134, 179, 191, 0.22);
 }
 
 .next-filter-pill.result-filter-trigger.is-active::after {
@@ -191,17 +198,19 @@
 }
 
 .result-filter-trigger {
-  background: var(--interactive-bg);
-  border: 1px solid var(--interactive-border);
   cursor: pointer;
   touch-action: manipulation;
+  border-bottom: 1px solid rgba(134, 179, 191, 0.12);
   transition: transform var(--duration-fast) var(--ease-default),
     box-shadow var(--duration-fast) var(--ease-default),
     border-color var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default),
     color var(--duration-fast) var(--ease-default);
 }
 
 .result-filter-trigger:hover {
+  background: rgba(134, 179, 191, 0.06);
+  border-bottom-color: rgba(134, 179, 191, 0.28);
   transform: translateY(-1px);
 }
 
@@ -318,6 +327,7 @@ li {
   padding: 0 var(--space-3);
   border-radius: var(--radius-track);
   width: 100%;
+  border-bottom: 1px solid rgba(134, 179, 191, 0.10);
 }
 
 .destination.result-filter-trigger.is-active {
@@ -344,6 +354,7 @@ li {
   padding-bottom: 0;
   padding-left: var(--space-3);
   padding-right: var(--space-3);
+  border-bottom-color: rgba(134, 179, 191, 0.10);
 }
 
 .track.result-filter-trigger.is-active {
@@ -360,6 +371,8 @@ li {
   min-height: var(--tap-target-min);
   padding: 0 var(--space-4);
   border-radius: var(--radius-track);
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 #nextTrack.result-filter-trigger {
@@ -369,6 +382,8 @@ li {
   width: 100%;
   justify-content: flex-start;
   padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 #nextTrack.result-filter-trigger.is-active {

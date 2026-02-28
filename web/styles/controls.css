@@ -112,8 +112,9 @@
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
   padding: var(--space-4);
-  max-height: 500px;
-  overflow: hidden;
+  max-height: clamp(180px, 42vh, 500px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   will-change: max-height, padding;
   transition: max-height var(--duration-medium) var(--ease-default),
     padding var(--duration-medium) var(--ease-default);

@@ -34,6 +34,12 @@ Scenario: Card tap feedback keeps panel open during lock window
   When result card line "550" is toggled
   And the user requests closing stop filters panel immediately
   Then stop filters panel is open
+
+Scenario: Compact viewport keeps results visible by skipping panel auto-open
+  Given compact viewport stop mode departures with lines "550" and "560"
+  When result card line "550" is toggled
+  Then stop filters panel is closed
+  And filter pill feedback is visible
 `;
 
 function createClassList(initialClasses = []) {
@@ -142,6 +148,7 @@ function buildDepartures(values, key) {
 function createUiHarness({
   mode = "bus",
   departures = [],
+  viewportWidth = 1024,
   busStops = [{ id: "nearest-stop", name: "Nearest", code: "1001", stopCodes: ["1001"], distanceMeters: 90 }],
   busStopId = "nearest-stop",
 } = {}) {
@@ -251,7 +258,7 @@ function createUiHarness({
   const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
   const scriptText = fs.readFileSync(scriptPath, "utf8");
   const context = {
-    window: { HMApp: app },
+    window: { HMApp: app, innerWidth: viewportWidth },
     document: {
       createElement: (tagName) => createMockElement(tagName),
     },
@@ -289,6 +296,13 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given compact viewport stop mode departures with lines "([^"]*)" and "([^"]*)"$/,
+      run: ({ args, world }) => {
+        const departures = buildDepartures([args[0], args[1]], "line");
+        world.harness = createUiHarness({ departures, viewportWidth: 375 });
+      },
+    },
+    {
       pattern: /^When result card line "([^"]*)" is toggled$/,
       run: ({ args, world }) => {
         world.harness.app.api.toggleLineFilterFromResultCard(args[0]);
@@ -321,6 +335,12 @@ defineFeature(test, featureText, {
       pattern: /^Then stop filters panel is open$/,
       run: ({ assert, world }) => {
         assert.equal(world.harness.app.state.stopFiltersPanelOpen, true);
+      },
+    },
+    {
+      pattern: /^Then stop filters panel is closed$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.harness.app.state.stopFiltersPanelOpen, false);
       },
     },
     {

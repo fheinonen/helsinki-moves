@@ -4,8 +4,11 @@
   const { api, dom, state, constants } = app;
   const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
   const STOP_FILTER_PANEL_LOCK_MS = 1500;
+  const STOP_FILTER_PANEL_AUTO_CLOSE_MS = STOP_FILTER_PANEL_LOCK_MS + 200;
+  const STOP_FILTER_OPTION_AUTO_OPEN_LIMIT = 14;
   const FILTER_ATTENTION_DURATION_MS = 1300;
   let filterAttentionTimeoutId = null;
+  let stopFilterAutoCloseTimeoutId = null;
 
   function isStopMode(mode = state.mode) {
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO;
@@ -208,11 +211,57 @@
     dom.stopFiltersToggleBtnEl?.classList?.remove?.("is-attention");
   }
 
+  function clearStopFilterAutoCloseTimer() {
+    if (!stopFilterAutoCloseTimeoutId) return;
+    clearTimeout(stopFilterAutoCloseTimeoutId);
+    stopFilterAutoCloseTimeoutId = null;
+  }
+
+  function isCompactViewport() {
+    if (typeof window?.matchMedia === "function") {
+      try {
+        if (window.matchMedia("(max-width: 679px)").matches) {
+          return true;
+        }
+      } catch {
+        // Ignore matchMedia failures and fallback to innerWidth.
+      }
+    }
+
+    const width = Number(window?.innerWidth);
+    return Number.isFinite(width) ? width <= 679 : false;
+  }
+
+  function shouldAutoOpenStopFiltersPanelForAttention() {
+    if (isCompactViewport()) return false;
+
+    const lineOptionCount = Array.isArray(state.busFilterOptions?.lines)
+      ? state.busFilterOptions.lines.length
+      : 0;
+    const destinationOptionCount = Array.isArray(state.busFilterOptions?.destinations)
+      ? state.busFilterOptions.destinations.length
+      : 0;
+    const totalOptions = lineOptionCount + destinationOptionCount;
+    return totalOptions <= STOP_FILTER_OPTION_AUTO_OPEN_LIMIT;
+  }
+
   function triggerStopFilterAttention() {
     if (!isStopMode()) return;
 
-    state.stopFiltersPanelLockUntilMs = Date.now() + STOP_FILTER_PANEL_LOCK_MS;
-    setStopFiltersPanelOpen(true);
+    const shouldAutoOpen = !state.stopFiltersPanelOpen && shouldAutoOpenStopFiltersPanelForAttention();
+    if (shouldAutoOpen) {
+      state.stopFiltersPanelLockUntilMs = Date.now() + STOP_FILTER_PANEL_LOCK_MS;
+      setStopFiltersPanelOpen(true);
+      clearStopFilterAutoCloseTimer();
+      stopFilterAutoCloseTimeoutId = setTimeout(() => {
+        state.stopFiltersPanelLockUntilMs = 0;
+        setStopFiltersPanelOpen(false);
+        stopFilterAutoCloseTimeoutId = null;
+      }, STOP_FILTER_PANEL_AUTO_CLOSE_MS);
+    } else {
+      state.stopFiltersPanelLockUntilMs = 0;
+    }
+
     clearStopFilterAttention();
 
     dom.stopFilterSummaryEl?.classList?.add?.("is-attention");
@@ -250,6 +299,7 @@
   }
 
   function toggleStopFiltersPanel(forceOpen) {
+    clearStopFilterAutoCloseTimer();
     if ((forceOpen === false || (forceOpen == null && state.stopFiltersPanelOpen)) && isStopFiltersPanelLocked()) {
       return;
     }
@@ -261,6 +311,7 @@
     if (!dom.busControlsEl) return;
     dom.busControlsEl.classList.toggle("hidden", !visible);
     if (!visible) {
+      clearStopFilterAutoCloseTimer();
       state.stopFiltersPanelOpen = false;
       state.stopFiltersPanelLockUntilMs = 0;
       clearStopFilterAttention();

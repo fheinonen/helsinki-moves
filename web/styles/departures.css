@@ -238,6 +238,15 @@
     background: rgba(134, 179, 191, 0.06);
     transform: translateY(-1px);
   }
+
+  .route-badge.result-filter-trigger:hover {
+    background: var(--route-badge-bg);
+    filter: brightness(1.15);
+  }
+
+  .route-badge.route-badge-cool.result-filter-trigger:hover {
+    background: var(--route-badge-bg-cool);
+  }
 }
 
 .result-filter-trigger:focus-visible {

@@ -555,37 +555,82 @@
     }
   }
 
+  function buildStopIdFilterOptions() {
+    const departures = Array.isArray(state.latestResponse?.station?.departures)
+      ? state.latestResponse.station.departures
+      : [];
+    const stopMap = new Map();
+
+    for (const departure of departures) {
+      const stopId = String(departure?.stopId || "").trim();
+      if (!stopId) continue;
+      const existing = stopMap.get(stopId);
+      if (!existing) {
+        stopMap.set(stopId, {
+          id: stopId,
+          count: 1,
+          stopCode: String(departure?.stopCode || "").trim(),
+          stopName: String(departure?.stopName || "").trim(),
+        });
+      } else {
+        existing.count += 1;
+        if (!existing.stopCode) {
+          existing.stopCode = String(departure?.stopCode || "").trim();
+        }
+        if (!existing.stopName) {
+          existing.stopName = String(departure?.stopName || "").trim();
+        }
+      }
+    }
+
+    return [...stopMap.values()]
+      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+      .map((option) => {
+        const stopTarget = resolveStopTargetFromDeparture(
+          {
+            stopId: option.id,
+            stopCode: option.stopCode || "",
+            stopName: option.stopName || "",
+          },
+          state.latestResponse?.station || null
+        );
+        return {
+          ...option,
+          selectableStopId: stopTarget.selectableStopId,
+        };
+      });
+  }
+
   function renderStopFilterButtons() {
     if (!dom.busStopFiltersEl) return;
     dom.busStopFiltersEl.innerHTML = "";
 
-    if (!Array.isArray(state.busStops) || state.busStops.length === 0) {
+    const stopIdOptions = buildStopIdFilterOptions();
+    if (stopIdOptions.length === 0) {
       const empty = document.createElement("span");
       empty.className = "chip-empty";
-      empty.textContent = "No nearby stops";
+      empty.textContent = "No stop ids";
       dom.busStopFiltersEl.appendChild(empty);
       return;
     }
 
-    const activeStopId = String(state.busStopId || "").trim();
-    const stopFilterActive = hasActiveStopFilter();
-    for (const stop of state.busStops) {
-      const stopId = String(stop?.id || "").trim();
-      if (!stopId) continue;
-
+    const activeMemberStopId = String(state.busStopMemberFilterId || "").trim();
+    for (const option of stopIdOptions) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "chip-toggle";
-      button.dataset.value = stopId;
-      if (stopFilterActive && stopId === activeStopId) {
+      button.dataset.value = option.id;
+      if (activeMemberStopId && option.id === activeMemberStopId) {
         button.classList.add("is-active");
         button.setAttribute("aria-pressed", "true");
       } else {
         button.setAttribute("aria-pressed", "false");
       }
 
-      button.textContent = `${stop.name} (${stop.distanceMeters}m)`;
-      button.addEventListener("click", () => toggleStopFromResultCard(stopId));
+      button.textContent = `${option.id} (${option.count})`;
+      button.addEventListener("click", () =>
+        toggleStopFromResultCard(option.selectableStopId, option.id)
+      );
       dom.busStopFiltersEl.appendChild(button);
     }
   }

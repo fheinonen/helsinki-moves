@@ -42,10 +42,15 @@ Scenario: Tapping alternative stop applies stop filter state
   Then selected stop equals "custom-stop"
   And stop filter summary text equals "1 filter"
 
-Scenario: Filters dropdown lists available stops
-  Given stop mode with nearest stop "nearest-stop" and alternative stop "custom-stop"
+Scenario: Filters dropdown lists available real stop ids
+  Given stop mode departures with stop ids "HSL:1001" and "HSL:2002"
   When stop filters panel controls are rendered
-  Then filters panel stop options equal "nearest-stop,custom-stop"
+  Then filters panel stop id options equal "HSL:1001,HSL:2002"
+  When filters panel stop id "HSL:2002" is toggled
+  Then active member stop filter id equals "HSL:2002"
+  And visible departures are filtered to stop id "HSL:2002"
+  When filters panel stop id "HSL:2002" is toggled again
+  Then active member stop filter id equals ""
 
 Scenario: Real departure stop id resolves and toggles matching selectable stop
   Given stop mode with nearest stop "nearest-stop", alternative stop "custom-stop", and departure stop id "HSL:2002"
@@ -403,6 +408,39 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given stop mode departures with stop ids "([^"]*)" and "([^"]*)"$/,
+      run: ({ args, world }) => {
+        const departures = buildDepartures(["550", "560"], "line").map((departure, index) => ({
+          ...departure,
+          stopId: args[index],
+          stopCode: index === 0 ? "1001" : "2001",
+          stopName: index === 0 ? "Nearest" : "Custom",
+        }));
+        world.harness = createUiHarness({
+          departures,
+          busStops: [
+            {
+              id: "nearest-stop",
+              name: "Nearest",
+              code: "1001",
+              stopCodes: ["1001"],
+              memberStopIds: [args[0]],
+              distanceMeters: 90,
+            },
+            {
+              id: "custom-stop",
+              name: "Custom",
+              code: "2001",
+              stopCodes: ["2001"],
+              memberStopIds: [args[1]],
+              distanceMeters: 220,
+            },
+          ],
+          busStopId: "nearest-stop",
+        });
+      },
+    },
+    {
       pattern: /^When result card destination "([^"]*)" is toggled$/,
       run: ({ args, world }) => {
         world.harness.app.api.toggleDestinationFilterFromResultCard(args[0]);
@@ -579,13 +617,42 @@ defineFeature(test, featureText, {
       },
     },
     {
-      pattern: /^Then filters panel stop options equal "([^"]*)"$/,
+      pattern: /^Then filters panel stop id options equal "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         const expected = args[0].split(",").map((value) => value.trim()).filter(Boolean);
         const actual = (world.harness.dom.busStopFiltersEl.children || [])
           .map((item) => String(item?.dataset?.value || "").trim())
           .filter(Boolean);
         assert.deepEqual(actual, expected);
+      },
+    },
+    {
+      pattern: /^When filters panel stop id "([^"]*)" is toggled$/,
+      run: ({ args, world }) => {
+        const button = (world.harness.dom.busStopFiltersEl.children || []).find(
+          (item) => String(item?.dataset?.value || "").trim() === args[0]
+        );
+        if (!button) throw new Error(`Could not find stop id filter button ${args[0]}`);
+        button.dispatch("click");
+        world.lastVisibleDepartures = world.harness.app.api.getVisibleDepartures(
+          world.harness.app.state.latestResponse.station.departures
+        );
+      },
+    },
+    {
+      pattern: /^When filters panel stop id "([^"]*)" is toggled again$/,
+      run: ({ args, world }) => {
+        const button = (world.harness.dom.busStopFiltersEl.children || []).find(
+          (item) => String(item?.dataset?.value || "").trim() === args[0]
+        );
+        if (!button) throw new Error(`Could not find stop id filter button ${args[0]}`);
+        button.dispatch("click");
+      },
+    },
+    {
+      pattern: /^Then active member stop filter id equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(String(world.harness.app.state.busStopMemberFilterId || ""), args[0]);
       },
     },
     {

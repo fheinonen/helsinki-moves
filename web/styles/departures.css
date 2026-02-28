@@ -252,15 +252,16 @@ ul {
 }
 
 li {
-  padding: var(--space-4) var(--space-5);
+  padding: 0;
   border: 1px solid var(--border);
   border-left: 3px solid transparent;
   background: rgba(255, 255, 255, 0.02);
   border-radius: var(--radius-sm);
   display: grid;
-  grid-template-columns: var(--badge-size) 1fr auto;
-  align-items: center;
-  gap: var(--space-3);
+  grid-template-columns: 84px 1fr auto;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
   --i: 0;
   animation: row-enter var(--duration-slow) var(--ease-default) both;
   animation-delay: calc(var(--i) * var(--row-stagger));
@@ -314,14 +315,28 @@ li {
 }
 
 .route-badge {
-  min-width: clamp(54px, 13vw, 62px);
-  height: clamp(54px, 13vw, 62px);
-  border-radius: calc(var(--radius-badge) + 2px);
-  font-size: clamp(1.08rem, 4.4vw, 1.45rem);
+  width: 84px;
+  min-width: 84px;
+  height: 100%;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  font-size: clamp(1.18rem, 4.8vw, 1.62rem);
   letter-spacing: var(--tracking-normal);
   color: var(--route-badge-text);
   background: var(--route-badge-bg);
-  box-shadow: var(--route-badge-shadow);
+  box-shadow: none;
+}
+
+.departure-row .route-badge {
+  align-self: stretch;
+}
+
+.departure-row .departure-main {
+  padding: var(--space-4) 0 var(--space-4) var(--space-4);
+}
+
+.departure-row .departure-timing {
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
+  align-content: center;
 }
 
 .train {

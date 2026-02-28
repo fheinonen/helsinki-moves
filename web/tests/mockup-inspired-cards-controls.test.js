@@ -84,8 +84,12 @@ Scenario: Result line number badge matches mockup block style
   When route badge styles are inspected
   Then route badge background equals "var(--route-badge-bg)"
   And route badge text color equals "var(--route-badge-text)"
-  And route badge shadow equals "var(--route-badge-shadow)"
-  And route badge numeral size equals "clamp(1.08rem, 4.4vw, 1.45rem)"
+  And route badge shadow equals "none"
+  And route badge numeral size equals "clamp(1.18rem, 4.8vw, 1.62rem)"
+  And route badge width equals "84px"
+  And route badge height equals "100%"
+  And route badge shape equals "var(--radius-sm) 0 0 var(--radius-sm)"
+  And departure rows use edge-to-edge badge layout
 
 Scenario: Transit mode selector matches mockup segmented style
   Given the app shell is rendered
@@ -840,6 +844,10 @@ defineFeature(test, featureText, {
           textColor: getDeclarationValue(routeBadgeRule, "color"),
           shadow: getDeclarationValue(routeBadgeRule, "box-shadow"),
           fontSize: getDeclarationValue(routeBadgeRule, "font-size"),
+          width: getDeclarationValue(routeBadgeRule, "width"),
+          height: getDeclarationValue(routeBadgeRule, "height"),
+          borderRadius: getDeclarationValue(routeBadgeRule, "border-radius"),
+          rowPadding: getDeclarationValue(getRuleBody(world.departureStyles, "li"), "padding"),
         };
       },
     },
@@ -865,6 +873,30 @@ defineFeature(test, featureText, {
       pattern: /^Then route badge numeral size equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.routeBadgeStyleChecks?.fontSize, args[0]);
+      },
+    },
+    {
+      pattern: /^Then route badge width equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.routeBadgeStyleChecks?.width, args[0]);
+      },
+    },
+    {
+      pattern: /^Then route badge height equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.routeBadgeStyleChecks?.height, args[0]);
+      },
+    },
+    {
+      pattern: /^Then route badge shape equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.routeBadgeStyleChecks?.borderRadius, args[0]);
+      },
+    },
+    {
+      pattern: /^Then departure rows use edge-to-edge badge layout$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.routeBadgeStyleChecks?.rowPadding, "0");
       },
     },
     {

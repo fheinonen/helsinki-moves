@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,14 @@ const distDir = path.resolve(webDir, "dist");
 async function buildAssets() {
   await rm(distDir, { recursive: true, force: true });
 
+  // Step 1: Tailwind CLI processes main.css → intermediate file
+  execFileSync(
+    path.resolve(webDir, "node_modules/.bin/tailwindcss"),
+    ["-i", "styles/main.css", "-o", "dist/.tailwind-intermediate.css"],
+    { cwd: webDir, stdio: "inherit" },
+  );
+
+  // Step 2: esbuild bundles JS + Tailwind-processed CSS in parallel
   await Promise.all([
     build({
       entryPoints: [path.resolve(webDir, "scripts/app/entry.js")],
@@ -21,7 +30,7 @@ async function buildAssets() {
       target: ["esnext"],
     }),
     build({
-      entryPoints: [path.resolve(webDir, "styles/main.css")],
+      entryPoints: [path.resolve(distDir, ".tailwind-intermediate.css")],
       outfile: path.resolve(distDir, "main.css"),
       bundle: true,
       minify: true,

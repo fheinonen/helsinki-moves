@@ -1,13 +1,56 @@
-/*
-  Stylesheet entrypoint.
-  Keep import order stable: tokens -> base -> layout/components -> themes.
-*/
+@import "tailwindcss";
 
-@import url("./tokens.css");
-@import url("./base.css");
-@import url("./shell.css");
-@import url("./controls.css");
-@import url("./status.css");
-@import url("./departures.css");
-@import url("./motion.css");
-@import url("./theme-light.css");
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Colors — OKLCH equivalents of the current dark-mode hex palette */
+  --color-bg: oklch(0.12 0.02 257);
+  --color-surface-0: oklch(0.11 0.02 257);
+  --color-surface-1: oklch(0.15 0.025 257);
+  --color-surface-2: oklch(0.20 0.027 257);
+  --color-surface-3: oklch(0.26 0.03 257);
+  --color-text: oklch(0.97 0.008 105);
+  --color-text-secondary: oklch(0.82 0.02 215);
+  --color-text-muted: oklch(0.60 0.025 215);
+  --color-cyan: oklch(0.73 0.06 210);
+  --color-amber: oklch(0.82 0.12 75);
+  --color-emerald: oklch(0.76 0.09 165);
+  --color-slate: oklch(0.71 0.025 215);
+
+  /* Typography */
+  --font-sans: "Manrope", "Trebuchet MS", sans-serif;
+  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+
+  /* Radius — simplified 5-token scale */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 12px 24px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 34px 60px rgba(0, 0, 0, 0.42);
+  --shadow-badge-now: 0 10px 24px rgba(241, 191, 111, 0.35);
+  --shadow-badge-default: 0 10px 22px rgba(64, 117, 132, 0.34);
+
+  /* Animation keyframes */
+  --animate-fade-in-up: fade-in-up 0.5s var(--ease-default) both;
+  --animate-row-enter: row-enter 0.35s var(--ease-default) both;
+  --animate-shimmer: shimmer 1.8s ease infinite;
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+
+  /* Easing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-default: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Existing component imports — order: tokens → base → layout/components → themes */
+@import "./tokens.css";
+@import "./base.css";
+@import "./shell.css";
+@import "./controls.css";
+@import "./status.css";
+@import "./departures.css";
+@import "./motion.css";
+@import "./theme-light.css";

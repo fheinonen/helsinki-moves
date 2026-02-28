@@ -75,12 +75,15 @@ Scenario: Legacy realtime badge styles are removed
 
 Scenario: Transit mode selector matches mockup segmented style
   Given the app shell is rendered
+  And the light theme stylesheet
   When the user views the mode selector
   Then all transport modes are shown inside one rounded segmented control
   And the active mode is rendered as a filled highlighted segment
   And inactive modes are visually separated with subtle dividers
   And the segmented track uses the mockup slate tone
   And the active segment uses mockup border and shadow treatment
+  And the selector uses mockup capsule height and spacing
+  And light theme segment colors stay within the light palette
 `;
 
 function getRuleBody(css, selector) {
@@ -422,6 +425,7 @@ defineFeature(test, featureText, {
     accessibilityChecks: null,
     departureStyles: "",
     hasLivePillStyles: null,
+    lightThemeCss: "",
   }),
   stepDefinitions: [
     {
@@ -766,6 +770,12 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given the light theme stylesheet$/,
+      run: ({ world }) => {
+        world.lightThemeCss = fs.readFileSync(path.resolve(__dirname, "../styles/theme-light.css"), "utf8");
+      },
+    },
+    {
       pattern: /^When legacy realtime badge styles are inspected$/,
       run: ({ world }) => {
         world.hasLivePillStyles = /\.live-pill\b|\.live-pill::before/.test(world.departureStyles);
@@ -789,11 +799,17 @@ defineFeature(test, featureText, {
         world.modeSelectorChecks = {
           hasAllModesInOneControl: segmentControlPattern.test(world.html),
           controlRadius: getDeclarationValue(segmentControlRule, "border-radius"),
+          controlPadding: getDeclarationValue(segmentControlRule, "padding"),
           controlBackground: getDeclarationValue(segmentControlRule, "background"),
+          segmentMinHeight: getDeclarationValue(getRuleBody(world.shellCss, ".segment"), "min-height"),
           activeSegmentBackground: getDeclarationValue(activeSegmentRule, "background"),
           activeSegmentBorder: getDeclarationValue(activeSegmentRule, "border"),
           activeSegmentShadow: getDeclarationValue(activeSegmentRule, "box-shadow"),
           hasDividerBorder: getDeclarationValue(dividerRule, "border-left"),
+          lightTrackToken:
+            world.lightThemeCss.match(/--segment-track-bg:\s*([^;]+);/)?.[1]?.trim() || null,
+          lightActiveToken:
+            world.lightThemeCss.match(/--segment-active-bg:\s*([^;]+);/)?.[1]?.trim() || null,
         };
       },
     },
@@ -828,6 +844,23 @@ defineFeature(test, featureText, {
         assert.equal(world.modeSelectorChecks.activeSegmentBackground, "var(--segment-active-bg)");
         assert.equal(world.modeSelectorChecks.activeSegmentBorder, "1px solid var(--segment-active-border)");
         assert.equal(world.modeSelectorChecks.activeSegmentShadow, "var(--segment-active-shadow)");
+      },
+    },
+    {
+      pattern: /^Then the selector uses mockup capsule height and spacing$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.modeSelectorChecks.segmentMinHeight, "46px");
+        assert.equal(world.modeSelectorChecks.controlPadding, "4px");
+      },
+    },
+    {
+      pattern: /^Then light theme segment colors stay within the light palette$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.modeSelectorChecks.lightTrackToken, "#d8e0e7");
+        assert.equal(
+          world.modeSelectorChecks.lightActiveToken,
+          "linear-gradient(180deg, #8f9ca9, #8593a0)"
+        );
       },
     },
   ],

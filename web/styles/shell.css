@@ -115,15 +115,21 @@ h2 {
   background: var(--cyan-soft);
 }
 
+.control-icon {
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .segment-control {
   position: relative;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
   border: 1px solid var(--interactive-border);
-  border-radius: var(--radius-xs);
-  padding: 4px;
-  gap: 3px;
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  overflow: hidden;
   --active-index: 0;
 }
 
@@ -131,16 +137,22 @@ h2 {
   position: relative;
   z-index: 1;
   min-width: 0;
+  min-height: 42px;
   padding: 6px var(--space-3);
   border: none;
-  border-radius: calc(var(--radius-xs) - 3px);
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   font-family: var(--font-body);
   cursor: pointer;
-  transition: color var(--duration-normal) var(--ease-default);
+  transition: color var(--duration-normal) var(--ease-default),
+    background var(--duration-normal) var(--ease-default);
+}
+
+.segment + .segment {
+  border-left: 1px solid color-mix(in srgb, var(--interactive-border) 72%, transparent);
 }
 
 .segment:hover {
@@ -150,23 +162,29 @@ h2 {
 .segment:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: -2px;
-  border-radius: calc(var(--radius-xs) - 3px);
+  border-radius: 0;
 }
 
 .segment.is-active {
-  color: var(--interactive-active-text);
+  color: var(--text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.16);
 }
 
 .segment-indicator {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc((100% - 8px - 9px) / 4);
-  border-radius: calc(var(--radius-xs) - 3px);
-  background: linear-gradient(165deg, rgba(241, 191, 111, 0.18), rgba(241, 191, 111, 0.08));
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 4);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--interactive-active-bg) 92%, transparent),
+    color-mix(in srgb, var(--interactive-active-bg) 58%, transparent)
+  );
   border: 1px solid var(--interactive-active-border);
-  transform: translateX(calc(var(--active-index) * (100% + 3px)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transform: translateX(calc(var(--active-index) * 100%));
   transition: transform var(--duration-medium) var(--ease-out);
   will-change: transform;
   pointer-events: none;

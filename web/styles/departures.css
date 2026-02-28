@@ -1,6 +1,6 @@
 .result {
-  margin-top: var(--space-3);
-  padding-top: var(--space-4);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   animation: fade-in-up var(--duration-entrance) var(--ease-default) both;
 }
@@ -8,14 +8,14 @@
 .result-head {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-5);
-  align-items: center;
-  margin-bottom: var(--space-3);
+  gap: var(--space-3);
+  align-items: flex-end;
+  margin-bottom: var(--space-2);
 }
 
 .result-head-meta {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -76,7 +76,7 @@
 .result-head-right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -346,15 +346,28 @@ li {
   box-shadow: var(--departure-now-badge-shadow);
 }
 
+.route-badge {
+  min-width: clamp(54px, 13vw, 62px);
+  height: clamp(54px, 13vw, 62px);
+  border-radius: calc(var(--radius-badge) + 2px);
+  font-size: clamp(1.02rem, 4.2vw, 1.34rem);
+  letter-spacing: var(--tracking-normal);
+}
+
 .train {
   display: grid;
   gap: var(--space-2);
   min-width: 0;
 }
 
+.departure-main {
+  align-content: center;
+}
+
 .destination {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--text);
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -365,12 +378,13 @@ li {
   display: inline-block;
   padding: 2px var(--space-3);
   border-radius: var(--radius-track);
-  font-size: 0.7rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--surface-2) 36%, transparent);
   width: fit-content;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  letter-spacing: var(--tracking-normal);
 }
 
 .destination.result-filter-trigger {
@@ -451,7 +465,7 @@ li {
 .time {
   display: grid;
   justify-items: end;
-  gap: 2px;
+  gap: 0;
   color: var(--text);
   white-space: nowrap;
   font-weight: var(--weight-bold);
@@ -459,15 +473,24 @@ li {
   text-align: right;
 }
 
+.departure-timing {
+  min-width: 66px;
+}
+
 .remaining {
   display: inline;
   font-family: var(--font-body);
-  font-size: 1.18rem;
+  font-size: 1.26rem;
   line-height: var(--leading-none);
 }
 
 .departure-now .remaining {
   color: var(--amber);
+}
+
+.remaining.time-now {
+  color: var(--amber);
+  font-weight: var(--weight-extrabold);
 }
 
 .clock-time {

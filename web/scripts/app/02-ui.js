@@ -1151,14 +1151,14 @@
       li.style.setProperty("--i", i);
 
       const letterBadge = document.createElement("div");
-      letterBadge.className = "letter-badge";
+      letterBadge.className = "letter-badge route-badge";
       letterBadge.textContent = item.line || "?";
       if (isStopMode()) {
         setLineResultFilterTrigger(letterBadge, item.line);
       }
 
       const train = document.createElement("div");
-      train.className = "train";
+      train.className = "train departure-main";
 
       const destination = document.createElement("div");
       destination.className = "destination";
@@ -1180,10 +1180,11 @@
       train.appendChild(track);
 
       const time = document.createElement("div");
-      time.className = "time";
+      time.className = "time departure-timing";
       const remaining = document.createElement("span");
       remaining.className = "remaining";
       remaining.textContent = formatMinutes(item.departureIso);
+      remaining.classList.toggle("time-now", remaining.textContent === "Now");
 
       const clockTime = document.createElement("span");
       clockTime.className = "clock-time";

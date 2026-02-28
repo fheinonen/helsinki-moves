@@ -141,7 +141,7 @@
     if (dom.voiceLocateBtnLabel) {
       dom.voiceLocateBtnLabel.textContent = state.isVoiceListening
         ? "Listening..."
-        : "Describe Location";
+        : "Voice Search";
     }
   }
 

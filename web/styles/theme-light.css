@@ -33,13 +33,13 @@
   --interactive-active-border: rgba(181, 122, 44, 0.42);
   --interactive-active-text: #8a5a16;
 
-  --segment-track-bg: #d8e0e7;
-  --segment-divider: rgba(93, 111, 125, 0.24);
-  --segment-active-bg: linear-gradient(180deg, #8f9ca9, #8593a0);
-  --segment-active-border: rgba(181, 122, 44, 0.62);
-  --segment-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(47, 66, 81, 0.2);
-  --segment-inactive-text: #5e6f7f;
-  --segment-active-text: #f7fafc;
+  --segment-track-bg: #cfd9e1;
+  --segment-divider: rgba(93, 111, 125, 0.2);
+  --segment-active-bg: linear-gradient(180deg, #b4bec9, #a9b5c1);
+  --segment-active-border: rgba(181, 122, 44, 0.56);
+  --segment-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 2px 6px rgba(98, 117, 133, 0.22);
+  --segment-inactive-text: #617180;
+  --segment-active-text: #263745;
 
   --departure-now-bg: linear-gradient(140deg, rgba(181, 122, 44, 0.2), rgba(181, 122, 44, 0.08));
   --departure-now-border: rgba(181, 122, 44, 0.33);

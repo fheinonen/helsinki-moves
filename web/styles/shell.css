@@ -128,7 +128,7 @@ h2 {
   background: var(--segment-track-bg);
   border: 1px solid var(--interactive-border);
   border-radius: var(--radius-pill);
-  padding: 4px;
+  padding: 5px;
   overflow: hidden;
   --active-index: 0;
 }
@@ -137,7 +137,7 @@ h2 {
   position: relative;
   z-index: 1;
   min-width: 0;
-  min-height: 46px;
+  min-height: 48px;
   padding: 6px var(--space-3);
   border: none;
   border-radius: 0;
@@ -172,10 +172,10 @@ h2 {
 
 .segment-indicator {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc((100% - 8px) / 4);
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc((100% - 10px) / 4);
   border-radius: var(--radius-pill);
   background: var(--segment-active-bg);
   border: 1px solid var(--segment-active-border);

@@ -849,17 +849,17 @@ defineFeature(test, featureText, {
     {
       pattern: /^Then the selector uses mockup capsule height and spacing$/,
       run: ({ assert, world }) => {
-        assert.equal(world.modeSelectorChecks.segmentMinHeight, "46px");
-        assert.equal(world.modeSelectorChecks.controlPadding, "4px");
+        assert.equal(world.modeSelectorChecks.segmentMinHeight, "48px");
+        assert.equal(world.modeSelectorChecks.controlPadding, "5px");
       },
     },
     {
       pattern: /^Then light theme segment colors stay within the light palette$/,
       run: ({ assert, world }) => {
-        assert.equal(world.modeSelectorChecks.lightTrackToken, "#d8e0e7");
+        assert.equal(world.modeSelectorChecks.lightTrackToken, "#cfd9e1");
         assert.equal(
           world.modeSelectorChecks.lightActiveToken,
-          "linear-gradient(180deg, #8f9ca9, #8593a0)"
+          "linear-gradient(180deg, #b4bec9, #a9b5c1)"
         );
       },
     },

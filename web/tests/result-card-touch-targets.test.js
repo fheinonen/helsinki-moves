@@ -10,7 +10,7 @@ Feature: Result card touch target ergonomics
 Scenario: Destination and stop taps have separated hit targets
   Given the departures stylesheet
   When result card touch target styles are inspected
-  Then train rows use "var(--space-1)" vertical spacing between destination and stop
+  Then train rows use "var(--spacing-1)" vertical spacing between destination and stop
   And destination filter trigger has minimum hit height "var(--tap-target-min)"
   And stop filter trigger has minimum hit height "var(--tap-target-min)"
 
@@ -19,7 +19,7 @@ Scenario: Active destination filter is visually prominent
   When active destination filter styles are inspected
   Then active destination filter background equals "var(--interactive-active-bg)"
   And active destination filter border equals "1px solid var(--interactive-active-border)"
-  And active destination filter text weight equals "var(--weight-bold)"
+  And active destination filter text weight equals "var(--font-weight-bold)"
 
 Scenario: Active stop filter matches destination active styling
   Given the departures stylesheet
@@ -27,7 +27,7 @@ Scenario: Active stop filter matches destination active styling
   Then active stop filter background equals "var(--interactive-active-bg)"
   And active stop filter border equals "1px solid var(--interactive-active-border)"
   And active stop filter text color equals "var(--interactive-active-text)"
-  And active stop filter text weight equals "var(--weight-bold)"
+  And active stop filter text weight equals "var(--font-weight-bold)"
 `;
 
 function getRuleBody(css, selector) {

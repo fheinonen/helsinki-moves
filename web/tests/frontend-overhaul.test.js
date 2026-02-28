@@ -47,7 +47,7 @@ Scenario: Stop selector is embedded in station header
 Scenario: Typography tokens define a distinct display and body pair
   Given the design token stylesheet
   When typography tokens are inspected
-  Then the display font token equals "Manrope"
+  Then the sans font token equals "Manrope"
   And the body font token equals "Manrope"
 
 Scenario: Stop filter summary reflects selected filters
@@ -283,23 +283,23 @@ defineFeature(test, featureText, {
     {
       pattern: /^Given the design token stylesheet$/,
       run: ({ world }) => {
-        world.css = fs.readFileSync(path.resolve(__dirname, "../styles/tokens.css"), "utf8");
+        world.css = fs.readFileSync(path.resolve(__dirname, "../styles/main.css"), "utf8");
       },
     },
     {
       pattern: /^When typography tokens are inspected$/,
       run: ({ world }) => {
         world.typographyTokens = {
-          display: world.css.match(/--font-display:\s*"([^"]+)"/)?.[1] || null,
+          sans: world.css.match(/--font-sans:\s*"([^"]+)"/)?.[1] || null,
           body: world.css.match(/--font-body:\s*"([^"]+)"/)?.[1] || null,
         };
       },
     },
     {
-      pattern: /^Then the display font token equals "([^"]*)"$/,
+      pattern: /^Then the sans font token equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
-        assert.ok(world.typographyTokens?.display, "Expected display font token");
-        assert.equal(world.typographyTokens.display, args[0]);
+        assert.ok(world.typographyTokens?.sans, "Expected sans font token");
+        assert.equal(world.typographyTokens.sans, args[0]);
       },
     },
     {

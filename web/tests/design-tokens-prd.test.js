@@ -8,17 +8,17 @@ const featureText = `
 Feature: Design tokens match PRD target values
 
 Scenario: Spacing tokens match PRD scale
-  Given the design token stylesheet
+  Given the theme stylesheet
   When spacing tokens are inspected
-  Then token --space-1 equals "4px"
-  And token --space-2 equals "8px"
-  And token --space-3 equals "12px"
-  And token --space-4 equals "16px"
-  And token --space-6 equals "24px"
-  And token --space-8 equals "32px"
+  Then token --spacing-1 equals "4px"
+  And token --spacing-2 equals "8px"
+  And token --spacing-3 equals "12px"
+  And token --spacing-4 equals "16px"
+  And token --spacing-6 equals "24px"
+  And token --spacing-8 equals "32px"
 
 Scenario: Typography tokens match PRD scale
-  Given the design token stylesheet
+  Given the theme stylesheet
   When typography tokens are inspected
   Then token --text-xs equals "0.75rem"
   And token --text-sm equals "0.875rem"
@@ -28,19 +28,16 @@ Scenario: Typography tokens match PRD scale
   And token --text-2xl equals "2rem"
 
 Scenario: Motion tokens match PRD
-  Given the design token stylesheet
+  Given the theme stylesheet
   When motion tokens are inspected
   Then token --ease-out equals "cubic-bezier(0.16, 1, 0.3, 1)"
   And token --duration-fast equals "150ms"
   And token --duration-normal equals "250ms"
 
-Scenario: Surface tokens defined
-  Given the design token stylesheet
+Scenario: Surface color token defined
+  Given the theme stylesheet
   When surface tokens are inspected
-  Then token --surface-0 equals "#080c16"
-  And token --surface-1 equals "#0d1321"
-  And token --surface-2 equals "#141c2d"
-  And token --surface-3 equals "#1e2a3f"
+  Then token --color-surface-2 equals "oklch(0.20 0.027 257)"
 `;
 
 function extractTokenValue(css, tokenName) {
@@ -57,9 +54,11 @@ defineFeature(test, featureText, {
   }),
   stepDefinitions: [
     {
-      pattern: /^Given the design token stylesheet$/,
+      pattern: /^Given the theme stylesheet$/,
       run: ({ world }) => {
-        world.css = fs.readFileSync(path.resolve(__dirname, "../styles/tokens.css"), "utf8");
+        const mainCss = fs.readFileSync(path.resolve(__dirname, "../styles/main.css"), "utf8");
+        const componentCss = fs.readFileSync(path.resolve(__dirname, "../styles/component-tokens.css"), "utf8");
+        world.css = mainCss + "\n" + componentCss;
       },
     },
     {

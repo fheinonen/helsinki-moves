@@ -1,66 +1,66 @@
 .status {
   min-height: 21px;
   font-size: var(--text-md);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   margin: 0;
   font-family: var(--font-mono);
 }
 
 .resolved-location {
-  margin: var(--space-2) 0 0;
-  padding: var(--space-3) var(--space-4);
+  margin: var(--spacing-2) 0 0;
+  padding: var(--spacing-3) var(--spacing-4);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--cyan);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-cyan);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.03);
   font-family: var(--font-mono);
 }
 
 .voice-location-choices {
-  margin: var(--space-2) 0 0;
-  padding: var(--space-3) var(--space-4) var(--space-4);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--amber);
+  margin: var(--spacing-2) 0 0;
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-amber);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.03);
   display: grid;
-  gap: var(--space-3);
+  gap: var(--spacing-3);
 }
 
 .voice-location-choices-title {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   line-height: var(--leading-relaxed);
 }
 
 .voice-location-choice-option {
   text-align: left;
-  color: var(--text);
+  color: var(--color-text);
   border-color: rgba(134, 179, 191, 0.3);
 }
 
 .data-scope {
-  margin: var(--space-2) 0 0;
+  margin: var(--spacing-2) 0 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--spacing-2);
 }
 
 .data-scope-chip {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 2px var(--space-3);
+  padding: 2px var(--spacing-3);
   border-radius: var(--radius-pill);
   border: 1px solid var(--interactive-border);
   background: var(--interactive-bg);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: var(--tracking-normal);
   font-family: var(--font-body);
 }
@@ -86,36 +86,36 @@
 .last-updated {
   margin: 2px 0 0;
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   letter-spacing: var(--tracking-normal);
   font-family: var(--font-mono);
 }
 
 .location-prompt,
 .permission {
-  padding: var(--space-8);
-  border-left: 3px solid var(--cyan);
+  padding: var(--spacing-8);
+  border-left: 3px solid var(--color-cyan);
   text-align: center;
   display: grid;
-  gap: var(--space-3);
+  gap: var(--spacing-3);
   justify-items: center;
 }
 
 .location-prompt-icon {
-  color: var(--cyan);
+  color: var(--color-cyan);
   opacity: 0.7;
 }
 
 .location-prompt h2,
 .permission h2 {
   font-size: 1.25rem;
-  color: var(--text);
+  color: var(--color-text);
   margin: 0;
 }
 
 .location-prompt .muted,
 .permission .muted {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   margin: 0;
   font-size: var(--text-base);
   line-height: var(--leading-relaxed);
@@ -124,6 +124,6 @@
 
 .location-prompt button,
 .permission button {
-  margin-top: var(--space-2);
+  margin-top: var(--spacing-2);
   min-width: 180px;
 }

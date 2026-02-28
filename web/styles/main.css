@@ -3,52 +3,95 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
-  /* Colors — OKLCH equivalents of the current dark-mode hex palette */
+  /* Colors — OKLCH */
   --color-bg: oklch(0.12 0.02 257);
-  --color-surface-0: oklch(0.11 0.02 257);
-  --color-surface-1: oklch(0.15 0.025 257);
+  --color-bg-card-solid: linear-gradient(155deg, oklch(0.13 0.02 255 / 0.96), oklch(0.11 0.02 255 / 0.98));
+  --color-bg-elevated: oklch(0.19 0.025 250 / 0.7);
   --color-surface-2: oklch(0.20 0.027 257);
-  --color-surface-3: oklch(0.26 0.03 257);
+  --color-border: oklch(0.74 0.025 195 / 0.14);
   --color-text: oklch(0.97 0.008 105);
   --color-text-secondary: oklch(0.82 0.02 215);
   --color-text-muted: oklch(0.60 0.025 215);
   --color-cyan: oklch(0.73 0.06 210);
+  --color-cyan-soft: oklch(0.73 0.06 210 / 0.1);
   --color-amber: oklch(0.82 0.12 75);
-  --color-emerald: oklch(0.76 0.09 165);
   --color-slate: oklch(0.71 0.025 215);
 
-  /* Typography */
+  /* Spacing */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 12px;
+  --spacing-6: 24px;
+  --spacing-7: 16px;
+  --spacing-8: 32px;
+  --spacing-9: 24px;
+  --spacing-11: 32px;
+  --spacing-24: 6rem;
+
+  /* Typography — sizes */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 0.9rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: clamp(1.3rem, 3vw, 1.7rem);
+  --text-4xl: clamp(2rem, 6.5vw, 3rem);
+  --text-5xl: clamp(2.4rem, 7.6vw, 3.8rem);
+
+  /* Typography — families */
   --font-sans: "Manrope", "Trebuchet MS", sans-serif;
+  --font-body: "Manrope", "Trebuchet MS", sans-serif;
   --font-mono: "IBM Plex Mono", "Courier New", monospace;
 
-  /* Radius — simplified 5-token scale */
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  /* Typography — weights */
+  --font-weight-normal: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  /* Typography — line heights */
+  --leading-none: 1;
+  --leading-tight: 1.1;
+  --leading-snug: 1.2;
+  --leading-normal: 1.35;
+  --leading-relaxed: 1.45;
+
+  /* Typography — letter spacing */
+  --tracking-tighter: -0.02em;
+  --tracking-normal: 0.01em;
+  --tracking-wide: 0.06em;
+  --tracking-wider: 0.09em;
+  --tracking-widest: 0.13em;
+
+  /* Radius */
+  --radius-xs: 12px;
+  --radius-sm: 16px;
+  --radius-md: 24px;
+  --radius-badge: 14px;
   --radius-pill: 999px;
-  --radius-full: 9999px;
+  --radius-track: 10px;
 
   /* Shadows */
-  --shadow-sm: 0 12px 24px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 34px 60px rgba(0, 0, 0, 0.42);
-  --shadow-badge-now: 0 10px 24px rgba(241, 191, 111, 0.35);
-  --shadow-badge-default: 0 10px 22px rgba(64, 117, 132, 0.34);
+  --shadow-sm: 0 12px 24px oklch(0 0 0 / 0.28);
+  --shadow-md: 0 34px 60px oklch(0 0 0 / 0.42);
+
+  /* Easing */
+  --ease-default: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Animation keyframes */
   --animate-fade-in-up: fade-in-up 0.5s var(--ease-default) both;
   --animate-row-enter: row-enter 0.35s var(--ease-default) both;
   --animate-shimmer: shimmer 1.8s ease infinite;
   --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
-
-  /* Easing */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-default: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-@import "./tailwind-theme.css";
-
 /* Existing component imports — order: tokens → base → layout/components → themes */
-@import "./tokens.css";
+@import "./component-tokens.css";
 @import "./base.css";
 @import "./shell.css";
 @import "./controls.css";

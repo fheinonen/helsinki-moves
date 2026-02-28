@@ -973,13 +973,13 @@ defineFeature(test, featureText, {
     {
       pattern: /^Then destination text uses regular emphasis weight$/,
       run: ({ assert, world }) => {
-        assert.equal(world.destinationStyleChecks?.fontWeight, "var(--weight-normal)");
+        assert.equal(world.destinationStyleChecks?.fontWeight, "var(--font-weight-normal)");
       },
     },
     {
       pattern: /^Then destination and stop spacing is compact$/,
       run: ({ assert, world }) => {
-        assert.equal(world.destinationStyleChecks?.trainGap, "var(--space-1)");
+        assert.equal(world.destinationStyleChecks?.trainGap, "var(--spacing-1)");
       },
     },
     {
@@ -1129,10 +1129,10 @@ defineFeature(test, featureText, {
     {
       pattern: /^Then light theme segment colors stay within the light palette$/,
       run: ({ assert, world }) => {
-        assert.equal(world.modeSelectorChecks.lightTrackToken, "#f4efe4");
+        assert.equal(world.modeSelectorChecks.lightTrackToken, "oklch(0.95 0.01 75)");
         assert.equal(
           world.modeSelectorChecks.lightActiveToken,
-          "#be8634"
+          "oklch(0.62 0.12 60)"
         );
       },
     },

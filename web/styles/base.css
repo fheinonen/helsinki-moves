@@ -13,7 +13,7 @@ html {
 }
 
 ::-webkit-scrollbar {
-  width: var(--space-2);
+  width: var(--spacing-2);
 }
 
 ::-webkit-scrollbar-track {
@@ -35,12 +35,12 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   font-family: var(--font-body);
-  color: var(--text);
+  color: var(--color-text);
   background:
     radial-gradient(900px 520px at 12% -12%, var(--atmosphere-1), transparent 68%),
     radial-gradient(980px 560px at 90% -16%, var(--atmosphere-2), transparent 70%),
     radial-gradient(760px 620px at 50% 114%, var(--atmosphere-3), transparent 74%),
-    var(--bg);
+    var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;

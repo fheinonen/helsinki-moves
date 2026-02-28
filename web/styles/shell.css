@@ -151,6 +151,12 @@ h2 {
     background var(--duration-normal) var(--ease-default);
 }
 
+/* Keep segmented buttons immune to global `button` base styles. */
+.segment-control .segment {
+  border: none;
+  background: transparent;
+}
+
 .segment + .segment {
   border-left: 1px solid var(--segment-divider);
 }

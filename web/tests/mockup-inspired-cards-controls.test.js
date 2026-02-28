@@ -122,6 +122,7 @@ Scenario: Transit mode selector matches mockup segmented style
   And the active segment uses flat styling without 3d depth
   And the active segment keeps a small horizontal gap from divider lines
   And the active segment uses balanced left and right inset spacing
+  And segment buttons keep transparent base fill to avoid white fallback
   And the selector uses mockup capsule height and spacing
   And the selector corners match other control buttons
   And light theme segment colors stay within the light palette
@@ -1019,6 +1020,14 @@ defineFeature(test, featureText, {
           controlPadding: getDeclarationValue(segmentControlRule, "padding"),
           controlBackground: getDeclarationValue(segmentControlRule, "background"),
           segmentMinHeight: getDeclarationValue(getRuleBody(world.shellCss, ".segment"), "min-height"),
+          segmentBaseBackground: getDeclarationValue(
+            getRuleBody(world.shellCss, ".segment-control .segment"),
+            "background"
+          ),
+          segmentBaseBorder: getDeclarationValue(
+            getRuleBody(world.shellCss, ".segment-control .segment"),
+            "border"
+          ),
           activeSegmentBackground: getDeclarationValue(activeSegmentRule, "background"),
           activeSegmentBorder: getDeclarationValue(activeSegmentRule, "border"),
           activeSegmentShadow: getDeclarationValue(activeSegmentRule, "box-shadow"),
@@ -1092,6 +1101,13 @@ defineFeature(test, featureText, {
       run: ({ assert, world }) => {
         assert.equal(world.modeSelectorChecks.activeSegmentTop, "4px");
         assert.equal(world.modeSelectorChecks.activeSegmentBottom, "4px");
+      },
+    },
+    {
+      pattern: /^Then segment buttons keep transparent base fill to avoid white fallback$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.modeSelectorChecks.segmentBaseBackground, "transparent");
+        assert.equal(world.modeSelectorChecks.segmentBaseBorder, "none");
       },
     },
     {

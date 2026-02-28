@@ -851,6 +851,47 @@
     };
   }
 
+  function setLineResultFilterTrigger(element, value) {
+    const normalizedValue = String(value || "").trim();
+    if (!isStopMode() || !normalizedValue) {
+      clearResultFilterTrigger(element);
+      return;
+    }
+
+    setResultFilterTrigger(element, {
+      active: state.busLineFilters.includes(normalizedValue),
+      onActivate: () => toggleLineFilterFromResultCard(normalizedValue),
+      ariaLabel: `Toggle line filter ${normalizedValue}`,
+    });
+  }
+
+  function setDestinationResultFilterTrigger(element, value) {
+    const normalizedValue = String(value || "").trim();
+    if (!isStopMode() || !normalizedValue) {
+      clearResultFilterTrigger(element);
+      return;
+    }
+
+    setResultFilterTrigger(element, {
+      active: state.busDestinationFilters.includes(normalizedValue),
+      onActivate: () => toggleDestinationFilterFromResultCard(normalizedValue),
+      ariaLabel: `Toggle destination filter ${normalizedValue}`,
+    });
+  }
+
+  function setStopResultFilterTrigger(element, selectableStopId, memberStopId) {
+    if (!isStopMode()) {
+      clearResultFilterTrigger(element);
+      return;
+    }
+
+    setResultFilterTrigger(element, {
+      active: isStopTargetActive(selectableStopId, memberStopId),
+      onActivate: () => toggleStopFromResultCard(selectableStopId, memberStopId),
+      ariaLabel: "Toggle stop filter",
+    });
+  }
+
   function toggleLineFilterFromResultCard(value) {
     return toggleLineFilter(value, {
       interactionType: "result_card_line_toggle",
@@ -951,32 +992,17 @@
     dom.nextLineEl.classList.toggle("next-letter-now", diffMin < 3);
     dom.nextTrackEl.textContent =
       isStopMode()
-        ? `Stop ${buildModeStopDisplay(station, nextDeparture)}`
+        ? buildModeStopDisplay(station, nextDeparture)
         : nextDeparture.track
           ? `Track ${nextDeparture.track}`
           : "Track —";
     dom.nextDestinationEl.textContent = nextDeparture.destination || "—";
 
     if (isStopMode()) {
-      const lineValue = String(nextDeparture.line || "").trim();
-      const destinationValue = String(nextDeparture.destination || "").trim();
       const stopTarget = resolveStopTargetFromDeparture(nextDeparture, station);
-      setResultFilterTrigger(dom.nextLineEl, {
-        active: lineValue ? state.busLineFilters.includes(lineValue) : false,
-        onActivate: () => toggleLineFilterFromResultCard(lineValue),
-        ariaLabel: `Toggle line filter ${lineValue || "unknown"}`,
-      });
-      setResultFilterTrigger(dom.nextDestinationEl, {
-        active: destinationValue ? state.busDestinationFilters.includes(destinationValue) : false,
-        onActivate: () => toggleDestinationFilterFromResultCard(destinationValue),
-        ariaLabel: `Toggle destination filter ${destinationValue || "unknown"}`,
-      });
-      setResultFilterTrigger(dom.nextTrackEl, {
-        active: isStopTargetActive(stopTarget.selectableStopId, stopTarget.memberStopId),
-        onActivate: () =>
-          toggleStopFromResultCard(stopTarget.selectableStopId, stopTarget.memberStopId),
-        ariaLabel: "Toggle stop filter",
-      });
+      setLineResultFilterTrigger(dom.nextLineEl, nextDeparture.line);
+      setDestinationResultFilterTrigger(dom.nextDestinationEl, nextDeparture.destination);
+      setStopResultFilterTrigger(dom.nextTrackEl, stopTarget.selectableStopId, stopTarget.memberStopId);
     } else {
       clearResultFilterTrigger(dom.nextLineEl);
       clearResultFilterTrigger(dom.nextDestinationEl);
@@ -1168,13 +1194,8 @@
       const letterBadge = document.createElement("div");
       letterBadge.className = "letter-badge";
       letterBadge.textContent = item.line || "?";
-      const lineValue = String(item.line || "").trim();
       if (isStopMode()) {
-        setResultFilterTrigger(letterBadge, {
-          active: lineValue ? state.busLineFilters.includes(lineValue) : false,
-          onActivate: () => toggleLineFilterFromResultCard(lineValue),
-          ariaLabel: `Toggle line filter ${lineValue || "unknown"}`,
-        });
+        setLineResultFilterTrigger(letterBadge, item.line);
       }
 
       const train = document.createElement("div");
@@ -1183,27 +1204,17 @@
       const destination = document.createElement("div");
       destination.className = "destination";
       destination.textContent = item.destination || "—";
-      const destinationValue = String(item.destination || "").trim();
       if (isStopMode()) {
-        setResultFilterTrigger(destination, {
-          active: destinationValue ? state.busDestinationFilters.includes(destinationValue) : false,
-          onActivate: () => toggleDestinationFilterFromResultCard(destinationValue),
-          ariaLabel: `Toggle destination filter ${destinationValue || "unknown"}`,
-        });
+        setDestinationResultFilterTrigger(destination, item.destination);
       }
       train.appendChild(destination);
 
       const track = document.createElement("span");
       track.className = "track";
       if (isStopMode()) {
-        track.textContent = `Stop ${buildModeStopDisplay(station, item)}`;
+        track.textContent = buildModeStopDisplay(station, item);
         const stopTarget = resolveStopTargetFromDeparture(item, station);
-        setResultFilterTrigger(track, {
-          active: isStopTargetActive(stopTarget.selectableStopId, stopTarget.memberStopId),
-          onActivate: () =>
-            toggleStopFromResultCard(stopTarget.selectableStopId, stopTarget.memberStopId),
-          ariaLabel: "Toggle stop filter",
-        });
+        setStopResultFilterTrigger(track, stopTarget.selectableStopId, stopTarget.memberStopId);
       } else {
         track.textContent = item.track ? `Track ${item.track}` : "Track —";
       }

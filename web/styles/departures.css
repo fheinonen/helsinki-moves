@@ -200,9 +200,11 @@
     color var(--duration-fast) var(--ease-default);
 }
 
-.result-filter-trigger:hover {
-  background: rgba(134, 179, 191, 0.06);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .result-filter-trigger:hover {
+    background: rgba(134, 179, 191, 0.06);
+    transform: translateY(-1px);
+  }
 }
 
 .result-filter-trigger:focus-visible {

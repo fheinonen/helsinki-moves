@@ -128,6 +128,33 @@ defineFeature(test, featureText, {
       run: async ({ world }) => {
         await world.page.addInitScript(() => {
           window.localStorage.setItem("location:granted", "1");
+          window.localStorage.setItem("prefs:mode", "rail");
+          window.localStorage.removeItem("prefs:busStopId");
+          window.localStorage.removeItem("prefs:busLines");
+          window.localStorage.removeItem("prefs:busDestinations");
+
+          const readPosition = () => ({
+            coords: {
+              latitude: 60.1699,
+              longitude: 24.9384,
+              accuracy: 20,
+            },
+            timestamp: Date.now(),
+          });
+
+          Object.defineProperty(navigator, "geolocation", {
+            configurable: true,
+            value: {
+              getCurrentPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+              },
+              watchPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+                return 1;
+              },
+              clearWatch() {},
+            },
+          });
         });
       },
     },
@@ -136,11 +163,14 @@ defineFeature(test, featureText, {
       run: async ({ world }) => {
         await world.page.goto("/");
         await expect(world.page.locator("#modeBusBtn")).toBeVisible();
+        await expect(world.page.locator("#departures > li").first()).toBeVisible();
+        await expect(world.page.locator("#modeRailBtn")).toHaveClass(/is-active/);
 
         world.timing = await world.page.evaluate(async () => {
           const button = document.querySelector("#modeBusBtn");
           const indicator = document.querySelector(".segment-indicator");
-          if (!button || !indicator) {
+          const segmentControl = document.querySelector(".segment-control");
+          if (!button || !indicator || !segmentControl) {
             return {
               movementStartFrame: null,
               movementStartMs: null,
@@ -149,9 +179,35 @@ defineFeature(test, featureText, {
             };
           }
 
-          const beforeTransform = getComputedStyle(indicator).transform;
+          const beforeLeft = getComputedStyle(indicator).left;
+          const beforeActiveIndex = getComputedStyle(segmentControl)
+            .getPropertyValue("--active-index")
+            .trim();
           const startMs = performance.now();
+          let transitionSignalMs = null;
+          let activeIndexSignalMs = null;
+          const markTransitionSignal = (event) => {
+            if (event?.propertyName !== "left") return;
+            if (transitionSignalMs == null) {
+              transitionSignalMs = performance.now();
+            }
+          };
+          const markActiveIndexSignal = () => {
+            if (activeIndexSignalMs != null) return;
+            const nextActiveIndex = getComputedStyle(segmentControl)
+              .getPropertyValue("--active-index")
+              .trim();
+            if (nextActiveIndex !== beforeActiveIndex) {
+              activeIndexSignalMs = performance.now();
+            }
+          };
+          indicator.addEventListener("transitionrun", markTransitionSignal);
+          indicator.addEventListener("transitionstart", markTransitionSignal);
+          const observer = new MutationObserver(markActiveIndexSignal);
+          observer.observe(segmentControl, { attributes: true, attributeFilter: ["style", "class"] });
+          observer.observe(button, { attributes: true, attributeFilter: ["class", "aria-checked"] });
           button.click();
+          markActiveIndexSignal();
 
           let movementStartFrame = null;
           let movementStartMs = null;
@@ -163,10 +219,25 @@ defineFeature(test, featureText, {
               frameGaps.push(frameMs - previousFrameMs);
               previousFrameMs = frameMs;
 
-              const currentTransform = getComputedStyle(indicator).transform;
-              if (movementStartFrame == null && currentTransform !== beforeTransform) {
+              const currentLeft = getComputedStyle(indicator).left;
+              const hasLeftChanged = currentLeft !== beforeLeft;
+              const hasTransitionSignaled = Number.isFinite(transitionSignalMs);
+              const hasActiveIndexSignaled = Number.isFinite(activeIndexSignalMs);
+              if (
+                movementStartFrame == null &&
+                (hasLeftChanged || hasTransitionSignaled || hasActiveIndexSignaled)
+              ) {
                 movementStartFrame = frameGaps.length;
-                movementStartMs = frameMs - startMs;
+                const movementSignalMs = [
+                  hasActiveIndexSignaled ? activeIndexSignalMs : null,
+                  hasTransitionSignaled ? transitionSignalMs : null,
+                  hasLeftChanged ? frameMs : null,
+                ]
+                  .filter(Number.isFinite)
+                  .reduce((earliest, value) => Math.min(earliest, value), Number.POSITIVE_INFINITY);
+                movementStartMs = Number.isFinite(movementSignalMs)
+                  ? Math.max(0, movementSignalMs - startMs)
+                  : frameMs - startMs;
               }
 
               const elapsed = frameMs - startMs;
@@ -180,6 +251,9 @@ defineFeature(test, featureText, {
 
             requestAnimationFrame(sample);
           });
+          observer.disconnect();
+          indicator.removeEventListener("transitionrun", markTransitionSignal);
+          indicator.removeEventListener("transitionstart", markTransitionSignal);
 
           return {
             movementStartFrame,

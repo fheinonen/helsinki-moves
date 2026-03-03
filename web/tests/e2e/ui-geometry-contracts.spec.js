@@ -153,6 +153,29 @@ defineFeature(test, featureText, {
             window.localStorage.setItem("location:granted", "1");
             window.localStorage.setItem("prefs:mode", "bus");
             window.localStorage.setItem("theme", "light");
+
+            const readPosition = () => ({
+              coords: {
+                latitude: 60.1699,
+                longitude: 24.9384,
+                accuracy: 20,
+              },
+              timestamp: Date.now(),
+            });
+
+            Object.defineProperty(navigator, "geolocation", {
+              configurable: true,
+              value: {
+                getCurrentPosition(success) {
+                  setTimeout(() => success(readPosition()), 0);
+                },
+                watchPosition(success) {
+                  setTimeout(() => success(readPosition()), 0);
+                  return 1;
+                },
+                clearWatch() {},
+              },
+            });
           },
           { nowMs: fixedNowMs }
         );

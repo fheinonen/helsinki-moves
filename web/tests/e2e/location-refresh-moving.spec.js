@@ -87,6 +87,21 @@ Scenario: Refresh location updates nearest stop after movement
   And latest departures request longitude is 24.9354
   And selected stop label equals "Pasila station"
   And station distance text equals "120m away"
+
+Scenario: Refresh falls back to last known location when geolocation is unavailable
+  Given geolocation permission is pre-granted
+  And departures API uses request coordinates for nearest stop response
+  And browser geolocation is at 60.2220, 24.8990
+  When the page is opened in bus mode
+  Then selected stop label equals "Huopalahti station"
+  And station distance text equals "980m away"
+  When geolocation becomes temporarily unavailable
+  And the user taps refresh location
+  Then geolocation refresh retries once with high accuracy
+  And latest departures request latitude is 60.2220
+  And latest departures request longitude is 24.8990
+  And selected stop label equals "Huopalahti station"
+  And station distance text equals "980m away"
 `;
 
 defineFeature(test, featureText, {
@@ -109,6 +124,7 @@ defineFeature(test, featureText, {
               lat: Number.isFinite(Number(existing.lat)) ? Number(existing.lat) : 60.1699,
               lon: Number.isFinite(Number(existing.lon)) ? Number(existing.lon) : 24.9384,
               accuracy: Number.isFinite(Number(existing.accuracy)) ? Number(existing.accuracy) : 20,
+              mode: String(existing.mode || "ok"),
               timestamp: Number.isFinite(Number(existing.timestamp))
                 ? Number(existing.timestamp)
                 : Date.now(),
@@ -130,18 +146,37 @@ defineFeature(test, featureText, {
 
           let watchIdCounter = 0;
           const watchers = new Map();
+          window.__testGeoCalls = [];
           const geolocationMock = {
-            getCurrentPosition(success) {
+            getCurrentPosition(success, error, options) {
               setTimeout(() => {
-                ensureState();
+                const state = ensureState();
+                window.__testGeoCalls.push({
+                  type: "getCurrentPosition",
+                  enableHighAccuracy: Boolean(options?.enableHighAccuracy),
+                  mode: state.mode,
+                });
+                if (state.mode === "unavailable") {
+                  error?.({ code: 2 });
+                  return;
+                }
                 success(readPosition());
               }, 0);
             },
-            watchPosition(success) {
+            watchPosition(success, error, options) {
               watchIdCounter += 1;
               watchers.set(watchIdCounter, success);
               setTimeout(() => {
-                ensureState();
+                const state = ensureState();
+                window.__testGeoCalls.push({
+                  type: "watchPosition",
+                  enableHighAccuracy: Boolean(options?.enableHighAccuracy),
+                  mode: state.mode,
+                });
+                if (state.mode === "unavailable") {
+                  error?.({ code: 2 });
+                  return;
+                }
                 success(readPosition());
               }, 0);
               return watchIdCounter;
@@ -164,12 +199,24 @@ defineFeature(test, featureText, {
               lat: Number.isFinite(lat) ? lat : window.__testGeoState?.lat || 60.1699,
               lon: Number.isFinite(lon) ? lon : window.__testGeoState?.lon || 24.9384,
               accuracy: Number.isFinite(accuracy) ? accuracy : 20,
+              mode: String(window.__testGeoState?.mode || "ok"),
               timestamp: Date.now(),
             };
             const position = readPosition();
             for (const notify of watchers.values()) {
               notify(position);
             }
+          };
+
+          window.__setTestGeolocationMode = (mode) => {
+            const nextMode = String(mode || "ok").trim().toLowerCase();
+            const normalizedMode = nextMode === "unavailable" ? "unavailable" : "ok";
+            const state = ensureState();
+            window.__testGeoState = {
+              ...state,
+              mode: normalizedMode,
+              timestamp: Date.now(),
+            };
           };
         });
       },
@@ -221,6 +268,7 @@ defineFeature(test, featureText, {
               ...nextState,
               lat: initialLat,
               lon: initialLon,
+              mode: String(nextState.mode || "ok"),
               timestamp: Date.now(),
             };
           },
@@ -264,6 +312,16 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^When geolocation becomes temporarily unavailable$/,
+      run: async ({ world }) => {
+        await world.page.evaluate(() => {
+          if (typeof window.__setTestGeolocationMode === "function") {
+            window.__setTestGeolocationMode("unavailable");
+          }
+        });
+      },
+    },
+    {
       pattern: /^When the user taps refresh location$/,
       run: async ({ world }) => {
         const callsBefore = world.departuresCalls.length;
@@ -271,6 +329,19 @@ defineFeature(test, featureText, {
         await expect
           .poll(() => world.departuresCalls.length)
           .toBeGreaterThan(callsBefore);
+      },
+    },
+    {
+      pattern: /^Then geolocation refresh retries once with high accuracy$/,
+      run: async ({ assert, world }) => {
+        const calls = await world.page.evaluate(() =>
+          Array.isArray(window.__testGeoCalls) ? [...window.__testGeoCalls] : []
+        );
+        const getCalls = calls.filter((call) => call.type === "getCurrentPosition");
+        assert.equal(getCalls.length >= 3, true);
+        const latestPair = getCalls.slice(-2);
+        assert.equal(latestPair[0]?.enableHighAccuracy, false);
+        assert.equal(latestPair[1]?.enableHighAccuracy, true);
       },
     },
     {

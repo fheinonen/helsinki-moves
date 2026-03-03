@@ -3,6 +3,11 @@ const { defineFeature } = require("../helpers/playwright-bdd");
 
 const FIXED_NOW_ISO = "2026-02-28T15:52:31+02:00";
 
+test.skip(
+  ({ browserName }) => browserName !== "chromium",
+  "Visual regression baselines are maintained for Chromium."
+);
+
 function nextIso(minutesFromNow) {
   const base = new Date(FIXED_NOW_ISO).getTime();
   return new Date(base + minutesFromNow * 60_000).toISOString();
@@ -166,6 +171,29 @@ defineFeature(test, featureText, {
           window.localStorage.setItem("location:granted", "1");
           window.localStorage.setItem("prefs:mode", "bus");
           window.localStorage.setItem("theme", "light");
+
+          const readPosition = () => ({
+            coords: {
+              latitude: 60.1699,
+              longitude: 24.9384,
+              accuracy: 20,
+            },
+            timestamp: Date.now(),
+          });
+
+          Object.defineProperty(navigator, "geolocation", {
+            configurable: true,
+            value: {
+              getCurrentPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+              },
+              watchPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+                return 1;
+              },
+              clearWatch() {},
+            },
+          });
 
           const realMathRandom = Math.random;
           Math.random = () => 0.42;

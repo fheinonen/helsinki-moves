@@ -799,9 +799,17 @@
 
   function shouldUseWatchFallback(fix) {
     if (!fix) return false;
+    if (!isFixNewerThanCurrent(fix)) return true;
     if (!isFixFresh(fix)) return true;
     if (!isFixAccurateEnough(fix)) return true;
     return isFixStaleComparedToCurrent(fix);
+  }
+
+  function shouldPromoteBestFix(bestFix) {
+    if (!bestFix) return false;
+    if (!isFixNewerThanCurrent(bestFix)) return false;
+    if (!isFixFresh(bestFix)) return false;
+    return isFixAccurateEnough(bestFix);
   }
 
   function pickBetterFix(currentFix, candidateFix) {
@@ -884,7 +892,7 @@
     };
 
     const settleWithBestFixOrFallback = (error, bestFix) => {
-      if (bestFix && isFixNewerThanCurrent(bestFix)) {
+      if (shouldPromoteBestFix(bestFix)) {
         commitLocationFix(bestFix);
         return;
       }
@@ -935,7 +943,8 @@
           const fix = toLocationFix(position);
           if (!fix) return;
           bestFix = pickBetterFix(bestFix, fix);
-          const hasSufficientQuality = isFixAccurateEnough(fix) && (isFixFresh(fix) || isFixNewerThanCurrent(fix));
+          const hasSufficientQuality =
+            isFixNewerThanCurrent(fix) && isFixAccurateEnough(fix) && isFixFresh(fix);
           if (hasSufficientQuality && !isFixStaleComparedToCurrent(fix)) {
             finish({ fix });
           }

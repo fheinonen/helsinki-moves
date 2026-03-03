@@ -37,6 +37,24 @@ Scenario: Use last known location when refresh cannot get a new fix
   When the user refreshes location
   Then departures are requested for latitude 60.18 and longitude 24.92
   And status updates include "Location temporarily unavailable. Showing last known nearby stops."
+
+Scenario: Ignore an older one-shot fix even when it is far from current location
+  Given browser geolocation is available
+  And current location is 60.20, 24.94 with timestamp 9000 and accuracy 20
+  And the first location attempt returns 60.24, 24.88 with accuracy 20 and timestamp 8000
+  And a watched location update returns 60.205, 24.945 with accuracy 15 and timestamp 12000
+  When the user refreshes location
+  Then the refresh uses a watched location update
+  And departures are requested for latitude 60.205 and longitude 24.945
+
+Scenario: Do not promote low-quality watched fallback fix when watch fails
+  Given browser geolocation is available
+  And current location is 60.18, 24.92 with timestamp 10000 and accuracy 30
+  And the first location attempt returns 60.25, 24.80 with accuracy 900 and timestamp 11000
+  And the watched location update fails with code 2
+  When the user refreshes location
+  Then departures are requested for latitude 60.18 and longitude 24.92
+  And status updates include "Location temporarily unavailable. Showing last known nearby stops."
 `;
 
 function bootDataApi(world) {
@@ -204,6 +222,7 @@ defineFeature(test, featureText, {
     secondErrorCode: null,
     firstSuccessPosition: null,
     watchSuccessPosition: null,
+    watchErrorCode: null,
     permissionRequiredCalls: [],
     statusCalls: [],
     fetchCalls: [],
@@ -257,6 +276,12 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given the watched location update fails with code (\d+)$/,
+      run: ({ args, world }) => {
+        world.watchErrorCode = Number(args[0]);
+      },
+    },
+    {
       pattern: /^When the user refreshes location$/,
       run: async ({ assert, world }) => {
         const started = world.api.requestLocationAndLoad();
@@ -273,6 +298,9 @@ defineFeature(test, featureText, {
 
         if (world.watchSuccessPosition && world.watchCalls[0]) {
           world.watchCalls[0].success(world.watchSuccessPosition);
+        }
+        if (Number.isInteger(world.watchErrorCode) && world.watchCalls[0]) {
+          world.watchCalls[0].error({ code: world.watchErrorCode });
         }
 
         await new Promise((resolve) => setTimeout(resolve, 0));

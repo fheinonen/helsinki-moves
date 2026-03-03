@@ -91,10 +91,34 @@ defineFeature(test, featureText, {
       pattern: /^Given stale bus stop preferences are persisted$/,
       run: async ({ world }) => {
         await world.page.addInitScript(() => {
+          window.localStorage.setItem("location:granted", "1");
           window.localStorage.setItem("prefs:mode", "bus");
           window.localStorage.setItem("prefs:busStopId", "HSL:OLD");
           window.localStorage.setItem("prefs:busLines", JSON.stringify(["550"]));
           window.localStorage.setItem("prefs:busDestinations", JSON.stringify(["Old Terminal"]));
+
+          const readPosition = () => ({
+            coords: {
+              latitude: 60.1699,
+              longitude: 24.9384,
+              accuracy: 20,
+            },
+            timestamp: Date.now(),
+          });
+
+          Object.defineProperty(navigator, "geolocation", {
+            configurable: true,
+            value: {
+              getCurrentPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+              },
+              watchPosition(success) {
+                setTimeout(() => success(readPosition()), 0);
+                return 1;
+              },
+              clearWatch() {},
+            },
+          });
         });
       },
     },

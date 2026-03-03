@@ -109,6 +109,7 @@ defineFeature(test, featureText, {
   createWorld: ({ fixtures }) => ({
     page: fixtures.page,
     departuresCalls: [],
+    refreshGetCurrentPositionCallCountStart: 0,
   }),
   stepDefinitions: [
     {
@@ -324,6 +325,10 @@ defineFeature(test, featureText, {
     {
       pattern: /^When the user taps refresh location$/,
       run: async ({ world }) => {
+        world.refreshGetCurrentPositionCallCountStart = await world.page.evaluate(() => {
+          const calls = Array.isArray(window.__testGeoCalls) ? window.__testGeoCalls : [];
+          return calls.filter((call) => call?.type === "getCurrentPosition").length;
+        });
         const callsBefore = world.departuresCalls.length;
         await world.page.click("#locateBtn");
         await expect
@@ -334,14 +339,15 @@ defineFeature(test, featureText, {
     {
       pattern: /^Then geolocation refresh retries once with high accuracy$/,
       run: async ({ assert, world }) => {
-        const calls = await world.page.evaluate(() =>
-          Array.isArray(window.__testGeoCalls) ? [...window.__testGeoCalls] : []
+        const getCalls = await world.page.evaluate(() =>
+          (Array.isArray(window.__testGeoCalls) ? window.__testGeoCalls : []).filter(
+            (call) => call?.type === "getCurrentPosition"
+          )
         );
-        const getCalls = calls.filter((call) => call.type === "getCurrentPosition");
-        assert.equal(getCalls.length >= 3, true);
-        const latestPair = getCalls.slice(-2);
-        assert.equal(latestPair[0]?.enableHighAccuracy, false);
-        assert.equal(latestPair[1]?.enableHighAccuracy, true);
+        const refreshCalls = getCalls.slice(world.refreshGetCurrentPositionCallCountStart);
+        assert.equal(refreshCalls.length, 2);
+        assert.equal(refreshCalls[0]?.enableHighAccuracy, false);
+        assert.equal(refreshCalls[1]?.enableHighAccuracy, true);
       },
     },
     {

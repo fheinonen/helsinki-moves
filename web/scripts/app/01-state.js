@@ -88,6 +88,8 @@
     isLoading: false,
     isVoiceListening: false,
     currentCoords: null,
+    currentCoordsTimestampMs: null,
+    currentCoordsAccuracyMeters: null,
     latestResponse: null,
     mode: MODE_RAIL,
     busStopId: null,

@@ -573,6 +573,8 @@
       lon: location.lon,
     });
     state.currentCoords = { lat: location.lat, lon: location.lon };
+    state.currentCoordsTimestampMs = Date.now();
+    state.currentCoordsAccuracyMeters = null;
     api.setPermissionRequired(false);
     await load(location.lat, location.lon);
     return true;
@@ -709,6 +711,113 @@
     }
   }
 
+  const LOCATION_FIX_MAX_AGE_MS = Number(constants.LOCATION_FIX_MAX_AGE_MS) || 20000;
+  const LOCATION_ACCEPTABLE_ACCURACY_METERS =
+    Number(constants.LOCATION_ACCEPTABLE_ACCURACY_METERS) || 250;
+  const LOCATION_SIGNIFICANT_MOVE_METERS =
+    Number(constants.LOCATION_SIGNIFICANT_MOVE_METERS) || 35;
+  const LOCATION_WATCH_TIMEOUT_MS = Number(constants.LOCATION_WATCH_TIMEOUT_MS) || 12000;
+
+  function hasValidCoords(coords) {
+    const lat = Number(coords?.lat);
+    const lon = Number(coords?.lon);
+    return Number.isFinite(lat) && Number.isFinite(lon);
+  }
+
+  function toLocationFix(position) {
+    const lat = Number(position?.coords?.latitude);
+    const lon = Number(position?.coords?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return null;
+    }
+
+    const timestampMs = Number(position?.timestamp);
+    const accuracyMeters = Number(position?.coords?.accuracy);
+
+    return {
+      lat,
+      lon,
+      timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now(),
+      accuracyMeters:
+        Number.isFinite(accuracyMeters) && accuracyMeters > 0 ? accuracyMeters : Number.POSITIVE_INFINITY,
+    };
+  }
+
+  function toRadians(value) {
+    return (Number(value) * Math.PI) / 180;
+  }
+
+  function getDistanceMeters(fromCoords, toCoords) {
+    if (!hasValidCoords(fromCoords) || !hasValidCoords(toCoords)) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const earthRadiusMeters = 6371000;
+    const latFrom = toRadians(fromCoords.lat);
+    const lonFrom = toRadians(fromCoords.lon);
+    const latTo = toRadians(toCoords.lat);
+    const lonTo = toRadians(toCoords.lon);
+    const deltaLat = latTo - latFrom;
+    const deltaLon = lonTo - lonFrom;
+    const a =
+      Math.sin(deltaLat / 2) ** 2 +
+      Math.cos(latFrom) * Math.cos(latTo) * Math.sin(deltaLon / 2) ** 2;
+    return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function getFixAgeMs(fix) {
+    const timestampMs = Number(fix?.timestampMs);
+    if (!Number.isFinite(timestampMs)) return Number.POSITIVE_INFINITY;
+    // Geolocation timestamps are epoch ms in browsers. Non-epoch values
+    // can appear in tests; treat them as fresh for deterministic checks.
+    if (timestampMs < 1000000000000) return 0;
+    return Math.max(0, Date.now() - timestampMs);
+  }
+
+  function isFixFresh(fix) {
+    return getFixAgeMs(fix) <= LOCATION_FIX_MAX_AGE_MS;
+  }
+
+  function isFixAccurateEnough(fix) {
+    const accuracy = Number(fix?.accuracyMeters);
+    return Number.isFinite(accuracy) && accuracy <= LOCATION_ACCEPTABLE_ACCURACY_METERS;
+  }
+
+  function isFixNewerThanCurrent(fix) {
+    const currentTimestampMs = Number(state.currentCoordsTimestampMs);
+    if (!Number.isFinite(currentTimestampMs)) return true;
+    return Number(fix?.timestampMs) > currentTimestampMs;
+  }
+
+  function isFixStaleComparedToCurrent(fix) {
+    const currentTimestampMs = Number(state.currentCoordsTimestampMs);
+    if (!Number.isFinite(currentTimestampMs)) return false;
+    if (Number(fix?.timestampMs) > currentTimestampMs) return false;
+    if (!hasValidCoords(state.currentCoords)) return true;
+    return getDistanceMeters(state.currentCoords, fix) < LOCATION_SIGNIFICANT_MOVE_METERS;
+  }
+
+  function shouldUseWatchFallback(fix) {
+    if (!fix) return false;
+    if (!isFixFresh(fix)) return true;
+    if (!isFixAccurateEnough(fix)) return true;
+    return isFixStaleComparedToCurrent(fix);
+  }
+
+  function pickBetterFix(currentFix, candidateFix) {
+    if (!candidateFix) return currentFix;
+    if (!currentFix) return candidateFix;
+    const candidateFresh = isFixFresh(candidateFix);
+    const currentFresh = isFixFresh(currentFix);
+    if (candidateFresh !== currentFresh) {
+      return candidateFresh ? candidateFix : currentFix;
+    }
+    if (candidateFix.timestampMs !== currentFix.timestampMs) {
+      return candidateFix.timestampMs > currentFix.timestampMs ? candidateFix : currentFix;
+    }
+    return candidateFix.accuracyMeters < currentFix.accuracyMeters ? candidateFix : currentFix;
+  }
+
   function requestLocationAndLoad() {
     hideVoiceLocationChoices();
     api.setResolvedLocationHint(null);
@@ -735,16 +844,29 @@
       return error?.code === 2 || error?.code === 3;
     };
 
-    const handleLocationSuccess = (pos) => {
-      state.currentCoords = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude,
-      };
+    const commitLocationFix = (fix) => {
+      state.currentCoords = { lat: fix.lat, lon: fix.lon };
+      state.currentCoordsTimestampMs = Number(fix.timestampMs) || Date.now();
+      state.currentCoordsAccuracyMeters = Number.isFinite(fix.accuracyMeters)
+        ? fix.accuracyMeters
+        : null;
       state.locationGranted = true;
       api.setStorageItem("location:granted", "1");
       api.setPermissionRequired(false);
       api.setLoading(false);
       load(state.currentCoords.lat, state.currentCoords.lon);
+    };
+
+    const useLastKnownLocationFallback = () => {
+      if (!hasValidCoords(state.currentCoords)) {
+        return false;
+      }
+
+      api.setPermissionRequired(false);
+      api.setStatus("Location temporarily unavailable. Showing last known nearby stops.");
+      api.setLoading(false);
+      load(state.currentCoords.lat, state.currentCoords.lon);
+      return true;
     };
 
     const handleLocationError = (error) => {
@@ -761,12 +883,96 @@
       api.setLoading(false);
     };
 
+    const settleWithBestFixOrFallback = (error, bestFix) => {
+      if (bestFix && isFixNewerThanCurrent(bestFix)) {
+        commitLocationFix(bestFix);
+        return;
+      }
+      if ((error?.code === 2 || error?.code === 3) && useLastKnownLocationFallback()) {
+        return;
+      }
+      if (bestFix && !hasValidCoords(state.currentCoords)) {
+        commitLocationFix(bestFix);
+        return;
+      }
+      handleLocationError(error || { code: 2 });
+    };
+
+    const watchForFresherFix = (initialFix) => {
+      if (
+        typeof navigator.geolocation.watchPosition !== "function" ||
+        typeof navigator.geolocation.clearWatch !== "function"
+      ) {
+        settleWithBestFixOrFallback({ code: 2 }, initialFix);
+        return;
+      }
+
+      let bestFix = initialFix;
+      let settled = false;
+      let watchId = null;
+      let timeoutId = null;
+
+      const finish = ({ fix = null, error = null } = {}) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (watchId != null) {
+          try {
+            navigator.geolocation.clearWatch(watchId);
+          } catch {
+            // Ignore clearWatch failures to keep refresh flow resilient.
+          }
+        }
+        if (fix) {
+          commitLocationFix(fix);
+          return;
+        }
+        settleWithBestFixOrFallback(error, bestFix);
+      };
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const fix = toLocationFix(position);
+          if (!fix) return;
+          bestFix = pickBetterFix(bestFix, fix);
+          const hasSufficientQuality = isFixAccurateEnough(fix) && (isFixFresh(fix) || isFixNewerThanCurrent(fix));
+          if (hasSufficientQuality && !isFixStaleComparedToCurrent(fix)) {
+            finish({ fix });
+          }
+        },
+        (error) => {
+          finish({ error });
+        },
+        geolocationOptions(true)
+      );
+
+      timeoutId = setTimeout(() => {
+        finish({ error: { code: 3 } });
+      }, LOCATION_WATCH_TIMEOUT_MS);
+    };
+
+    const handleLocationSuccess = (pos) => {
+      const fix = toLocationFix(pos);
+      if (!fix) {
+        settleWithBestFixOrFallback({ code: 2 }, null);
+        return;
+      }
+      if (shouldUseWatchFallback(fix)) {
+        watchForFresherFix(fix);
+        return;
+      }
+      commitLocationFix(fix);
+    };
+
     const requestGeolocation = (enableHighAccuracy) => {
       navigator.geolocation.getCurrentPosition(
         handleLocationSuccess,
         (error) => {
           if (shouldRetryWithHighAccuracy(error, enableHighAccuracy)) {
             requestGeolocation(true);
+            return;
+          }
+          if ((error?.code === 2 || error?.code === 3) && useLastKnownLocationFallback()) {
             return;
           }
           handleLocationError(error);

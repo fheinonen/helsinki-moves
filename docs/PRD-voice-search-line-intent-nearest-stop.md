@@ -160,6 +160,19 @@
   - v2.0:
     - Optional destination-conditioned line intent (`bus 67 to Kamppi`) if product scope expands.
 
+- **Progress Update (2026-03-05):**
+  - MVP: **Completed**
+    - Implemented EN/FI line-intent parsing for planned utterance families.
+    - Implemented backend nearest-stop-with-requested-line selection path.
+    - Implemented explicit no-match status behavior and preserved existing rendered results on no-match.
+    - Added fail-first BDD + e2e scenarios for parser, nearest-stop selection, no-match, and geocode fallback behavior.
+  - v1.1: **Partially Completed**
+    - Implemented mode-less multi-mode resolution using nearest upcoming matching departure with current-mode tie preference.
+    - Not yet implemented: synonym expansion based on observed production transcripts.
+    - Not yet implemented: backend tie-break optimization combining distance + soonest departure among same-line nearby stops.
+  - v2.0: **Not Started**
+    - Destination-conditioned line intent (`bus 67 to Kamppi`) remains out of scope for current delivery.
+
 - **Technical Risks:**
   - Increased backend latency if checking multiple nearby stops for line availability.
   - Speech-to-text variation (for example `A train` vs `Eitreen`) may reduce parser reliability.

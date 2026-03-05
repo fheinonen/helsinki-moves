@@ -160,6 +160,13 @@ Scenario: Line-intent returns explicit no-match payload when line is unavailable
   Then the departures response status is 200
   And the departures payload selected stop id is null
   And the departures payload message is "No nearby departures found for bus 67."
+
+Scenario: Line-intent checks nearby stops with one upstream departures probe
+  Given nearby BUS stops where only the second stop has line "67"
+  And a line-intent departures query with lat "60.17", lon "24.9", mode "BUS", and line "67"
+  When the departures API is called
+  Then the departures response status is 200
+  And the line-intent departures probe count equals 1
 `;
 
 defineFeature(test, featureText, {
@@ -167,6 +174,7 @@ defineFeature(test, featureText, {
     req: { method: "GET", query: {} },
     graphqlRequest: async () => ({ stopsByRadius: { edges: [] } }),
     response: null,
+    departuresProbeCount: 0,
   }),
   stepDefinitions: [
     {
@@ -430,6 +438,7 @@ defineFeature(test, featureText, {
               },
             };
           }
+          world.departuresProbeCount += 1;
 
           const idEntries = Object.entries(variables).filter(([key]) => /^id\d+$/.test(key));
           const payload = {};
@@ -569,6 +578,12 @@ defineFeature(test, featureText, {
       pattern: /^Then the departures payload station type is "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.response.payload?.station?.type, args[0]);
+      },
+    },
+    {
+      pattern: /^Then the line-intent departures probe count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.departuresProbeCount, Number(args[0]));
       },
     },
   ],

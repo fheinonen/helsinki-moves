@@ -277,18 +277,58 @@ function parseStopDataDepartures(stopDataList, upstreamMode) {
   );
 }
 
+function normalizeStopIds(stopIds) {
+  return [...new Set((stopIds || []).map((stopId) => String(stopId || "").trim()).filter(Boolean))];
+}
+
+function mergeDeparturesForStopIds(departuresByStopId, stopIds) {
+  return filterUpcoming(
+    dedupeStopDepartures(
+      normalizeStopIds(stopIds).flatMap((stopId) => departuresByStopId.get(stopId) || [])
+    )
+  );
+}
+
+async function fetchDeparturesByStopIds({
+  graphqlRequest,
+  stopIds,
+  upstreamMode,
+  requestedResultLimit,
+}) {
+  const normalizedStopIds = normalizeStopIds(stopIds);
+  if (normalizedStopIds.length === 0) {
+    return new Map();
+  }
+
+  const departuresLimit = Math.max(24, requestedResultLimit);
+  const { query, variables, aliases } = buildMultiStopDeparturesQuery(normalizedStopIds, departuresLimit);
+  const multiStopData = await graphqlRequest(query, variables);
+  const departuresByStopId = new Map();
+
+  for (let index = 0; index < aliases.length; index += 1) {
+    const alias = aliases[index];
+    const stopId = normalizedStopIds[index];
+    const stopData = multiStopData?.[alias] || null;
+    departuresByStopId.set(stopId, parseStopDataDepartures([{ stop: stopData }], upstreamMode));
+  }
+
+  return departuresByStopId;
+}
+
 async function fetchDeparturesForSelectableStop({
   graphqlRequest,
   selectedStop,
   upstreamMode,
   requestedResultLimit,
 }) {
-  const stopIds = selectedStop.memberStopIds || [selectedStop.id];
-  const departuresLimit = Math.max(24, requestedResultLimit);
-  const { query, variables, aliases } = buildMultiStopDeparturesQuery(stopIds, departuresLimit);
-  const multiStopData = await graphqlRequest(query, variables);
-  const stopDataList = aliases.map((alias) => ({ stop: multiStopData?.[alias] || null }));
-  return parseStopDataDepartures(stopDataList, upstreamMode);
+  const stopIds = normalizeStopIds(selectedStop.memberStopIds || [selectedStop.id]);
+  const departuresByStopId = await fetchDeparturesByStopIds({
+    graphqlRequest,
+    stopIds,
+    upstreamMode,
+    requestedResultLimit,
+  });
+  return mergeDeparturesForStopIds(departuresByStopId, stopIds);
 }
 
 function hasAnyMatchingLine(departures, requestedLines) {
@@ -305,13 +345,19 @@ async function selectLineIntentStop({
   requestedResultLimit,
   requestedLines,
 }) {
+  const stopIds = normalizeStopIds(
+    stops.flatMap((stop) => (Array.isArray(stop.memberStopIds) ? stop.memberStopIds : [stop.id]))
+  );
+  const departuresByStopId = await fetchDeparturesByStopIds({
+    graphqlRequest,
+    stopIds,
+    upstreamMode,
+    requestedResultLimit,
+  });
+
   for (const stop of stops) {
-    const allDepartures = await fetchDeparturesForSelectableStop({
-      graphqlRequest,
-      selectedStop: stop,
-      upstreamMode,
-      requestedResultLimit,
-    });
+    const memberStopIds = Array.isArray(stop.memberStopIds) ? stop.memberStopIds : [stop.id];
+    const allDepartures = mergeDeparturesForStopIds(departuresByStopId, memberStopIds);
     if (!hasAnyMatchingLine(allDepartures, requestedLines)) {
       continue;
     }

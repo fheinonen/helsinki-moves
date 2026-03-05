@@ -403,6 +403,17 @@ Scenario: Location utterance keeps geocode path
   And departures request count equals 1
   And resolved location text contains "Kamppi Helsinki"
 
+Scenario: Mode keyword location utterance keeps geocode path
+  Given prompt responses are ""
+  And speech transcript is "Tram to Kamppi"
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 1
+  And departures request count equals 1
+  And first departures line query equals ""
+  And resolved location text contains "Tram to Kamppi"
+
 Scenario: Fall back to typed query when speech recognition is unsupported
   Given prompt responses are "Kamppi Helsinki"
   And speech recognition scenario is "unsupported"

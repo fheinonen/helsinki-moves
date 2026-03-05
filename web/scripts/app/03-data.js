@@ -481,7 +481,7 @@
     if (!token) return "";
     if (!/^[A-Z0-9]+$/.test(token)) return "";
     if (token.length > 5) return "";
-    if (!/\d/.test(token) && token.length > 2) return "";
+    if (!/\d/.test(token) && token.length !== 1) return "";
     return token;
   }
 
@@ -684,6 +684,7 @@
     if (!requestedLine || requestedModes.length === 0) {
       return false;
     }
+    const loadToken = ++state.latestLoadToken;
 
     const coords = getVoiceLineIntentCoords();
     let upstreamFailureCount = 0;
@@ -718,6 +719,10 @@
         }
       })
     );
+
+    if (loadToken !== state.latestLoadToken) {
+      return false;
+    }
 
     const candidates = requestedCandidates.filter(Boolean).sort(compareLineIntentCandidates);
     const winner = candidates[0] || null;

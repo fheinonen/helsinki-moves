@@ -905,7 +905,10 @@
     if (errorCode === "voice_unsupported") {
       hint = "This browser does not support speech recognition. Type your location or line (number or letter) instead:";
     }
-    const input = window.prompt(`${hint}\nExample: Kamppi Helsinki`, "");
+    const input = window.prompt(
+      `${hint}\nExample: Kamppi Helsinki, A-train, bus 52, 200`,
+      ""
+    );
     const cleaned = String(input || "").trim();
     return cleaned || null;
   }

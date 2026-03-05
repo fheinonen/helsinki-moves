@@ -56,6 +56,13 @@ Scenario: Use generic unsupported message when runtime marker exists without Fir
   And typed fallback prompt returns ""
   When voice location is requested
   Then last status equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+
+Scenario: Unsupported prompt includes location and line examples
+  Given voice-location data API is booted
+  And speech recognition is unsupported
+  And typed fallback prompt returns ""
+  When voice location is requested
+  Then last prompt message equals "This browser does not support speech recognition. Type your location or line (number or letter) instead:\\nExample: Kamppi Helsinki, A-train, bus 52, 200"
 `;
 
 function bootVoiceDataApi(world) {
@@ -136,8 +143,8 @@ function bootVoiceDataApi(world) {
           VOICE_QUERY_MIN_LENGTH: 3,
         },
       },
-      prompt: () => {
-        promptCalls.push({});
+      prompt: (message, defaultValue) => {
+        promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
         return world.promptResponse;
       },
       SpeechRecognition: class MockSpeechRecognition {
@@ -316,6 +323,12 @@ defineFeature(test, featureText, {
       pattern: /^Then voice recognition support equals (true|false)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.supportCheck, args[0] === "true");
+      },
+    },
+    {
+      pattern: /^Then last prompt message equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(String(world.promptCalls.at(-1)?.message || ""), args[0].replace(/\\n/g, "\n"));
       },
     },
   ],

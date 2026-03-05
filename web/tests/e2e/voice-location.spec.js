@@ -246,10 +246,62 @@ async function installPromptMock(page, responses) {
   );
 }
 
+async function installMicrophonePreflightMock(page) {
+  await page.addInitScript(() => {
+    window.__voiceMicPreflightCalls = 0;
+
+    const mockGetUserMedia = async () => {
+      window.__voiceMicPreflightCalls += 1;
+      return {
+        getTracks: () => [
+          {
+            stop: () => {},
+          },
+        ],
+      };
+    };
+
+    if (!navigator.mediaDevices) {
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: { getUserMedia: mockGetUserMedia },
+        configurable: true,
+      });
+      return;
+    }
+
+    try {
+      navigator.mediaDevices.getUserMedia = mockGetUserMedia;
+    } catch {
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+        value: mockGetUserMedia,
+        configurable: true,
+      });
+    }
+  });
+}
+
+async function installUserAgentMock(page, userAgentValue) {
+  await page.addInitScript(({ ua }) => {
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        value: String(ua || ""),
+        configurable: true,
+      });
+    } catch {}
+  }, { ua: userAgentValue });
+}
+
+async function installFirefoxRuntimeMarker(page) {
+  await page.addInitScript(() => {
+    window.InstallTrigger = window.InstallTrigger || {};
+  });
+}
+
 async function installSpeechRecognitionMock(page, { scenario, transcript }) {
   await page.addInitScript((mockConfig) => {
     const scenarioValue = String(mockConfig?.scenario || "success");
     const transcriptValue = String(mockConfig?.transcript || "Kamppi Helsinki");
+    window.__speechStartCalls = 0;
 
     if (scenarioValue === "unsupported") {
       try {
@@ -284,6 +336,13 @@ async function installSpeechRecognitionMock(page, { scenario, transcript }) {
       }
 
       start() {
+        window.__speechStartCalls += 1;
+        if (scenarioValue === "start-throw:not-supported") {
+          const error = new Error("SpeechRecognition start failed");
+          error.name = "NotSupportedError";
+          throw error;
+        }
+
         setTimeout(() => {
           if (scenarioValue === "error:not-allowed") {
             this.onerror?.({ error: "not-allowed" });
@@ -424,6 +483,47 @@ Scenario: Fall back to typed query when speech recognition is unsupported
   And prompt dialog was shown
   And first geocode query text equals "Kamppi Helsinki"
 
+Scenario: Request microphone preflight before Firefox-style startup fallback
+  Given prompt responses are ""
+  And speech recognition scenario is "start-throw:not-supported"
+  And microphone preflight is stubbed as granted
+  And API mocks are installed
+  When the user triggers voice location
+  Then microphone preflight call count equals 1
+  And prompt dialog was shown
+
+Scenario: Firefox user agent still uses speech when constructor exists
+  Given browser user agent is "Mozilla/5.0 Firefox/124.0"
+  And prompt responses are ""
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then speech recognition start call count equals 1
+  And prompt dialog was not shown
+  And geocode request count equals 1
+  And first geocode query text equals "Kamppi Helsinki"
+
+Scenario: Unsupported speech shows generic unsupported status
+  Given browser user agent is "Mozilla/5.0 Firefox/124.0"
+  And prompt responses are ""
+  And speech recognition scenario is "unsupported"
+  And API mocks are installed
+  When the user triggers voice location
+  Then speech recognition start call count equals 0
+  And status text equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+  And geocode request count equals 0
+
+Scenario: Runtime marker still shows generic unsupported status
+  Given browser user agent is "Mozilla/5.0 (X11; Linux x86_64)"
+  And browser has Firefox runtime marker
+  And prompt responses are ""
+  And speech recognition scenario is "unsupported"
+  And API mocks are installed
+  When the user triggers voice location
+  Then speech recognition start call count equals 0
+  And status text equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+  And geocode request count equals 0
+
 Scenario: Show clear status when microphone permission is denied
   Given prompt responses are ""
   And speech recognition scenario is "error:not-allowed"
@@ -458,6 +558,10 @@ defineFeature(test, featureText, {
     speechScenario: "success",
     speechTranscript: "Kamppi Helsinki",
     apiProfile: "default",
+    shouldStubMicPreflight: true,
+    userAgentOverride:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    hasFirefoxRuntimeMarker: false,
   }),
   stepDefinitions: [
     {
@@ -483,6 +587,24 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given browser user agent is "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.userAgentOverride = args[0];
+      },
+    },
+    {
+      pattern: /^Given microphone preflight is stubbed as granted$/,
+      run: ({ world }) => {
+        world.shouldStubMicPreflight = true;
+      },
+    },
+    {
+      pattern: /^Given browser has Firefox runtime marker$/,
+      run: ({ world }) => {
+        world.hasFirefoxRuntimeMarker = true;
+      },
+    },
+    {
       pattern: /^Given departures API mock profile is "([^"]*)"$/,
       run: ({ args, world }) => {
         world.apiProfile = args[0];
@@ -497,6 +619,13 @@ defineFeature(test, featureText, {
     {
       pattern: /^When the user triggers voice location$/,
       run: async ({ world }) => {
+        if (world.shouldStubMicPreflight) {
+          await installMicrophonePreflightMock(world.page);
+        }
+        if (world.hasFirefoxRuntimeMarker) {
+          await installFirefoxRuntimeMarker(world.page);
+        }
+        await installUserAgentMock(world.page, world.userAgentOverride);
         await installSpeechRecognitionMock(world.page, {
           scenario: world.speechScenario,
           transcript: world.speechTranscript,
@@ -559,6 +688,27 @@ defineFeature(test, featureText, {
       run: async ({ assert, world }) => {
         const promptCalls = await world.page.evaluate(() => window.__promptCalls.length);
         assert.ok(promptCalls > 0);
+      },
+    },
+    {
+      pattern: /^Then prompt dialog was not shown$/,
+      run: async ({ assert, world }) => {
+        const promptCalls = await world.page.evaluate(() => window.__promptCalls.length);
+        assert.equal(promptCalls, 0);
+      },
+    },
+    {
+      pattern: /^Then microphone preflight call count equals (\d+)$/,
+      run: async ({ assert, args, world }) => {
+        const actualCount = await world.page.evaluate(() => Number(window.__voiceMicPreflightCalls || 0));
+        assert.equal(actualCount, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then speech recognition start call count equals (\d+)$/,
+      run: async ({ assert, args, world }) => {
+        const actualCount = await world.page.evaluate(() => Number(window.__speechStartCalls || 0));
+        assert.equal(actualCount, Number(args[0]));
       },
     },
     {

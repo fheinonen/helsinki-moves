@@ -171,11 +171,54 @@
   function getSpeechRecognitionConstructor() {
     if (typeof window.SpeechRecognition === "function") return window.SpeechRecognition;
     if (typeof window.webkitSpeechRecognition === "function") return window.webkitSpeechRecognition;
+    if (typeof window.mozSpeechRecognition === "function") return window.mozSpeechRecognition;
+    if (typeof window.msSpeechRecognition === "function") return window.msSpeechRecognition;
     return null;
   }
 
   function supportsVoiceLocation() {
     return Boolean(getSpeechRecognitionConstructor());
+  }
+
+  function mapMicrophonePreflightError(error) {
+    const errorName = String(error?.name || "")
+      .trim()
+      .toLowerCase();
+    if (errorName === "notallowederror" || errorName === "securityerror") {
+      return createVoiceError("voice_permission_denied", "Microphone permission denied.");
+    }
+    if (
+      errorName === "notfounderror" ||
+      errorName === "devicesnotfounderror" ||
+      errorName === "notreadableerror" ||
+      errorName === "trackstarterror"
+    ) {
+      return createVoiceError("voice_no_microphone", "No microphone available.");
+    }
+    return createVoiceError("voice_not_understood", "Unable to access microphone.");
+  }
+
+  async function requestMicrophonePreflightPermission() {
+    const mediaDevices = navigator?.mediaDevices;
+    if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+      return;
+    }
+
+    let stream = null;
+    try {
+      stream = await mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      throw mapMicrophonePreflightError(error);
+    } finally {
+      const tracks = typeof stream?.getTracks === "function" ? stream.getTracks() : [];
+      for (const track of tracks) {
+        try {
+          track.stop();
+        } catch {
+          // Ignore track cleanup failures.
+        }
+      }
+    }
   }
 
   function mapSpeechError(errorCode) {
@@ -858,10 +901,10 @@
       return null;
     }
 
-    const hint =
-      errorCode === "voice_unsupported"
-        ? "Voice input is limited in this browser. Type your location instead:"
-        : "Could not capture your voice on this device. Type your location:";
+    let hint = "Could not capture your voice on this device. Type your location:";
+    if (errorCode === "voice_unsupported") {
+      hint = "This browser does not support speech recognition. Type your location or line (number or letter) instead:";
+    }
     const input = window.prompt(`${hint}\nExample: Kamppi Helsinki`, "");
     const cleaned = String(input || "").trim();
     return cleaned || null;
@@ -909,6 +952,8 @@
     api.setStatus("Listening... speak now, then pause.");
 
     try {
+      await requestMicrophonePreflightPermission();
+
       if (!supportsVoiceLocation()) {
         const unsupportedError = createVoiceError(
           "voice_unsupported",

@@ -1066,7 +1066,7 @@
     const code = String(error?.code || "").trim();
 
     if (code === "voice_unsupported") {
-      return "Voice location is not supported in this browser.";
+      return "This browser does not support speech recognition. Type your location or line (number or letter) instead.";
     }
     if (code === "voice_permission_denied") {
       return "Microphone permission denied.";

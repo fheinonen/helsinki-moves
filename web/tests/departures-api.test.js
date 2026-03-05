@@ -144,6 +144,22 @@ Scenario: Return stop-mode fallback when nearby stops cannot be grouped
   When the departures API is called
   Then the departures response status is 200
   And the departures payload message is "No nearby bus stops"
+
+Scenario: Line-intent picks the nearest stop with requested line departures
+  Given nearby BUS stops where only the second stop has line "67"
+  And a line-intent departures query with lat "60.17", lon "24.9", mode "BUS", and line "67"
+  When the departures API is called
+  Then the departures response status is 200
+  And the departures payload selected stop id is "HSL:STOP_B"
+  And the first departure line equals "67"
+
+Scenario: Line-intent returns explicit no-match payload when line is unavailable nearby
+  Given nearby BUS stops where no stop has line "67"
+  And a line-intent departures query with lat "60.17", lon "24.9", mode "BUS", and line "67"
+  When the departures API is called
+  Then the departures response status is 200
+  And the departures payload selected stop id is null
+  And the departures payload message is "No nearby departures found for bus 67."
 `;
 
 defineFeature(test, featureText, {
@@ -197,6 +213,22 @@ defineFeature(test, featureText, {
             lon: args[1],
             mode: args[2],
             stopId: args[3],
+          },
+        };
+      },
+    },
+    {
+      pattern:
+        /^Given a line-intent departures query with lat "([^"]*)", lon "([^"]*)", mode "([^"]*)", and line "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.req = {
+          method: "GET",
+          query: {
+            lat: args[0],
+            lon: args[1],
+            mode: args[2],
+            line: args[3],
+            lineIntent: "1",
           },
         };
       },
@@ -365,6 +397,114 @@ defineFeature(test, featureText, {
             ],
           },
         });
+      },
+    },
+    {
+      pattern: /^Given nearby BUS stops where only the second stop has line "([^"]*)"$/,
+      run: ({ args, world }) => {
+        const requestedLine = args[0];
+        world.graphqlRequest = async (_query, variables = {}) => {
+          if (typeof variables.radius === "number") {
+            return {
+              stopsByRadius: {
+                edges: [
+                  createStopEdge({
+                    distance: 35,
+                    stop: {
+                      gtfsId: "HSL:STOP_A",
+                      vehicleMode: "BUS",
+                      name: "Stop A",
+                      code: "A1",
+                    },
+                  }),
+                  createStopEdge({
+                    distance: 85,
+                    stop: {
+                      gtfsId: "HSL:STOP_B",
+                      vehicleMode: "BUS",
+                      name: "Stop B",
+                      code: "B1",
+                    },
+                  }),
+                ],
+              },
+            };
+          }
+
+          const idEntries = Object.entries(variables).filter(([key]) => /^id\d+$/.test(key));
+          const payload = {};
+          for (const [key, stopId] of idEntries) {
+            const alias = `s${key.slice(2)}`;
+            payload[alias] =
+              stopId === "HSL:STOP_A"
+                ? {
+                    name: "Stop A",
+                    platformCode: "1",
+                    stoptimesWithoutPatterns: [createStopTime({ line: "15", seconds: 60 })],
+                  }
+                : {
+                    name: "Stop B",
+                    platformCode: "2",
+                    stoptimesWithoutPatterns: [
+                      createStopTime({ line: requestedLine, seconds: 75 }),
+                      createStopTime({ line: requestedLine, seconds: 180 }),
+                    ],
+                  };
+          }
+          return payload;
+        };
+      },
+    },
+    {
+      pattern: /^Given nearby BUS stops where no stop has line "([^"]*)"$/,
+      run: ({ world }) => {
+        world.graphqlRequest = async (_query, variables = {}) => {
+          if (typeof variables.radius === "number") {
+            return {
+              stopsByRadius: {
+                edges: [
+                  createStopEdge({
+                    distance: 40,
+                    stop: {
+                      gtfsId: "HSL:STOP_A",
+                      vehicleMode: "BUS",
+                      name: "Stop A",
+                      code: "A1",
+                    },
+                  }),
+                  createStopEdge({
+                    distance: 90,
+                    stop: {
+                      gtfsId: "HSL:STOP_B",
+                      vehicleMode: "BUS",
+                      name: "Stop B",
+                      code: "B1",
+                    },
+                  }),
+                ],
+              },
+            };
+          }
+
+          const idEntries = Object.entries(variables).filter(([key]) => /^id\d+$/.test(key));
+          const payload = {};
+          for (const [key, stopId] of idEntries) {
+            const alias = `s${key.slice(2)}`;
+            payload[alias] =
+              stopId === "HSL:STOP_A"
+                ? {
+                    name: "Stop A",
+                    platformCode: "1",
+                    stoptimesWithoutPatterns: [createStopTime({ line: "15", seconds: 60 })],
+                  }
+                : {
+                    name: "Stop B",
+                    platformCode: "2",
+                    stoptimesWithoutPatterns: [createStopTime({ line: "55", seconds: 75 })],
+                  };
+          }
+          return payload;
+        };
       },
     },
     {

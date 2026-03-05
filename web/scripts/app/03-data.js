@@ -474,6 +474,307 @@
     });
   }
 
+  function normalizeVoiceLineToken(rawToken) {
+    const token = String(rawToken || "")
+      .trim()
+      .toUpperCase();
+    if (!token) return "";
+    if (!/^[A-Z0-9]+$/.test(token)) return "";
+    if (token.length > 5) return "";
+    if (!/\d/.test(token) && token.length > 2) return "";
+    return token;
+  }
+
+  function parseVoiceLineIntent(rawTranscript) {
+    const transcript = String(rawTranscript || "").trim();
+    if (!transcript) return null;
+
+    const modeByKeyword = new Map([
+      ["bus", MODE_BUS],
+      ["bussi", MODE_BUS],
+      ["tram", MODE_TRAM],
+      ["ratikka", MODE_TRAM],
+      ["raitiovaunu", MODE_TRAM],
+      ["train", MODE_RAIL],
+      ["juna", MODE_RAIL],
+    ]);
+
+    const tokens = transcript
+      .toLowerCase()
+      .split(/[\s\-–—_/]+/u)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    if (tokens.length === 0) return null;
+
+    const explicitModeToken = tokens.find((token) => modeByKeyword.has(token)) || null;
+    const explicitMode = explicitModeToken ? modeByKeyword.get(explicitModeToken) : null;
+
+    const lineCandidates = tokens
+      .filter((token) => !modeByKeyword.has(token))
+      .map((token) => normalizeVoiceLineToken(token))
+      .filter(Boolean);
+
+    if (explicitMode) {
+      const line = lineCandidates[0] || "";
+      if (!line) return null;
+      return {
+        type: "line-intent",
+        mode: explicitMode,
+        line,
+        explicitMode: true,
+      };
+    }
+
+    if (tokens.length !== 1) {
+      return null;
+    }
+
+    const line = normalizeVoiceLineToken(tokens[0]);
+    if (!line) return null;
+
+    return {
+      type: "line-intent",
+      mode: null,
+      line,
+      explicitMode: false,
+    };
+  }
+
+  function hasMatchingLineDeparture(station, lineToken) {
+    const expectedLine = normalizeVoiceLineToken(lineToken);
+    if (!expectedLine) return false;
+    const departures = Array.isArray(station?.departures) ? station.departures : [];
+
+    return departures.some(
+      (departure) => normalizeVoiceLineToken(departure?.line) === expectedLine
+    );
+  }
+
+  function getSoonestMatchingDepartureMs(station, lineToken) {
+    const expectedLine = normalizeVoiceLineToken(lineToken);
+    if (!expectedLine) return Number.POSITIVE_INFINITY;
+    const departures = Array.isArray(station?.departures) ? station.departures : [];
+    const matchingTimes = departures
+      .filter((departure) => normalizeVoiceLineToken(departure?.line) === expectedLine)
+      .map((departure) => new Date(departure?.departureIso).getTime())
+      .filter(Number.isFinite);
+
+    if (matchingTimes.length === 0) return Number.POSITIVE_INFINITY;
+    return Math.min(...matchingTimes);
+  }
+
+  function getVoiceLineIntentModes(intentMode) {
+    if (intentMode) {
+      return [intentMode];
+    }
+
+    return api
+      .uniqueNonEmptyStrings([state.mode, MODE_BUS, MODE_TRAM, MODE_RAIL])
+      .filter((mode) => isStopMode(mode));
+  }
+
+  function getVoiceLineIntentCoords() {
+    const lat = Number(state.currentCoords?.lat);
+    const lon = Number(state.currentCoords?.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return { lat, lon, fallback: false };
+    }
+
+    return { lat: 60.1699, lon: 24.9384, fallback: true };
+  }
+
+  function buildLineIntentNoMatchStatus(mode, line) {
+    const normalizedLine = normalizeVoiceLineToken(line);
+    if (!mode) {
+      return `No nearby departures found for line ${normalizedLine}.`;
+    }
+    return `No nearby departures found for ${mode} ${normalizedLine}.`;
+  }
+
+  function buildDeparturesRequestParams({
+    lat,
+    lon,
+    mode,
+    results,
+    stopId = null,
+    lines = [],
+    destinations = [],
+    lineIntent = false,
+  }) {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      mode: String(mode || "").toUpperCase(),
+      results: String(results),
+    });
+
+    const normalizedStopId = String(stopId || "").trim();
+    if (normalizedStopId) {
+      params.set("stopId", normalizedStopId);
+    }
+
+    for (const line of api.uniqueNonEmptyStrings(lines.map((value) => normalizeVoiceLineToken(value)))) {
+      params.append("line", line);
+    }
+
+    for (const destination of api.uniqueNonEmptyStrings(destinations)) {
+      params.append("dest", destination);
+    }
+
+    if (lineIntent) {
+      params.set("lineIntent", "1");
+    }
+
+    return params;
+  }
+
+  async function requestDeparturesPayload(options) {
+    const params = buildDeparturesRequestParams(options);
+    const res = await fetchWithRetryOnce(`/api/v1/departures?${params.toString()}`);
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      if (!res.ok) {
+        throw new Error("Request failed");
+      }
+      throw new Error("Unexpected server response.");
+    }
+
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error || "Request failed");
+    }
+
+    return json;
+  }
+
+  function applySuccessfulLoad({ json, requestMode, wasInitialStopModeLoad }) {
+    if (isStopMode(requestMode)) {
+      updateStopModeStateFromResponse(json);
+      api.persistUiState();
+      if (wasInitialStopModeLoad) {
+        api.trackInitialNearestStopResolved(json, requestMode);
+      }
+    }
+
+    state.latestResponse = json;
+    api.render(json);
+    api.setPermissionRequired(false);
+    api.setLastUpdated(new Date());
+    api.setStatus("");
+    api.trackFirstSuccessfulRender(json, requestMode);
+  }
+
+  function compareLineIntentCandidates(a, b) {
+    if (a.departureTimeMs !== b.departureTimeMs) {
+      return a.departureTimeMs - b.departureTimeMs;
+    }
+
+    const aIsCurrentMode = a.mode === state.mode ? 1 : 0;
+    const bIsCurrentMode = b.mode === state.mode ? 1 : 0;
+    if (aIsCurrentMode !== bIsCurrentMode) {
+      return bIsCurrentMode - aIsCurrentMode;
+    }
+
+    return a.distanceMeters - b.distanceMeters;
+  }
+
+  async function resolveVoiceLineIntentAndLoad(transcript, intent) {
+    const requestedLine = normalizeVoiceLineToken(intent?.line);
+    const requestedModes = getVoiceLineIntentModes(intent?.mode);
+    if (!requestedLine || requestedModes.length === 0) {
+      return false;
+    }
+
+    const coords = getVoiceLineIntentCoords();
+    let upstreamFailureCount = 0;
+    let firstUpstreamFailure = null;
+    const requestedCandidates = await Promise.all(
+      requestedModes.map(async (mode) => {
+        try {
+          const json = await requestDeparturesPayload({
+            lat: coords.lat,
+            lon: coords.lon,
+            mode,
+            results: api.getActiveResultsLimit(mode),
+            lines: [requestedLine],
+            lineIntent: true,
+          });
+          const station = json?.station;
+          if (!station || !hasMatchingLineDeparture(station, requestedLine)) {
+            return null;
+          }
+
+          return {
+            mode,
+            json,
+            departureTimeMs: getSoonestMatchingDepartureMs(station, requestedLine),
+            distanceMeters: Number(station?.distanceMeters) || Number.POSITIVE_INFINITY,
+          };
+        } catch (error) {
+          upstreamFailureCount += 1;
+          firstUpstreamFailure ||= error;
+          console.error("voice line-intent request error:", error);
+          return null;
+        }
+      })
+    );
+
+    const candidates = requestedCandidates.filter(Boolean).sort(compareLineIntentCandidates);
+    const winner = candidates[0] || null;
+
+    if (!winner) {
+      if (upstreamFailureCount === requestedModes.length && firstUpstreamFailure) {
+        throw firstUpstreamFailure;
+      }
+      api.reportClientMetric("voice_line_intent_no_match", {
+        line: requestedLine,
+        requestedMode: intent?.mode || "auto",
+      });
+      api.setStatus(buildLineIntentNoMatchStatus(intent?.mode || null, requestedLine));
+      return false;
+    }
+
+    const selectedMode = winner.mode;
+    const json = winner.json;
+    const wasInitialStopModeLoad =
+      isStopMode(selectedMode) && !state.hasCompletedInitialStopModeLoad;
+    state.mode = selectedMode;
+    api.applyModeUiState({ modeOnly: true });
+
+    if (isStopMode(selectedMode)) {
+      updateStopModeStateFromResponse(json);
+      const availableLines = new Set(
+        (state.busFilterOptions.lines || []).map((option) => normalizeVoiceLineToken(option.value))
+      );
+      state.busLineFilters = availableLines.has(requestedLine) ? [requestedLine] : [];
+      state.busDestinationFilters = [];
+      state.busStopMemberFilterId = null;
+      api.persistUiState();
+      if (wasInitialStopModeLoad) {
+        api.trackInitialNearestStopResolved(json, selectedMode);
+      }
+    }
+
+    state.latestResponse = json;
+    api.render(json);
+    if (coords.fallback && !state.currentCoords) {
+      state.currentCoords = { lat: coords.lat, lon: coords.lon };
+      state.currentCoordsTimestampMs = Date.now();
+      state.currentCoordsAccuracyMeters = null;
+    }
+    api.setResolvedLocationHint(null);
+    api.setPermissionRequired(false);
+    api.setLastUpdated(new Date());
+    api.setStatus("");
+    api.trackFirstSuccessfulRender(json, selectedMode);
+    api.reportClientMetric("voice_line_intent_resolved", {
+      line: requestedLine,
+      resolvedMode: selectedMode,
+      selectedStopId: String(json?.selectedStopId || ""),
+    });
+    return true;
+  }
+
   async function resolveVoiceLocationQuery(rawQuery) {
     const query = String(rawQuery || "").trim();
     if (query.length < constants.VOICE_QUERY_MIN_LENGTH) {
@@ -565,6 +866,21 @@
     const transcript = String(rawQuery || "").trim();
     hideVoiceLocationChoices();
     api.setStatus(`Looking up "${api.safeString(transcript, 80)}"...`);
+
+    const lineIntent = parseVoiceLineIntent(transcript);
+    if (lineIntent) {
+      api.reportClientMetric("voice_line_intent_detected", {
+        line: lineIntent.line,
+        requestedMode: lineIntent.mode || "auto",
+        explicitMode: lineIntent.explicitMode ? "1" : "0",
+      });
+      return resolveVoiceLineIntentAndLoad(transcript, lineIntent);
+    }
+
+    api.reportClientMetric("voice_line_intent_parse_failed", {
+      transcriptLength: transcript.length,
+    });
+
     const location = await resolveVoiceLocationQuery(transcript);
     api.setResolvedLocationHint({
       query: transcript,
@@ -644,55 +960,29 @@
     api.setStatus("Loading departures...");
 
     try {
-      const params = new URLSearchParams({
-        lat: String(lat),
-        lon: String(lon),
-        mode: requestMode.toUpperCase(),
-        results: String(api.getActiveResultsLimit(requestMode)),
-      });
-
       // Keep first stop-mode request nearest-first; persisted stop context is only
       // restored if user explicitly re-selects it during this session.
       const skipPersistedStopContext =
         isStopMode(requestMode) &&
         (state.deferInitialStopContext || !state.hasCompletedInitialStopModeLoad);
-      if (isStopMode(requestMode) && requestBusStopId && !skipPersistedStopContext) {
-        params.set("stopId", requestBusStopId);
-      }
+      const requestedStopId =
+        isStopMode(requestMode) && requestBusStopId && !skipPersistedStopContext
+          ? requestBusStopId
+          : null;
 
-      const res = await fetchWithRetryOnce(`/api/v1/departures?${params.toString()}`);
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        if (!res.ok) {
-          throw new Error("Request failed");
-        }
-        throw new Error("Unexpected server response.");
-      }
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json.error || "Request failed");
-      }
+      const json = await requestDeparturesPayload({
+        lat,
+        lon,
+        mode: requestMode,
+        results: api.getActiveResultsLimit(requestMode),
+        stopId: requestedStopId,
+      });
 
       if (loadToken !== state.latestLoadToken) {
         return;
       }
 
-      if (isStopMode(requestMode)) {
-        updateStopModeStateFromResponse(json);
-        api.persistUiState();
-        if (wasInitialStopModeLoad) {
-          api.trackInitialNearestStopResolved(json, requestMode);
-        }
-      }
-
-      state.latestResponse = json;
-      api.render(json);
-      api.setPermissionRequired(false);
-      api.setLastUpdated(new Date());
-      api.setStatus("");
-      api.trackFirstSuccessfulRender(json, requestMode);
+      applySuccessfulLoad({ json, requestMode, wasInitialStopModeLoad });
     } catch (err) {
       if (loadToken !== state.latestLoadToken) {
         return;
@@ -1022,6 +1312,11 @@
     fetchWithRetryOnce,
     updateStopModeStateFromResponse,
     buildFilterOptionsFromDepartures,
+    normalizeVoiceLineToken,
+    parseVoiceLineIntent,
+    resolveVoiceLineIntentAndLoad,
+    buildDeparturesRequestParams,
+    requestDeparturesPayload,
     load,
     requestLocationAndLoad,
     requestVoiceLocationAndLoad,

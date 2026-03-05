@@ -61,6 +61,46 @@ Scenario: Mode stop selector ignores stops without gtfs id
   Given nearby data with one missing stop id and one valid bus stop
   When mode stop selector runs for mode "BUS"
   Then mode stop selector count equals 1
+
+Scenario: Parse departures request accepts line intent keyword flag
+  Given departures query with line-intent keyword flag
+  When departures request helper runs
+  Then departures request helper has no error
+  And parsed line-intent flag equals true
+
+Scenario: Parse departures request keeps line intent false by default
+  Given departures query with valid coordinates and stopId padding
+  When departures request helper runs
+  Then departures request helper has no error
+  And parsed line-intent flag equals false
+
+Scenario: Parse departures request accepts line intent boolean flag
+  Given departures query with line-intent boolean flag
+  When departures request helper runs
+  Then departures request helper has no error
+  And parsed line-intent flag equals true
+
+Scenario: Line-intent no-nearby message falls back to generic line label
+  Given line-intent no-nearby message mode "BUS" and empty line token
+  When line-intent no-nearby message helper runs
+  Then line-intent no-nearby message equals "No nearby departures found for bus line."
+
+Scenario: Line-intent no-nearby message uses rail mode label
+  Given line-intent no-nearby message mode "RAIL" with line token "A"
+  When line-intent no-nearby message helper runs
+  Then line-intent no-nearby message equals "No nearby departures found for rail A."
+
+Scenario: Line matching helper detects matching requested line
+  Given departures list with lines "15|67"
+  And requested line filters "67"
+  When line matching helper runs
+  Then line matching helper output equals true
+
+Scenario: Line matching helper returns false with empty requested lines
+  Given departures list with lines "15|67"
+  And requested line filters ""
+  When line matching helper runs
+  Then line matching helper output equals false
 `;
 
 defineFeature(test, featureText, {
@@ -255,6 +295,92 @@ defineFeature(test, featureText, {
       pattern: /^Then mode stop selector count equals (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.output.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Given departures query with line-intent keyword flag$/,
+      run: ({ world }) => {
+        world.input.query = {
+          lat: "60.17",
+          lon: "24.93",
+          mode: "BUS",
+          line: "67",
+          intent: "line",
+        };
+      },
+    },
+    {
+      pattern: /^Then parsed line-intent flag equals (true|false)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output?.params?.lineIntentRequested, args[0] === "true");
+      },
+    },
+    {
+      pattern: /^Given departures query with line-intent boolean flag$/,
+      run: ({ world }) => {
+        world.input.query = {
+          lat: "60.17",
+          lon: "24.93",
+          mode: "BUS",
+          line: "67",
+          lineIntent: "true",
+        };
+      },
+    },
+    {
+      pattern: /^Given line-intent no-nearby message mode "([^"]*)" and empty line token$/,
+      run: ({ args, world }) => {
+        world.input.mode = args[0];
+        world.input.requestedLines = [""];
+      },
+    },
+    {
+      pattern: /^Given line-intent no-nearby message mode "([^"]*)" with line token "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.input.mode = args[0];
+        world.input.requestedLines = [args[1]];
+      },
+    },
+    {
+      pattern: /^When line-intent no-nearby message helper runs$/,
+      run: ({ world }) => {
+        world.output = departuresApi.buildNoNearbyLineIntentMessage(
+          world.input.mode,
+          world.input.requestedLines
+        );
+      },
+    },
+    {
+      pattern: /^Then line-intent no-nearby message equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output, args[0]);
+      },
+    },
+    {
+      pattern: /^Given departures list with lines "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.input.departures = args[0].split("|").map((line) => ({ line }));
+      },
+    },
+    {
+      pattern: /^Given requested line filters "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.input.requestedLines = args[0] ? args[0].split("|") : [];
+      },
+    },
+    {
+      pattern: /^When line matching helper runs$/,
+      run: ({ world }) => {
+        world.output = departuresApi.hasAnyMatchingLine(
+          world.input.departures,
+          world.input.requestedLines
+        );
+      },
+    },
+    {
+      pattern: /^Then line matching helper output equals (true|false)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output, args[0] === "true");
       },
     },
   ],

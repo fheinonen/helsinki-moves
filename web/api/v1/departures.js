@@ -157,12 +157,49 @@ function parseRequiredCoordinate(rawValue) {
   return Number.isFinite(rawValue) ? rawValue : null;
 }
 
+function parseLineIntentRequested(query) {
+  const lineIntentRaw = query?.lineIntent;
+  const intentRaw = query?.intent;
+  const values = [lineIntentRaw, intentRaw].flat();
+
+  return values.some((value) => {
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "line";
+  });
+}
+
+function normalizeLineToken(value) {
+  return String(value || "").trim();
+}
+
+function buildNoNearbyLineIntentMessage(mode, requestedLines) {
+  const modeLabel =
+    mode === MODE_RAIL ? "rail" : mode === MODE_TRAM ? "tram" : mode === MODE_METRO ? "metro" : "bus";
+  const lineLabel = normalizeLineToken(requestedLines?.[0]) || "line";
+
+  return `No nearby departures found for ${modeLabel} ${lineLabel}.`;
+}
+
+function noNearbyLineIntentResponse(mode, stops, requestedLines) {
+  return {
+    mode,
+    station: null,
+    stops: mapSelectableStops(stops),
+    selectedStopId: null,
+    filterOptions: { lines: [], destinations: [] },
+    message: buildNoNearbyLineIntentMessage(mode, requestedLines),
+  };
+}
+
 function parseDeparturesRequest(query) {
   const lat = parseRequiredCoordinate(query.lat);
   const lon = parseRequiredCoordinate(query.lon);
   const mode = parseRequestedMode(query.mode);
   const requestedLines = parseMultiQueryParam(query.line);
   const requestedDestinations = parseMultiQueryParam(query.dest);
+  const lineIntentRequested = parseLineIntentRequested(query);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     return { error: "Invalid lat/lon" };
@@ -189,6 +226,7 @@ function parseDeparturesRequest(query) {
       mode,
       requestedLines,
       requestedDestinations,
+      lineIntentRequested,
       requestedResultLimit,
       requestedStopId: typeof query.stopId === "string" ? query.stopId.trim() : "",
     },
@@ -226,28 +264,8 @@ function mapSelectableStops(stops) {
   }));
 }
 
-async function buildStopModeResponse({
-  graphqlRequest,
-  mode,
-  upstreamMode,
-  modeStops,
-  requestedResultLimit,
-  requestedLines,
-  requestedDestinations,
-  requestedStopId,
-}) {
-  const stops = buildSelectableStops(modeStops);
-  const selectedStop = selectRequestedStop(stops, requestedStopId);
-  if (!selectedStop) {
-    return noNearbyStopModeResponse(mode);
-  }
-
-  const stopIds = selectedStop.memberStopIds || [selectedStop.id];
-  const { query, variables, aliases } = buildMultiStopDeparturesQuery(stopIds, requestedResultLimit);
-  const multiStopData = await graphqlRequest(query, variables);
-  const stopDataList = aliases.map((alias) => ({ stop: multiStopData?.[alias] || null }));
-
-  const allDepartures = filterUpcoming(
+function parseStopDataDepartures(stopDataList, upstreamMode) {
+  return filterUpcoming(
     dedupeStopDepartures(
       stopDataList.flatMap((stopData) => {
         const items = stopData?.stop?.stoptimesWithoutPatterns || [];
@@ -257,6 +275,96 @@ async function buildStopModeResponse({
       })
     )
   );
+}
+
+async function fetchDeparturesForSelectableStop({
+  graphqlRequest,
+  selectedStop,
+  upstreamMode,
+  requestedResultLimit,
+}) {
+  const stopIds = selectedStop.memberStopIds || [selectedStop.id];
+  const departuresLimit = Math.max(24, requestedResultLimit);
+  const { query, variables, aliases } = buildMultiStopDeparturesQuery(stopIds, departuresLimit);
+  const multiStopData = await graphqlRequest(query, variables);
+  const stopDataList = aliases.map((alias) => ({ stop: multiStopData?.[alias] || null }));
+  return parseStopDataDepartures(stopDataList, upstreamMode);
+}
+
+function hasAnyMatchingLine(departures, requestedLines) {
+  const requestedLineSet = new Set((requestedLines || []).map((value) => normalizeLineToken(value)));
+  if (requestedLineSet.size === 0) return false;
+
+  return departures.some((departure) => requestedLineSet.has(normalizeLineToken(departure?.line)));
+}
+
+async function selectLineIntentStop({
+  graphqlRequest,
+  stops,
+  upstreamMode,
+  requestedResultLimit,
+  requestedLines,
+}) {
+  for (const stop of stops) {
+    const allDepartures = await fetchDeparturesForSelectableStop({
+      graphqlRequest,
+      selectedStop: stop,
+      upstreamMode,
+      requestedResultLimit,
+    });
+    if (!hasAnyMatchingLine(allDepartures, requestedLines)) {
+      continue;
+    }
+    return { selectedStop: stop, allDepartures };
+  }
+
+  return null;
+}
+
+async function buildStopModeResponse({
+  graphqlRequest,
+  mode,
+  upstreamMode,
+  modeStops,
+  requestedResultLimit,
+  requestedLines,
+  requestedDestinations,
+  requestedStopId,
+  lineIntentRequested,
+}) {
+  const stops = buildSelectableStops(modeStops);
+  let selectedStop = selectRequestedStop(stops, requestedStopId);
+  let allDepartures = [];
+
+  if (!selectedStop) {
+    return noNearbyStopModeResponse(mode);
+  }
+
+  const shouldResolveByLineIntent =
+    lineIntentRequested && !requestedStopId && Array.isArray(requestedLines) && requestedLines.length > 0;
+
+  if (shouldResolveByLineIntent) {
+    const resolvedStop = await selectLineIntentStop({
+      graphqlRequest,
+      stops,
+      upstreamMode,
+      requestedResultLimit,
+      requestedLines,
+    });
+    if (!resolvedStop) {
+      return noNearbyLineIntentResponse(mode, stops, requestedLines);
+    }
+
+    selectedStop = resolvedStop.selectedStop;
+    allDepartures = resolvedStop.allDepartures;
+  } else {
+    allDepartures = await fetchDeparturesForSelectableStop({
+      graphqlRequest,
+      selectedStop,
+      upstreamMode,
+      requestedResultLimit,
+    });
+  }
 
   const departures = filterDeparturesBySelections(
     allDepartures,
@@ -298,6 +406,7 @@ function createDeparturesHandler({
       requestedDestinations,
       requestedResultLimit,
       requestedStopId,
+      lineIntentRequested,
     } = parsedRequest.params;
 
     try {
@@ -324,6 +433,7 @@ function createDeparturesHandler({
           requestedLines,
           requestedDestinations,
           requestedStopId,
+          lineIntentRequested,
         })
       );
     } catch (error) {
@@ -348,11 +458,19 @@ module.exports._private = {
   isStopMode,
   getUpstreamMode,
   noNearbyStopModeResponse,
+  parseLineIntentRequested,
+  normalizeLineToken,
+  buildNoNearbyLineIntentMessage,
+  noNearbyLineIntentResponse,
   parseRequiredCoordinate,
   parseDeparturesRequest,
   selectRequestedStop,
   buildStopModeStation,
   mapSelectableStops,
+  parseStopDataDepartures,
+  fetchDeparturesForSelectableStop,
+  hasAnyMatchingLine,
+  selectLineIntentStop,
   buildStopModeResponse,
   createDeparturesHandler,
 };

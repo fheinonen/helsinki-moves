@@ -5,8 +5,121 @@ function nextIso(minutesFromNow) {
   return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
 }
 
-function buildDeparturesPayload(requestUrl) {
+function createStopModePayload({ stopName, selectedStopId, stopCode, line, destination, departureMinutes }) {
+  return {
+    station: {
+      stopName,
+      distanceMeters: 210,
+      stopCode,
+      departures: [
+        {
+          line,
+          destination,
+          departureIso: nextIso(departureMinutes),
+        },
+      ],
+    },
+    stops: [
+      {
+        id: selectedStopId,
+        name: stopName,
+        code: stopCode,
+        stopCodes: [stopCode],
+        distanceMeters: 210,
+      },
+    ],
+    selectedStopId,
+    filterOptions: {
+      lines: [{ value: line, count: 1 }],
+      destinations: [{ value: destination, count: 1 }],
+    },
+  };
+}
+
+function buildDeparturesPayload(requestUrl, profile = "default") {
   const mode = String(requestUrl.searchParams.get("mode") || "RAIL").toUpperCase();
+  const line = String(requestUrl.searchParams.get("line") || "").trim();
+  const lineIntent = ["1", "true", "yes", "line"].includes(
+    String(requestUrl.searchParams.get("lineIntent") || "").toLowerCase()
+  );
+
+  if (lineIntent && line) {
+    if (profile === "line-intent-no-match" && mode === "TRAM" && line === "9") {
+      return {
+        mode: "TRAM",
+        station: null,
+        stops: [],
+        selectedStopId: null,
+        filterOptions: { lines: [], destinations: [] },
+        message: "No nearby departures found for tram 9.",
+      };
+    }
+
+    if (profile === "line-intent-multi-mode-67" && line === "67") {
+      if (mode === "BUS") {
+        return createStopModePayload({
+          stopName: "Bus 67 Stop",
+          selectedStopId: "HSL:BUS67",
+          stopCode: "B67",
+          line: "67",
+          destination: "Pasila",
+          departureMinutes: 5,
+        });
+      }
+      if (mode === "TRAM") {
+        return createStopModePayload({
+          stopName: "Tram 67 Stop",
+          selectedStopId: "HSL:TRAM67",
+          stopCode: "T67",
+          line: "67",
+          destination: "Kamppi",
+          departureMinutes: 2,
+        });
+      }
+      return {
+        mode,
+        station: null,
+        stops: [],
+        selectedStopId: null,
+        filterOptions: { lines: [], destinations: [] },
+        message: `No nearby departures found for ${mode.toLowerCase()} ${line}.`,
+      };
+    }
+
+    if (mode === "BUS" && line === "67") {
+      return createStopModePayload({
+        stopName: "Bus 67 Stop",
+        selectedStopId: "HSL:BUS67",
+        stopCode: "B67",
+        line: "67",
+        destination: "Pasila",
+        departureMinutes: 3,
+      });
+    }
+
+    if (mode === "TRAM" && line === "9") {
+      return createStopModePayload({
+        stopName: "Tram 9 Stop",
+        selectedStopId: "HSL:TRAM9",
+        stopCode: "T9",
+        line: "9",
+        destination: "Kallio",
+        departureMinutes: 4,
+      });
+    }
+
+    if (mode === "RAIL" && line === "A") {
+      return createStopModePayload({
+        stopName: "A Train Station",
+        selectedStopId: "HSL:RAILA",
+        stopCode: "A1",
+        line: "A",
+        destination: "Helsinki",
+        departureMinutes: 6,
+      });
+    }
+  }
+
   const primaryLine = mode === "TRAM" ? "4" : mode === "METRO" ? "M1" : mode === "BUS" ? "550" : "I";
 
   return {
@@ -55,7 +168,7 @@ function buildDeparturesPayload(requestUrl) {
   };
 }
 
-async function installApiMocks(page) {
+async function installApiMocks(page, profile = "default") {
   const calls = {
     departures: [],
     geocode: [],
@@ -72,7 +185,7 @@ async function installApiMocks(page) {
         status: 200,
         contentType: "application/json",
         headers: { "cache-control": "no-store" },
-        body: JSON.stringify(buildDeparturesPayload(requestUrl)),
+        body: JSON.stringify(buildDeparturesPayload(requestUrl, profile)),
       });
       return;
     }
@@ -133,9 +246,10 @@ async function installPromptMock(page, responses) {
   );
 }
 
-async function installSpeechRecognitionMock(page, scenario) {
-  await page.addInitScript((mockScenario) => {
-    const scenarioValue = String(mockScenario || "success");
+async function installSpeechRecognitionMock(page, { scenario, transcript }) {
+  await page.addInitScript((mockConfig) => {
+    const scenarioValue = String(mockConfig?.scenario || "success");
+    const transcriptValue = String(mockConfig?.transcript || "Kamppi Helsinki");
 
     if (scenarioValue === "unsupported") {
       try {
@@ -191,7 +305,7 @@ async function installSpeechRecognitionMock(page, scenario) {
             return;
           }
 
-          const alternative = { transcript: "Kamppi Helsinki" };
+          const alternative = { transcript: transcriptValue };
           const result = [alternative];
           result.isFinal = true;
           const results = [result];
@@ -211,11 +325,83 @@ async function installSpeechRecognitionMock(page, scenario) {
 
     window.SpeechRecognition = MockSpeechRecognition;
     window.webkitSpeechRecognition = MockSpeechRecognition;
-  }, scenario);
+  }, { scenario, transcript });
 }
 
 const featureText = `
 Feature: Voice location
+
+Scenario: Detect bus line intent in English
+  Given prompt responses are ""
+  And speech transcript is "Bus 67"
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 0
+  And departures request count is at least 1
+  And first departures mode query equals "BUS"
+  And first departures line query equals "67"
+  And selected stop label equals "Bus 67 Stop"
+  And current URL mode query equals "bus"
+  And current URL line query equals "67"
+
+Scenario: Detect tram line intent in Finnish suffix form
+  Given prompt responses are ""
+  And speech transcript is "9-ratikka"
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 0
+  And first departures mode query equals "TRAM"
+  And first departures line query equals "9"
+  And selected stop label equals "Tram 9 Stop"
+  And current URL mode query equals "tram"
+  And current URL line query equals "9"
+
+Scenario: Detect rail line intent with Finnish phrasing
+  Given prompt responses are ""
+  And speech transcript is "A-juna"
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 0
+  And first departures mode query equals "RAIL"
+  And first departures line query equals "A"
+  And selected stop label equals "A Train Station"
+  And current URL line query equals "A"
+
+Scenario: Mode-less line utterance resolves with nearest upcoming mode winner
+  Given prompt responses are ""
+  And speech transcript is "67"
+  And speech recognition scenario is "success"
+  And departures API mock profile is "line-intent-multi-mode-67"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 0
+  And departures request count is at least 2
+  And selected stop label equals "Tram 67 Stop"
+  And current URL mode query equals "tram"
+  And current URL line query equals "67"
+
+Scenario: No matching nearby line departure shows explicit status
+  Given prompt responses are ""
+  And speech transcript is "Tram 9"
+  And speech recognition scenario is "success"
+  And departures API mock profile is "line-intent-no-match"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 0
+  And status text equals "No nearby departures found for tram 9."
+
+Scenario: Location utterance keeps geocode path
+  Given prompt responses are ""
+  And speech transcript is "Kamppi Helsinki"
+  And speech recognition scenario is "success"
+  And API mocks are installed
+  When the user triggers voice location
+  Then geocode request count equals 1
+  And departures request count equals 1
+  And resolved location text contains "Kamppi Helsinki"
 
 Scenario: Fall back to typed query when speech recognition is unsupported
   Given prompt responses are "Kamppi Helsinki"
@@ -249,6 +435,7 @@ Scenario: Use speech transcript when recognition succeeds
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 1
+  And departures request count equals 1
   And resolved location text contains "Kamppi Helsinki"
 `;
 
@@ -257,6 +444,9 @@ defineFeature(test, featureText, {
   createWorld: ({ fixtures }) => ({
     page: fixtures.page,
     calls: null,
+    speechScenario: "success",
+    speechTranscript: "Kamppi Helsinki",
+    apiProfile: "default",
   }),
   stepDefinitions: [
     {
@@ -270,20 +460,36 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given speech transcript is "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.speechTranscript = args[0];
+      },
+    },
+    {
       pattern: /^Given speech recognition scenario is "([^"]*)"$/,
-      run: async ({ args, world }) => {
-        await installSpeechRecognitionMock(world.page, args[0]);
+      run: ({ args, world }) => {
+        world.speechScenario = args[0];
+      },
+    },
+    {
+      pattern: /^Given departures API mock profile is "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.apiProfile = args[0];
       },
     },
     {
       pattern: /^Given API mocks are installed$/,
       run: async ({ world }) => {
-        world.calls = await installApiMocks(world.page);
+        world.calls = await installApiMocks(world.page, world.apiProfile);
       },
     },
     {
       pattern: /^When the user triggers voice location$/,
       run: async ({ world }) => {
+        await installSpeechRecognitionMock(world.page, {
+          scenario: world.speechScenario,
+          transcript: world.speechTranscript,
+        });
         await world.page.goto("/");
         await expect(world.page.locator("#voiceLocateBtn")).toBeEnabled();
         await world.page.locator("#voiceLocateBtn").click();
@@ -297,6 +503,38 @@ defineFeature(test, featureText, {
           await expect.poll(() => world.calls.geocode.length).toBe(expectedCount);
         }
         assert.equal(world.calls.geocode.length, expectedCount);
+      },
+    },
+    {
+      pattern: /^Then departures request count equals (\d+)$/,
+      run: async ({ assert, args, world }) => {
+        const expectedCount = Number(args[0]);
+        if (expectedCount > 0) {
+          await expect.poll(() => world.calls.departures.length).toBe(expectedCount);
+        }
+        assert.equal(world.calls.departures.length, expectedCount);
+      },
+    },
+    {
+      pattern: /^Then departures request count is at least (\d+)$/,
+      run: async ({ assert, args, world }) => {
+        const minimum = Number(args[0]);
+        await expect.poll(() => world.calls.departures.length >= minimum).toBe(true);
+        assert.ok(world.calls.departures.length >= minimum);
+      },
+    },
+    {
+      pattern: /^Then first departures mode query equals "([^"]*)"$/,
+      run: async ({ assert, args, world }) => {
+        await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
+        assert.equal(String(world.calls.departures[0]?.mode || "").toUpperCase(), args[0]);
+      },
+    },
+    {
+      pattern: /^Then first departures line query equals "([^"]*)"$/,
+      run: async ({ assert, args, world }) => {
+        await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
+        assert.equal(String(world.calls.departures[0]?.line || ""), args[0]);
       },
     },
     {
@@ -316,6 +554,27 @@ defineFeature(test, featureText, {
       pattern: /^Then first geocode query text equals "([^"]*)"$/,
       run: async ({ assert, args, world }) => {
         assert.equal(world.calls.geocode[0]?.text, args[0]);
+      },
+    },
+    {
+      pattern: /^Then selected stop label equals "([^"]*)"$/,
+      run: async ({ args, world }) => {
+        await expect(world.page.locator("#busStopSelectLabel")).toHaveText(args[0]);
+      },
+    },
+    {
+      pattern: /^Then current URL mode query equals "([^"]*)"$/,
+      run: async ({ assert, args, world }) => {
+        const url = new URL(world.page.url());
+        assert.equal(url.searchParams.get("mode"), args[0]);
+      },
+    },
+    {
+      pattern: /^Then current URL line query equals "([^"]*)"$/,
+      run: async ({ assert, args, world }) => {
+        const url = new URL(world.page.url());
+        const lines = url.searchParams.getAll("line");
+        assert.deepEqual(lines, [args[0]]);
       },
     },
     {

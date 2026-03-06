@@ -63,7 +63,7 @@ with `type: "metric"` and `context.metricName`.
 From `web/`:
 
 1. `cp .env.example .env`
-2. Set `DIGITRANSIT_API_KEY` in `.env`
+2. Set `DIGITRANSIT_API_KEY`, `AZURE_SPEECH_KEY`, and `AZURE_SPEECH_REGION` in `.env`
 3. `npm install`
 4. `npm run build`
 5. Run `vercel dev`
@@ -87,7 +87,7 @@ From repository root:
 
 1. Import repository to Vercel.
 2. Set **Root Directory** to `web`.
-3. Add environment variable `DIGITRANSIT_API_KEY`.
+3. Add environment variables `DIGITRANSIT_API_KEY`, `AZURE_SPEECH_KEY`, and `AZURE_SPEECH_REGION`.
 4. Deploy.
 
 Runtime: Node.js `24.x` (`web/package.json`).

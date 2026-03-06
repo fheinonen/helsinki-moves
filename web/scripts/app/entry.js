@@ -1,3 +1,4 @@
+import "./00-azure-speech.js";
 import "./01-state.js";
 import "./02-ui.js";
 import "./03-data.js";

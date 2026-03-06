@@ -1068,6 +1068,9 @@
     if (code === "voice_unsupported") {
       return "This browser does not support speech recognition. Type your location or line (number or letter) instead.";
     }
+    if (code === "voice_service_unavailable") {
+      return "Voice transcription is unavailable right now. Type your location or line instead.";
+    }
     if (code === "voice_permission_denied") {
       return "Microphone permission denied.";
     }

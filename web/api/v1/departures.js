@@ -514,6 +514,7 @@ module.exports._private = {
   buildStopModeStation,
   mapSelectableStops,
   parseStopDataDepartures,
+  fetchDeparturesByStopIds,
   fetchDeparturesForSelectableStop,
   hasAnyMatchingLine,
   selectLineIntentStop,

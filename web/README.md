@@ -15,6 +15,7 @@
 - `assets/icons/` app icons
 - `api/v1/departures.js` departures Vercel serverless API
 - `api/v1/client-error.js` client error report API
+- `api/v1/speech-token.js` Azure Speech token broker API
 - `api/lib/digitransit.js` Digitransit GraphQL client + query helpers
 - `api/lib/departures-utils.js` shared departures parsing/filtering utilities
 - `vercel.json` Vercel config
@@ -27,6 +28,8 @@
    - `cp .env.example .env`
 3. Set your key in `.env`:
    - `DIGITRANSIT_API_KEY=...`
+   - `AZURE_SPEECH_KEY=...`
+   - `AZURE_SPEECH_REGION=...`
 4. Install dependencies and build assets:
    - `npm install`
    - `npm run build`
@@ -68,6 +71,8 @@ Target a single engine:
 3. Set **Root Directory** to `web`.
 4. Add environment variable:
    - `DIGITRANSIT_API_KEY`
+   - `AZURE_SPEECH_KEY`
+   - `AZURE_SPEECH_REGION`
 5. Deploy.
 
 Vercel runs `npm run build` (configured in `vercel.json`) before deployment.
@@ -84,6 +89,7 @@ Vercel runs `npm run build` (configured in `vercel.json`) before deployment.
 - BUS/TRAM/METRO modes support `stopId`, `line`, and `dest` query filters.
 - Metro mode is mapped to Digitransit's upstream `SUBWAY` route mode.
 - Frontend also posts sanitized client errors to `/api/v1/client-error`.
+- Frontend prefers Azure Speech transcription via `/api/v1/speech-token` and falls back to browser speech recognition when Azure is unavailable.
 - Frontend also emits sampled `type: "metric"` events to `/api/v1/client-error` with:
   - `context.metricName`: `first_successful_render`
   - `context.metricName`: `initial_nearest_stop_resolved`

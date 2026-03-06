@@ -553,6 +553,11 @@ Scenario: Dedupe helper returns empty list for null input
   Given dedupe helper input is null
   When stop departures dedupe helper executes
   Then dedupe helper output count equals 0
+
+Scenario: Fetch departures by stop ids returns empty map for blank input
+  Given departures-by-stop helper input is blank
+  When departures-by-stop helper executes
+  Then departures-by-stop helper output size equals 0
 `;
 
 defineFeature(test, departuresHelpersFeature, {
@@ -1019,6 +1024,31 @@ defineFeature(test, departuresHelpersFeature, {
       pattern: /^Then dedupe helper output count equals (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.output.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Given departures-by-stop helper input is blank$/,
+      run: ({ world }) => {
+        world.input.departuresByStopParams = {
+          graphqlRequest: async () => {
+            throw new Error("graphqlRequest should not run for blank stop ids");
+          },
+          stopIds: [" ", ""],
+          upstreamMode: "BUS",
+          requestedResultLimit: 8,
+        };
+      },
+    },
+    {
+      pattern: /^When departures-by-stop helper executes$/,
+      run: async ({ world }) => {
+        world.output = await departuresApi.fetchDeparturesByStopIds(world.input.departuresByStopParams);
+      },
+    },
+    {
+      pattern: /^Then departures-by-stop helper output size equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output.size, Number(args[0]));
       },
     },
   ],

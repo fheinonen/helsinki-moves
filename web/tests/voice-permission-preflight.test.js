@@ -16,6 +16,15 @@ Scenario: Request microphone permission before Firefox-style start failure fallb
   Then microphone permission preflight call count equals 1
   And typed fallback prompt call count equals 1
 
+Scenario: Use unsupported-browser fallback when speech start reports NotSupportedError on Edge macOS
+  Given voice-location data API is booted
+  And browser user agent is "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+  And speech recognition start throws "NotSupportedError"
+  And typed fallback prompt returns ""
+  When voice location is requested
+  Then last prompt message equals "This browser does not support speech recognition. Type your location or line (number or letter) instead:\\nExample: Kamppi Helsinki, A-train, bus 52, 200"
+  And last status equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+
 Scenario: Request microphone permission before unsupported-browser fallback
   Given voice-location data API is booted
   And speech recognition is unsupported

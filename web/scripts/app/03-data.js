@@ -168,6 +168,10 @@
     ]);
   }
 
+  function supportsAzureVoiceLocation() {
+    return typeof window.HMApp?.azureSpeech?.recognizeOnce === "function";
+  }
+
   function getSpeechRecognitionConstructor() {
     if (typeof window.SpeechRecognition === "function") return window.SpeechRecognition;
     if (typeof window.webkitSpeechRecognition === "function") return window.webkitSpeechRecognition;
@@ -178,6 +182,48 @@
 
   function supportsVoiceLocation() {
     return Boolean(getSpeechRecognitionConstructor());
+  }
+
+  async function requestAzureSpeechToken() {
+    let res;
+
+    try {
+      res = await fetchWithRetryOnce("/api/v1/speech-token", { method: "GET" });
+    } catch {
+      throw createVoiceError(
+        "voice_service_unavailable",
+        "Could not start voice transcription."
+      );
+    }
+
+    if (!(res.headers.get("content-type") || "").includes("application/json")) {
+      throw createVoiceError(
+        "voice_service_unavailable",
+        "Could not start voice transcription."
+      );
+    }
+
+    const json = await res.json();
+    if (!res.ok) {
+      const message = String(json?.error || "").trim();
+      throw createVoiceError(
+        "voice_service_unavailable",
+        message || "Could not start voice transcription."
+      );
+    }
+
+    const token = String(json?.token || "").trim();
+    const region = String(json?.region || "")
+      .trim()
+      .toLowerCase();
+    if (!token || !region) {
+      throw createVoiceError(
+        "voice_service_unavailable",
+        "Could not start voice transcription."
+      );
+    }
+
+    return { token, region };
   }
 
   function mapMicrophonePreflightError(error) {
@@ -238,6 +284,99 @@
       return createVoiceError("voice_no_speech", "No speech detected.");
     }
     return createVoiceError("voice_not_understood", "Voice recognition failed.");
+  }
+
+  function mapSpeechStartError(error) {
+    const errorName = String(error?.name || "")
+      .trim()
+      .toLowerCase();
+    if (errorName === "notsupportederror") {
+      return createVoiceError("voice_unsupported", "Voice recognition not supported.");
+    }
+    if (errorName === "notallowederror" || errorName === "securityerror") {
+      return createVoiceError("voice_permission_denied", "Microphone permission denied.");
+    }
+    return createVoiceError("voice_not_understood", "Unable to start voice recognition.");
+  }
+
+  function mapAzureSpeechCancellation(result) {
+    const details = String(result?.errorDetails || "").trim();
+    const normalizedDetails = details.toLowerCase();
+    if (
+      normalizedDetails.includes("token") ||
+      normalizedDetails.includes("subscription") ||
+      normalizedDetails.includes("authentication") ||
+      normalizedDetails.includes("forbidden") ||
+      normalizedDetails.includes("unauthorized")
+    ) {
+      return createVoiceError(
+        "voice_service_unavailable",
+        "Could not start voice transcription."
+      );
+    }
+    if (normalizedDetails.includes("network") || normalizedDetails.includes("connection")) {
+      return createVoiceError("voice_recognition_network", "Voice recognition network error.");
+    }
+    return createVoiceError("voice_not_understood", details || "Voice recognition failed.");
+  }
+
+  async function captureAzureVoiceQuery(language) {
+    const recognizeOnce = window.HMApp?.azureSpeech?.recognizeOnce;
+    if (typeof recognizeOnce !== "function") {
+      throw createVoiceError(
+        "voice_service_unavailable",
+        "Could not start voice transcription."
+      );
+    }
+
+    const session = await requestAzureSpeechToken();
+
+    let result;
+    try {
+      result = await recognizeOnce({
+        token: session.token,
+        region: session.region,
+        language,
+      });
+    } catch {
+      throw createVoiceError("voice_recognition_network", "Voice recognition network error.");
+    }
+
+    if (result?.reason === "recognized") {
+      const transcript = String(result?.transcript || "").trim();
+      if (!transcript) {
+        throw createVoiceError("voice_no_speech", "No speech detected.");
+      }
+      return transcript;
+    }
+
+    if (result?.reason === "no-match") {
+      throw createVoiceError("voice_no_speech", "No speech detected.");
+    }
+
+    if (result?.reason === "canceled") {
+      throw mapAzureSpeechCancellation(result);
+    }
+
+    throw createVoiceError("voice_not_understood", "Voice recognition failed.");
+  }
+
+  async function captureAzureVoiceQueryWithRetry() {
+    const languages = getVoiceRecognitionLanguages();
+    let lastError = null;
+
+    for (const language of languages) {
+      try {
+        return await captureAzureVoiceQuery(language);
+      } catch (error) {
+        lastError = error;
+        if (!shouldRetryVoiceRecognition(getVoiceErrorCode(error))) {
+          break;
+        }
+      }
+    }
+
+    throw lastError || createVoiceError("voice_not_understood", "Voice recognition failed.");
   }
 
   function captureVoiceQuery(language) {
@@ -364,14 +503,7 @@
       try {
         recognition.start();
       } catch (error) {
-        const errorName = String(error?.name || "")
-          .trim()
-          .toLowerCase();
-        if (errorName === "notallowederror" || errorName === "securityerror") {
-          finish(reject, createVoiceError("voice_permission_denied", "Microphone permission denied."));
-          return;
-        }
-        finish(reject, createVoiceError("voice_not_understood", "Unable to start voice recognition."));
+        finish(reject, mapSpeechStartError(error));
       }
     });
   }
@@ -401,6 +533,28 @@
     }
 
     throw lastError || createVoiceError("voice_not_understood", "Voice recognition failed.");
+  }
+
+  function shouldFallbackToBrowserVoice(errorCode) {
+    return errorCode === "voice_service_unavailable";
+  }
+
+  async function capturePreferredVoiceQueryWithRetry() {
+    if (supportsAzureVoiceLocation()) {
+      try {
+        return await captureAzureVoiceQueryWithRetry();
+      } catch (error) {
+        if (!shouldFallbackToBrowserVoice(getVoiceErrorCode(error))) {
+          throw error;
+        }
+      }
+    }
+
+    if (supportsVoiceLocation()) {
+      return captureVoiceQueryWithRetry();
+    }
+
+    throw createVoiceError("voice_unsupported", "Voice recognition not supported.");
   }
 
   function normalizeVoiceLocationChoices(rawChoices) {
@@ -888,6 +1042,7 @@
 
   function shouldOfferVoiceTypedFallback(errorCode) {
     return (
+      errorCode === "voice_service_unavailable" ||
       errorCode === "voice_unsupported" ||
       errorCode === "voice_no_speech" ||
       errorCode === "voice_recognition_timeout" ||
@@ -902,6 +1057,9 @@
     }
 
     let hint = "Could not capture your voice on this device. Type your location:";
+    if (errorCode === "voice_service_unavailable") {
+      hint = "Voice transcription is unavailable right now. Type your location or line instead:";
+    }
     if (errorCode === "voice_unsupported") {
       hint = "This browser does not support speech recognition. Type your location or line (number or letter) instead:";
     }
@@ -957,20 +1115,7 @@
     try {
       await requestMicrophonePreflightPermission();
 
-      if (!supportsVoiceLocation()) {
-        const unsupportedError = createVoiceError(
-          "voice_unsupported",
-          "Voice recognition not supported."
-        );
-        const fallbackQuery = promptVoiceTypedFallback(getVoiceErrorCode(unsupportedError));
-        if (!fallbackQuery) {
-          api.setStatus(api.getVoiceLocationErrorStatus(unsupportedError));
-          return false;
-        }
-        return resolveVoiceQueryAndLoad(fallbackQuery);
-      }
-
-      const transcript = await captureVoiceQueryWithRetry();
+      const transcript = await capturePreferredVoiceQueryWithRetry();
       return resolveVoiceQueryAndLoad(transcript);
     } catch (error) {
       const errorCode = getVoiceErrorCode(error);
@@ -1373,7 +1518,12 @@
     load,
     requestLocationAndLoad,
     requestVoiceLocationAndLoad,
+    supportsAzureVoiceLocation,
     supportsVoiceLocation,
+    requestAzureSpeechToken,
+    captureAzureVoiceQuery,
+    captureAzureVoiceQueryWithRetry,
+    capturePreferredVoiceQueryWithRetry,
     captureVoiceQuery,
     captureVoiceQueryWithRetry,
     getVoiceRecognitionLanguages,

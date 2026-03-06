@@ -168,11 +168,15 @@ function buildDeparturesPayload(requestUrl, profile = "default") {
   };
 }
 
-async function installApiMocks(page, profile = "default") {
+async function installApiMocks(
+  page,
+  { profile = "default", speechTranscribeStatus = 200, speechTranscript = "Kamppi Helsinki" } = {}
+) {
   const calls = {
     departures: [],
     geocode: [],
     clientError: [],
+    speechTranscribe: [],
   };
 
   await page.route("**/api/v1/**", async (route) => {
@@ -219,6 +223,28 @@ async function installApiMocks(page, profile = "default") {
       return;
     }
 
+    if (requestUrl.pathname === "/api/v1/speech-transcribe") {
+      calls.speechTranscribe.push({
+        method: request.method(),
+      });
+      await route.fulfill({
+        status: speechTranscribeStatus,
+        contentType: "application/json",
+        headers: { "cache-control": "no-store" },
+        body: JSON.stringify(
+          speechTranscribeStatus === 200
+            ? { transcript: speechTranscript }
+            : {
+                error:
+                  speechTranscribeStatus === 503
+                    ? "Google Speech is not configured"
+                    : "Could not transcribe speech",
+              }
+        ),
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 404,
       contentType: "application/json",
@@ -246,12 +272,23 @@ async function installPromptMock(page, responses) {
   );
 }
 
-async function installMicrophonePreflightMock(page) {
-  await page.addInitScript(() => {
+async function installMicrophonePreflightScenario(page, scenario) {
+  await page.addInitScript(({ nextScenario }) => {
+    const scenarioValue = String(nextScenario || "granted");
     window.__voiceMicPreflightCalls = 0;
 
     const mockGetUserMedia = async () => {
       window.__voiceMicPreflightCalls += 1;
+      if (scenarioValue === "denied") {
+        const error = new Error("Microphone permission denied");
+        error.name = "NotAllowedError";
+        throw error;
+      }
+      if (scenarioValue === "no-microphone") {
+        const error = new Error("No microphone available");
+        error.name = "NotFoundError";
+        throw error;
+      }
       return {
         getTracks: () => [
           {
@@ -277,113 +314,69 @@ async function installMicrophonePreflightMock(page) {
         configurable: true,
       });
     }
-  });
+  }, { nextScenario: scenario });
 }
 
-async function installUserAgentMock(page, userAgentValue) {
-  await page.addInitScript(({ ua }) => {
-    try {
-      Object.defineProperty(navigator, "userAgent", {
-        value: String(ua || ""),
-        configurable: true,
-      });
-    } catch {}
-  }, { ua: userAgentValue });
-}
-
-async function installFirefoxRuntimeMarker(page) {
-  await page.addInitScript(() => {
-    window.InstallTrigger = window.InstallTrigger || {};
-  });
-}
-
-async function installSpeechRecognitionMock(page, { scenario, transcript }) {
+async function installSpeechCaptureMock(page, { scenario, transcript }) {
   await page.addInitScript((mockConfig) => {
     const scenarioValue = String(mockConfig?.scenario || "success");
     const transcriptValue = String(mockConfig?.transcript || "Kamppi Helsinki");
-    window.__speechStartCalls = 0;
-
-    if (scenarioValue === "unsupported") {
-      try {
-        window.SpeechRecognition = undefined;
-      } catch {}
-      try {
-        window.webkitSpeechRecognition = undefined;
-      } catch {}
-      try {
-        Object.defineProperty(window, "SpeechRecognition", { value: undefined, configurable: true });
-        Object.defineProperty(window, "webkitSpeechRecognition", {
-          value: undefined,
-          configurable: true,
-        });
-      } catch {}
-      return;
-    }
+    window.__speechRecorderStartCalls = 0;
+    window.__browserSpeechStartCalls = 0;
 
     class MockSpeechRecognition {
-      constructor() {
-        this.lang = "fi-FI";
-        this.continuous = false;
-        this.interimResults = true;
-        this.maxAlternatives = 1;
-        this.onresult = null;
-        this.onerror = null;
-        this.onend = null;
-        this.onspeechend = null;
-        this.onsoundend = null;
-        this.onaudioend = null;
-        this.onnomatch = null;
-      }
-
       start() {
-        window.__speechStartCalls += 1;
-        if (scenarioValue === "start-throw:not-supported") {
-          const error = new Error("SpeechRecognition start failed");
-          error.name = "NotSupportedError";
-          throw error;
-        }
-
-        setTimeout(() => {
-          if (scenarioValue === "error:not-allowed") {
-            this.onerror?.({ error: "not-allowed" });
-            return;
-          }
-
-          if (scenarioValue === "error:audio-capture") {
-            this.onerror?.({ error: "audio-capture" });
-            return;
-          }
-
-          if (scenarioValue === "error:network") {
-            this.onerror?.({ error: "network" });
-            return;
-          }
-
-          if (scenarioValue === "no-speech") {
-            this.onend?.();
-            return;
-          }
-
-          const alternative = { transcript: transcriptValue };
-          const result = [alternative];
-          result.isFinal = true;
-          const results = [result];
-          this.onresult?.({ resultIndex: 0, results });
-          this.onend?.();
-        }, 10);
-      }
-
-      stop() {
-        setTimeout(() => this.onend?.(), 0);
-      }
-
-      abort() {
-        setTimeout(() => this.onend?.(), 0);
+        window.__browserSpeechStartCalls += 1;
       }
     }
 
     window.SpeechRecognition = MockSpeechRecognition;
     window.webkitSpeechRecognition = MockSpeechRecognition;
+
+    window.MediaRecorder = class MockMediaRecorder {
+      static isTypeSupported() {
+        return true;
+      }
+
+      constructor() {
+        this.listeners = new Map();
+        this.state = "inactive";
+      }
+
+      addEventListener(type, handler) {
+        if (!this.listeners.has(type)) this.listeners.set(type, []);
+        this.listeners.get(type).push(handler);
+      }
+
+      emit(type, event = {}) {
+        for (const handler of this.listeners.get(type) || []) {
+          handler(event);
+        }
+      }
+
+      start() {
+        this.state = "recording";
+        window.__speechRecorderStartCalls += 1;
+        setTimeout(() => {
+          if (scenarioValue === "no-speech") {
+            this.stop();
+            return;
+          }
+          this.emit("dataavailable", {
+            data: new Blob([transcriptValue], { type: "audio/webm" }),
+          });
+          this.stop();
+        }, 10);
+      }
+
+      stop() {
+        if (this.state === "inactive") return;
+        this.state = "inactive";
+        this.emit("stop");
+      }
+
+      requestData() {}
+    };
   }, { scenario, transcript });
 }
 
@@ -393,13 +386,15 @@ Feature: Voice location
 Scenario: Detect bus line intent in English
   Given prompt responses are ""
   And speech transcript is "Bus 67"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 0
   And departures request count is at least 1
   And first departures mode query equals "BUS"
   And first departures line query equals "67"
+  And speech recorder start call count equals 1
+  And browser speech recognition start call count equals 0
   And selected stop label equals "Bus 67 Stop"
   And current URL mode query equals "bus"
   And current URL line query equals "67"
@@ -407,7 +402,7 @@ Scenario: Detect bus line intent in English
 Scenario: Detect tram line intent in Finnish suffix form
   Given prompt responses are ""
   And speech transcript is "9-ratikka"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 0
@@ -420,7 +415,7 @@ Scenario: Detect tram line intent in Finnish suffix form
 Scenario: Detect rail line intent with Finnish phrasing
   Given prompt responses are ""
   And speech transcript is "A-juna"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 0
@@ -432,7 +427,7 @@ Scenario: Detect rail line intent with Finnish phrasing
 Scenario: Mode-less line utterance resolves with nearest upcoming mode winner
   Given prompt responses are ""
   And speech transcript is "67"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And departures API mock profile is "line-intent-multi-mode-67"
   And API mocks are installed
   When the user triggers voice location
@@ -445,7 +440,7 @@ Scenario: Mode-less line utterance resolves with nearest upcoming mode winner
 Scenario: No matching nearby line departure shows explicit status
   Given prompt responses are ""
   And speech transcript is "Tram 9"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And departures API mock profile is "line-intent-no-match"
   And API mocks are installed
   When the user triggers voice location
@@ -455,7 +450,7 @@ Scenario: No matching nearby line departure shows explicit status
 Scenario: Location utterance keeps geocode path
   Given prompt responses are ""
   And speech transcript is "Kamppi Helsinki"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 1
@@ -465,7 +460,7 @@ Scenario: Location utterance keeps geocode path
 Scenario: Mode keyword location utterance keeps geocode path
   Given prompt responses are ""
   And speech transcript is "Tram to Kamppi"
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 1
@@ -473,9 +468,10 @@ Scenario: Mode keyword location utterance keeps geocode path
   And first departures line query equals ""
   And resolved location text contains "Tram to Kamppi"
 
-Scenario: Fall back to typed query when speech recognition is unsupported
+Scenario: Fall back to typed query when speech transcription is unavailable
   Given prompt responses are "Kamppi Helsinki"
-  And speech recognition scenario is "unsupported"
+  And speech transcription endpoint status is 503
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 1
@@ -483,50 +479,41 @@ Scenario: Fall back to typed query when speech recognition is unsupported
   And prompt dialog was shown
   And first geocode query text equals "Kamppi Helsinki"
 
-Scenario: Request microphone preflight before Firefox-style startup fallback
+Scenario: Request microphone preflight before voice capture
   Given prompt responses are ""
-  And speech recognition scenario is "start-throw:not-supported"
-  And microphone preflight is stubbed as granted
+  And speech capture scenario is "success"
+  And microphone preflight scenario is "granted"
   And API mocks are installed
   When the user triggers voice location
   Then microphone preflight call count equals 1
-  And prompt dialog was shown
-
-Scenario: Firefox user agent still uses speech when constructor exists
-  Given browser user agent is "Mozilla/5.0 Firefox/124.0"
-  And prompt responses are ""
-  And speech recognition scenario is "success"
-  And API mocks are installed
-  When the user triggers voice location
-  Then speech recognition start call count equals 1
+  And speech recorder start call count equals 1
   And prompt dialog was not shown
-  And geocode request count equals 1
-  And first geocode query text equals "Kamppi Helsinki"
 
-Scenario: Unsupported speech shows generic unsupported status
-  Given browser user agent is "Mozilla/5.0 Firefox/124.0"
-  And prompt responses are ""
-  And speech recognition scenario is "unsupported"
+Scenario: Unavailable speech transcription shows generic unavailable status
+  Given prompt responses are ""
+  And speech transcription endpoint status is 503
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
-  Then speech recognition start call count equals 0
-  And status text equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+  Then speech recorder start call count equals 1
+  And browser speech recognition start call count equals 0
+  And status text equals "Voice recognition is unavailable right now. Type your location or line (number or letter) instead."
   And geocode request count equals 0
 
-Scenario: Runtime marker still shows generic unsupported status
-  Given browser user agent is "Mozilla/5.0 (X11; Linux x86_64)"
-  And browser has Firefox runtime marker
-  And prompt responses are ""
-  And speech recognition scenario is "unsupported"
+Scenario: Show clear status when speech transcription network request fails
+  Given prompt responses are ""
+  And speech transcription endpoint status is 502
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
-  Then speech recognition start call count equals 0
-  And status text equals "This browser does not support speech recognition. Type your location or line (number or letter) instead."
+  Then speech recorder start call count equals 1
+  And status text equals "Voice recognition failed due to a network error. On iPhone, try enabling Siri & Dictation."
   And geocode request count equals 0
 
 Scenario: Show clear status when microphone permission is denied
   Given prompt responses are ""
-  And speech recognition scenario is "error:not-allowed"
+  And speech capture scenario is "success"
+  And microphone preflight scenario is "denied"
   And API mocks are installed
   When the user triggers voice location
   Then status text equals "Microphone permission denied."
@@ -534,7 +521,8 @@ Scenario: Show clear status when microphone permission is denied
 
 Scenario: Show clear status when no microphone is available
   Given prompt responses are ""
-  And speech recognition scenario is "error:audio-capture"
+  And speech capture scenario is "success"
+  And microphone preflight scenario is "no-microphone"
   And API mocks are installed
   When the user triggers voice location
   Then status text equals "No microphone was found for voice location."
@@ -542,7 +530,7 @@ Scenario: Show clear status when no microphone is available
 
 Scenario: Use speech transcript when recognition succeeds
   Given prompt responses are ""
-  And speech recognition scenario is "success"
+  And speech capture scenario is "success"
   And API mocks are installed
   When the user triggers voice location
   Then geocode request count equals 1
@@ -555,13 +543,11 @@ defineFeature(test, featureText, {
   createWorld: ({ fixtures }) => ({
     page: fixtures.page,
     calls: null,
-    speechScenario: "success",
+    speechCaptureScenario: "success",
     speechTranscript: "Kamppi Helsinki",
+    speechTranscribeStatus: 200,
     apiProfile: "default",
-    shouldStubMicPreflight: true,
-    userAgentOverride:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    hasFirefoxRuntimeMarker: false,
+    microphoneScenario: "granted",
   }),
   stepDefinitions: [
     {
@@ -581,27 +567,21 @@ defineFeature(test, featureText, {
       },
     },
     {
-      pattern: /^Given speech recognition scenario is "([^"]*)"$/,
+      pattern: /^Given speech capture scenario is "([^"]*)"$/,
       run: ({ args, world }) => {
-        world.speechScenario = args[0];
+        world.speechCaptureScenario = args[0];
       },
     },
     {
-      pattern: /^Given browser user agent is "([^"]*)"$/,
+      pattern: /^Given speech transcription endpoint status is (\d+)$/,
       run: ({ args, world }) => {
-        world.userAgentOverride = args[0];
+        world.speechTranscribeStatus = Number(args[0]);
       },
     },
     {
-      pattern: /^Given microphone preflight is stubbed as granted$/,
-      run: ({ world }) => {
-        world.shouldStubMicPreflight = true;
-      },
-    },
-    {
-      pattern: /^Given browser has Firefox runtime marker$/,
-      run: ({ world }) => {
-        world.hasFirefoxRuntimeMarker = true;
+      pattern: /^Given microphone preflight scenario is "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.microphoneScenario = args[0];
       },
     },
     {
@@ -613,21 +593,19 @@ defineFeature(test, featureText, {
     {
       pattern: /^Given API mocks are installed$/,
       run: async ({ world }) => {
-        world.calls = await installApiMocks(world.page, world.apiProfile);
+        world.calls = await installApiMocks(world.page, {
+          profile: world.apiProfile,
+          speechTranscribeStatus: world.speechTranscribeStatus,
+          speechTranscript: world.speechTranscript,
+        });
       },
     },
     {
       pattern: /^When the user triggers voice location$/,
       run: async ({ world }) => {
-        if (world.shouldStubMicPreflight) {
-          await installMicrophonePreflightMock(world.page);
-        }
-        if (world.hasFirefoxRuntimeMarker) {
-          await installFirefoxRuntimeMarker(world.page);
-        }
-        await installUserAgentMock(world.page, world.userAgentOverride);
-        await installSpeechRecognitionMock(world.page, {
-          scenario: world.speechScenario,
+        await installMicrophonePreflightScenario(world.page, world.microphoneScenario);
+        await installSpeechCaptureMock(world.page, {
+          scenario: world.speechCaptureScenario,
           transcript: world.speechTranscript,
         });
         await world.page.goto("/");
@@ -705,9 +683,16 @@ defineFeature(test, featureText, {
       },
     },
     {
-      pattern: /^Then speech recognition start call count equals (\d+)$/,
+      pattern: /^Then speech recorder start call count equals (\d+)$/,
       run: async ({ assert, args, world }) => {
-        const actualCount = await world.page.evaluate(() => Number(window.__speechStartCalls || 0));
+        const actualCount = await world.page.evaluate(() => Number(window.__speechRecorderStartCalls || 0));
+        assert.equal(actualCount, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then browser speech recognition start call count equals (\d+)$/,
+      run: async ({ assert, args, world }) => {
+        const actualCount = await world.page.evaluate(() => Number(window.__browserSpeechStartCalls || 0));
         assert.equal(actualCount, Number(args[0]));
       },
     },

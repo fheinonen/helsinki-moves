@@ -3,6 +3,12 @@
   const app = window.HMApp;
   const { api, dom, state, constants } = app;
   const { MODE_RAIL, MODE_TRAM, MODE_METRO, MODE_BUS } = constants;
+  const DEFAULT_VOICE_RECORDING_MIME_TYPES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+  ];
 
   function isStopMode(mode) {
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO || mode === MODE_RAIL;
@@ -159,71 +165,27 @@
       .toLowerCase();
   }
 
-  function getVoiceRecognitionLanguages() {
-    return api.uniqueNonEmptyStrings([
-      "fi-FI",
-      "en-US",
-      ...(Array.isArray(navigator.languages) ? navigator.languages : []),
-      navigator.language,
-    ]);
+  function getVoiceRecognitionLanguage() {
+    return "fi-FI";
   }
 
-  function supportsAzureVoiceLocation() {
-    return typeof window.HMApp?.azureSpeech?.recognizeOnce === "function";
-  }
-
-  function getSpeechRecognitionConstructor() {
-    if (typeof window.SpeechRecognition === "function") return window.SpeechRecognition;
-    if (typeof window.webkitSpeechRecognition === "function") return window.webkitSpeechRecognition;
-    if (typeof window.mozSpeechRecognition === "function") return window.mozSpeechRecognition;
-    if (typeof window.msSpeechRecognition === "function") return window.msSpeechRecognition;
-    return null;
+  function getVoiceRecorderConstructor() {
+    return typeof window.MediaRecorder === "function" ? window.MediaRecorder : null;
   }
 
   function supportsVoiceLocation() {
-    return Boolean(getSpeechRecognitionConstructor());
+    const mediaDevices = navigator?.mediaDevices;
+    return Boolean(
+      getVoiceRecorderConstructor() &&
+        mediaDevices &&
+        typeof mediaDevices.getUserMedia === "function"
+    );
   }
 
-  async function requestAzureSpeechToken() {
-    let res;
-
-    try {
-      res = await fetchWithRetryOnce("/api/v1/speech-token", { method: "GET" });
-    } catch {
-      throw createVoiceError(
-        "voice_service_unavailable",
-        "Could not start voice transcription."
-      );
-    }
-
-    if (!(res.headers.get("content-type") || "").includes("application/json")) {
-      throw createVoiceError(
-        "voice_service_unavailable",
-        "Could not start voice transcription."
-      );
-    }
-
-    const json = await res.json();
-    if (!res.ok) {
-      const message = String(json?.error || "").trim();
-      throw createVoiceError(
-        "voice_service_unavailable",
-        message || "Could not start voice transcription."
-      );
-    }
-
-    const token = String(json?.token || "").trim();
-    const region = String(json?.region || "")
-      .trim()
-      .toLowerCase();
-    if (!token || !region) {
-      throw createVoiceError(
-        "voice_service_unavailable",
-        "Could not start voice transcription."
-      );
-    }
-
-    return { token, region };
+  function refreshVoiceLocationAvailability() {
+    const availability = supportsVoiceLocation() ? "available" : "unavailable";
+    api.setVoiceLocationAvailability?.(availability);
+    return availability === "available";
   }
 
   function mapMicrophonePreflightError(error) {
@@ -244,192 +206,212 @@
     return createVoiceError("voice_not_understood", "Unable to access microphone.");
   }
 
-  async function requestMicrophonePreflightPermission() {
+  async function requestMicrophoneStream() {
     const mediaDevices = navigator?.mediaDevices;
     if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
-      return;
+      return null;
     }
 
-    let stream = null;
     try {
-      stream = await mediaDevices.getUserMedia({ audio: true });
+      return await mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
       throw mapMicrophonePreflightError(error);
-    } finally {
-      const tracks = typeof stream?.getTracks === "function" ? stream.getTracks() : [];
-      for (const track of tracks) {
-        try {
-          track.stop();
-        } catch {
-          // Ignore track cleanup failures.
-        }
-      }
     }
   }
 
-  function mapSpeechError(errorCode) {
-    if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
-      return createVoiceError("voice_permission_denied", "Microphone permission denied.");
+  function mapSpeechTranscribeError(status, message = "") {
+    if (status === 404 || status === 405 || status === 501 || status === 503) {
+      return createVoiceError("voice_unsupported", "Voice recognition not supported.");
     }
-    if (errorCode === "audio-capture") {
-      return createVoiceError("voice_no_microphone", "No microphone available.");
-    }
-    if (errorCode === "language-not-supported") {
-      return createVoiceError("voice_language_not_supported", "Speech language is not supported.");
-    }
-    if (errorCode === "network") {
-      return createVoiceError("voice_recognition_network", "Voice recognition network error.");
-    }
-    if (errorCode === "no-speech") {
+    const normalizedMessage = String(message || "")
+      .trim()
+      .toLowerCase();
+    if (status === 400 || status === 422 || normalizedMessage.includes("no speech")) {
       return createVoiceError("voice_no_speech", "No speech detected.");
+    }
+    if (status >= 500 || normalizedMessage.includes("network") || normalizedMessage.includes("service")) {
+      return createVoiceError("voice_recognition_network", "Voice recognition network error.");
     }
     return createVoiceError("voice_not_understood", "Voice recognition failed.");
   }
 
-  function mapSpeechStartError(error) {
-    const errorName = String(error?.name || "")
-      .trim()
-      .toLowerCase();
-    if (errorName === "notsupportederror") {
-      return createVoiceError("voice_unsupported", "Voice recognition not supported.");
+  function getSupportedVoiceRecordingMimeType(MediaRecorderCtor = getVoiceRecorderConstructor()) {
+    if (!MediaRecorderCtor || typeof MediaRecorderCtor.isTypeSupported !== "function") {
+      return DEFAULT_VOICE_RECORDING_MIME_TYPES[0];
     }
-    if (errorName === "notallowederror" || errorName === "securityerror") {
-      return createVoiceError("voice_permission_denied", "Microphone permission denied.");
-    }
-    return createVoiceError("voice_not_understood", "Unable to start voice recognition.");
+
+    return (
+      DEFAULT_VOICE_RECORDING_MIME_TYPES.find((mimeType) => MediaRecorderCtor.isTypeSupported(mimeType)) ||
+      ""
+    );
   }
 
-  function mapAzureSpeechCancellation(result) {
-    const details = String(result?.errorDetails || "").trim();
-    const normalizedDetails = details.toLowerCase();
-    if (
-      normalizedDetails.includes("token") ||
-      normalizedDetails.includes("subscription") ||
-      normalizedDetails.includes("authentication") ||
-      normalizedDetails.includes("forbidden") ||
-      normalizedDetails.includes("unauthorized")
-    ) {
-      return createVoiceError(
-        "voice_service_unavailable",
-        "Could not start voice transcription."
-      );
+  function closeRecorderResource(resource) {
+    if (!resource) return;
+    if (typeof resource.disconnect === "function") {
+      try {
+        resource.disconnect();
+      } catch {
+        // Ignore recorder cleanup failures.
+      }
     }
-    if (normalizedDetails.includes("network") || normalizedDetails.includes("connection")) {
-      return createVoiceError("voice_recognition_network", "Voice recognition network error.");
+    if (typeof resource.close === "function") {
+      try {
+        const result = resource.close();
+        if (result && typeof result.catch === "function") {
+          result.catch(() => {});
+        }
+      } catch {
+        // Ignore recorder cleanup failures.
+      }
     }
-    return createVoiceError("voice_not_understood", details || "Voice recognition failed.");
   }
 
-  async function captureAzureVoiceQuery(language) {
-    const recognizeOnce = window.HMApp?.azureSpeech?.recognizeOnce;
-    if (typeof recognizeOnce !== "function") {
-      throw createVoiceError(
-        "voice_service_unavailable",
-        "Could not start voice transcription."
-      );
+  function createVoiceSilenceMonitor(stream, onSilenceDetected) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (typeof AudioContextCtor !== "function") {
+      return {
+        start() {},
+        stop() {},
+      };
     }
 
-    const session = await requestAzureSpeechToken();
+    let audioContext = null;
+    let source = null;
+    let analyser = null;
+    let sampleBuffer = null;
+    let timerId = null;
+    let heardSpeech = false;
+    let lastSpeechAtMs = Date.now();
+    let stopped = false;
 
-    let result;
+    const sampleVolume = () => {
+      if (stopped || !analyser || !sampleBuffer) return;
+      analyser.getByteTimeDomainData(sampleBuffer);
+      let sum = 0;
+      for (const value of sampleBuffer) {
+        const centered = (value - 128) / 128;
+        sum += centered * centered;
+      }
+      const rms = Math.sqrt(sum / sampleBuffer.length);
+      const nowMs = Date.now();
+      if (rms >= 0.02) {
+        heardSpeech = true;
+        lastSpeechAtMs = nowMs;
+      } else if (heardSpeech && nowMs - lastSpeechAtMs >= constants.VOICE_SILENCE_STOP_MS) {
+        stopped = true;
+        onSilenceDetected();
+        return;
+      }
+      timerId = setTimeout(sampleVolume, 120);
+    };
+
+    return {
+      start() {
+        try {
+          audioContext = new AudioContextCtor();
+          source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 2048;
+          sampleBuffer = new Uint8Array(analyser.fftSize);
+          source.connect(analyser);
+          sampleVolume();
+        } catch {
+          this.stop();
+        }
+      },
+      stop() {
+        stopped = true;
+        if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+        closeRecorderResource(source);
+        closeRecorderResource(analyser);
+        closeRecorderResource(audioContext);
+      },
+    };
+  }
+
+  async function requestSpeechTranscript(base64Content) {
+    let res;
     try {
-      result = await recognizeOnce({
-        token: session.token,
-        region: session.region,
-        language,
+      res = await fetchWithTimeout("/api/v1/speech-transcribe", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ content: base64Content }),
       });
     } catch {
       throw createVoiceError("voice_recognition_network", "Voice recognition network error.");
     }
 
-    if (result?.reason === "recognized") {
-      const transcript = String(result?.transcript || "").trim();
-      if (!transcript) {
-        throw createVoiceError("voice_no_speech", "No speech detected.");
-      }
-      return transcript;
+    const contentType = String(res.headers?.get?.("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      throw mapSpeechTranscribeError(res.status);
     }
 
-    if (result?.reason === "no-match") {
+    const json = await res.json();
+    if (!res.ok) {
+      throw mapSpeechTranscribeError(res.status, json?.error);
+    }
+
+    const transcript = String(json?.transcript || "").trim();
+    if (!transcript) {
       throw createVoiceError("voice_no_speech", "No speech detected.");
     }
-
-    if (result?.reason === "canceled") {
-      throw mapAzureSpeechCancellation(result);
-    }
-
-    throw createVoiceError("voice_not_understood", "Voice recognition failed.");
+    return transcript;
   }
 
-  async function captureAzureVoiceQueryWithRetry() {
-    const languages = getVoiceRecognitionLanguages();
-    let lastError = null;
-
-    for (const language of languages) {
+  function stopMediaStream(stream) {
+    const tracks = typeof stream?.getTracks === "function" ? stream.getTracks() : [];
+    for (const track of tracks) {
       try {
-        return await captureAzureVoiceQuery(language);
-      } catch (error) {
-        lastError = error;
-        if (!shouldRetryVoiceRecognition(getVoiceErrorCode(error))) {
-          break;
-        }
+        track.stop();
+      } catch {
+        // Ignore track cleanup failures.
       }
     }
-
-    throw lastError || createVoiceError("voice_not_understood", "Voice recognition failed.");
   }
 
-  function captureVoiceQuery(language) {
-    const SpeechRecognition = getSpeechRecognitionConstructor();
-    if (!SpeechRecognition) {
+  async function blobToBase64(blob) {
+    const buffer = typeof blob?.arrayBuffer === "function" ? await blob.arrayBuffer() : null;
+    if (!buffer) {
+      return Promise.reject(
+        createVoiceError("voice_not_understood", "Voice recognition failed.")
+      );
+    }
+    const bytes = new Uint8Array(buffer);
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(bytes).toString("base64");
+    }
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  }
+
+  function recordVoiceClip(microphoneStream = null) {
+    const MediaRecorderCtor = getVoiceRecorderConstructor();
+    if (!MediaRecorderCtor || !microphoneStream) {
       return Promise.reject(
         createVoiceError("voice_unsupported", "Voice recognition not supported.")
       );
     }
 
     return new Promise((resolve, reject) => {
-      const recognition = new SpeechRecognition();
-      const preferredLanguage = String(language || navigator.language || "fi-FI").trim();
-      recognition.lang = preferredLanguage || "fi-FI";
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-
       let settled = false;
-      let transcript = "";
-      let silenceStopTimerId = null;
-      let stopRequested = false;
-
-      const clearSilenceStopTimer = () => {
-        clearTimeout(silenceStopTimerId);
-        silenceStopTimerId = null;
-      };
-
-      const requestStop = () => {
-        if (stopRequested || settled) return;
-        stopRequested = true;
-        try {
-          recognition.stop();
-        } catch {
-          // Ignore stop errors; timeout/onend handlers still guard completion.
-        }
-      };
-
-      const scheduleSilenceStop = () => {
-        clearSilenceStopTimer();
-        silenceStopTimerId = setTimeout(requestStop, constants.VOICE_SILENCE_STOP_MS);
-      };
+      let recorder = null;
+      let silenceMonitor = null;
+      const chunks = [];
+      const mimeType = getSupportedVoiceRecordingMimeType(MediaRecorderCtor);
 
       const cleanup = () => {
         clearTimeout(timeoutId);
-        clearSilenceStopTimer();
-        recognition.onresult = null;
-        recognition.onerror = null;
-        recognition.onend = null;
-        recognition.onspeechend = null;
-        recognition.onsoundend = null;
-        recognition.onaudioend = null;
-        recognition.onnomatch = null;
+        silenceMonitor?.stop?.();
+        stopMediaStream(microphoneStream);
       };
 
       const finish = (callback, value) => {
@@ -440,121 +422,78 @@
       };
 
       const timeoutId = setTimeout(() => {
-        try {
-          recognition.abort();
-        } catch {
-          // Ignore abort errors during timeout cleanup.
-        }
         finish(
           reject,
           createVoiceError("voice_recognition_timeout", "Voice recognition timed out.")
         );
       }, constants.VOICE_RECOGNITION_TIMEOUT_MS);
 
-      recognition.onresult = (event) => {
-        for (let index = event?.resultIndex || 0; index < (event?.results?.length || 0); index += 1) {
-          const result = event.results[index];
-          const nextTranscript = String(result?.[0]?.transcript || "").trim();
-          if (!nextTranscript) continue;
-          transcript = nextTranscript;
-          scheduleSilenceStop();
-          if (result?.isFinal) {
-            requestStop();
-            return;
-          }
+      try {
+        recorder = mimeType
+          ? new MediaRecorderCtor(microphoneStream, { mimeType })
+          : new MediaRecorderCtor(microphoneStream);
+        if (!recorder || typeof recorder.start !== "function") {
+          throw createVoiceError("voice_unsupported", "Voice recognition not supported.");
         }
-      };
+        silenceMonitor = createVoiceSilenceMonitor(microphoneStream, () => {
+          if (typeof recorder?.requestData === "function") {
+            try {
+              recorder.requestData();
+            } catch {
+              // Ignore requestData failures.
+            }
+          }
+          if (recorder && recorder.state !== "inactive") {
+            recorder.stop();
+          }
+        });
+      } catch (error) {
+        finish(reject, error);
+        return;
+      }
 
-      recognition.onerror = (event) => {
-        const speechCode = String(event?.error || "")
-          .trim()
-          .toLowerCase();
-        finish(reject, mapSpeechError(speechCode));
-      };
-
-      recognition.onend = () => {
-        if (settled) return;
-
-        const cleaned = String(transcript || "").trim();
-        if (!cleaned) {
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event?.data && Number(event.data.size) > 0) {
+          chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener("error", (event) => {
+        finish(reject, createVoiceError("voice_not_understood", String(event?.error?.message || "")));
+      });
+      recorder.addEventListener("stop", () => {
+        if (chunks.length === 0) {
           finish(reject, createVoiceError("voice_no_speech", "No speech detected."));
           return;
         }
-
-        finish(resolve, cleaned);
-      };
-
-      recognition.onspeechend = () => {
-        requestStop();
-      };
-
-      recognition.onsoundend = () => {
-        scheduleSilenceStop();
-      };
-
-      recognition.onaudioend = () => {
-        scheduleSilenceStop();
-      };
-
-      recognition.onnomatch = () => {
-        finish(reject, createVoiceError("voice_not_understood", "Could not understand speech."));
-      };
+        finish(resolve, new Blob(chunks, { type: mimeType || "audio/webm" }));
+      });
 
       try {
-        recognition.start();
+        recorder.start();
+        silenceMonitor?.start?.();
       } catch (error) {
-        finish(reject, mapSpeechStartError(error));
+        finish(reject, createVoiceError("voice_not_understood", String(error?.message || "")));
       }
     });
   }
 
-  function shouldRetryVoiceRecognition(errorCode) {
-    return (
-      errorCode === "voice_no_speech" ||
-      errorCode === "voice_not_understood" ||
-      errorCode === "voice_recognition_timeout" ||
-      errorCode === "voice_language_not_supported"
-    );
+  async function captureVoiceQuery(microphoneStream = null) {
+    const audioBlob = await recordVoiceClip(microphoneStream);
+    const base64Content = await blobToBase64(audioBlob);
+    return requestSpeechTranscript(base64Content);
   }
 
-  async function captureVoiceQueryWithRetry() {
-    const languages = getVoiceRecognitionLanguages();
-    let lastError = null;
+  function supportsSpeechTranscription() {
+    return supportsVoiceLocation();
+  }
 
-    for (const language of languages) {
-      try {
-        return await captureVoiceQuery(language);
-      } catch (error) {
-        lastError = error;
-        if (!shouldRetryVoiceRecognition(getVoiceErrorCode(error))) {
-          break;
-        }
+  function captureVoiceTranscript(microphoneStream = null) {
+    return captureVoiceQuery(microphoneStream).catch((error) => {
+      if (getVoiceErrorCode(error)) {
+        throw error;
       }
-    }
-
-    throw lastError || createVoiceError("voice_not_understood", "Voice recognition failed.");
-  }
-
-  function shouldFallbackToBrowserVoice(errorCode) {
-    return errorCode === "voice_service_unavailable";
-  }
-
-  async function capturePreferredVoiceQueryWithRetry() {
-    if (supportsAzureVoiceLocation()) {
-      try {
-        return await captureAzureVoiceQueryWithRetry();
-      } catch (error) {
-        if (!shouldFallbackToBrowserVoice(getVoiceErrorCode(error))) {
-          throw error;
-        }
-      }
-    }
-
-    if (supportsVoiceLocation()) {
-      return captureVoiceQueryWithRetry();
-    }
-
-    throw createVoiceError("voice_unsupported", "Voice recognition not supported.");
+      throw createVoiceError("voice_not_understood", "Voice recognition failed.");
+    });
   }
 
   function normalizeVoiceLocationChoices(rawChoices) {
@@ -674,6 +613,7 @@
   function normalizeVoiceLineToken(rawToken) {
     const token = String(rawToken || "")
       .trim()
+      .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "")
       .toUpperCase();
     if (!token) return "";
     if (!/^[A-Z0-9]+$/.test(token)) return "";
@@ -1042,7 +982,6 @@
 
   function shouldOfferVoiceTypedFallback(errorCode) {
     return (
-      errorCode === "voice_service_unavailable" ||
       errorCode === "voice_unsupported" ||
       errorCode === "voice_no_speech" ||
       errorCode === "voice_recognition_timeout" ||
@@ -1056,12 +995,9 @@
       return null;
     }
 
-    let hint = "Could not capture your voice on this device. Type your location:";
-    if (errorCode === "voice_service_unavailable") {
-      hint = "Voice transcription is unavailable right now. Type your location or line instead:";
-    }
+    let hint = "Could not capture your voice right now. Type your location:";
     if (errorCode === "voice_unsupported") {
-      hint = "This browser does not support speech recognition. Type your location or line (number or letter) instead:";
+      hint = "Voice recognition is unavailable right now. Type your location or line (number or letter) instead:";
     }
     const input = window.prompt(
       `${hint}\nExample: Kamppi Helsinki, A-train, bus 52, 200`,
@@ -1109,13 +1045,49 @@
     if (state.isLoading || state.isVoiceListening) return false;
 
     hideVoiceLocationChoices();
+    if (state.voiceLocationAvailability === "checking") {
+      refreshVoiceLocationAvailability();
+    }
     api.setVoiceListening(true);
+
+    if (state.voiceLocationAvailability === "unavailable") {
+      const unsupportedError = createVoiceError(
+        "voice_unsupported",
+        "Voice recognition not supported."
+      );
+      const fallbackQuery = promptVoiceTypedFallback(getVoiceErrorCode(unsupportedError));
+      if (!fallbackQuery) {
+        api.setStatus(api.getVoiceLocationErrorStatus(unsupportedError));
+        api.setVoiceListening(false);
+        return false;
+      }
+      api.setStatus(`Looking up "${api.safeString(fallbackQuery, 80)}"...`);
+      try {
+        return await resolveVoiceQueryAndLoad(fallbackQuery);
+      } finally {
+        api.setVoiceListening(false);
+      }
+    }
+
     api.setStatus("Listening... speak now, then pause.");
 
     try {
-      await requestMicrophonePreflightPermission();
+      const microphoneStream = await requestMicrophoneStream();
 
-      const transcript = await capturePreferredVoiceQueryWithRetry();
+      if (!supportsSpeechTranscription()) {
+        const unsupportedError = createVoiceError(
+          "voice_unsupported",
+          "Voice recognition not supported."
+        );
+        const fallbackQuery = promptVoiceTypedFallback(getVoiceErrorCode(unsupportedError));
+        if (!fallbackQuery) {
+          api.setStatus(api.getVoiceLocationErrorStatus(unsupportedError));
+          return false;
+        }
+        return resolveVoiceQueryAndLoad(fallbackQuery);
+      }
+
+      const transcript = await captureVoiceTranscript(microphoneStream);
       return resolveVoiceQueryAndLoad(transcript);
     } catch (error) {
       const errorCode = getVoiceErrorCode(error);
@@ -1518,16 +1490,10 @@
     load,
     requestLocationAndLoad,
     requestVoiceLocationAndLoad,
-    supportsAzureVoiceLocation,
     supportsVoiceLocation,
-    requestAzureSpeechToken,
-    captureAzureVoiceQuery,
-    captureAzureVoiceQueryWithRetry,
-    capturePreferredVoiceQueryWithRetry,
-    captureVoiceQuery,
-    captureVoiceQueryWithRetry,
-    getVoiceRecognitionLanguages,
-    shouldRetryVoiceRecognition,
+    supportsSpeechTranscription,
+    refreshVoiceLocationAvailability,
+    captureVoiceTranscript,
     resolveVoiceLocationQuery,
     refreshDeparturesOnly,
     applyModeUiState,

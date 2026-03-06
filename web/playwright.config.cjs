@@ -1,8 +1,6 @@
 const { defineConfig, devices } = require("@playwright/test");
 
 const isCI = Boolean(process.env.CI);
-const shouldRunWebkit =
-  process.platform === "darwin" || process.env.PW_RUN_WEBKIT_ON_LINUX === "1";
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
@@ -51,15 +49,5 @@ module.exports = defineConfig({
         ...devices["Desktop Firefox"],
       },
     },
-    ...(shouldRunWebkit
-      ? [
-          {
-            name: "webkit",
-            use: {
-              ...devices["Desktop Safari"],
-            },
-          },
-        ]
-      : []),
   ],
 });

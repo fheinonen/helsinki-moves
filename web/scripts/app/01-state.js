@@ -87,6 +87,7 @@
     locationGranted: false,
     isLoading: false,
     isVoiceListening: false,
+    voiceLocationAvailability: "checking",
     currentCoords: null,
     currentCoordsTimestampMs: null,
     currentCoordsAccuracyMeters: null,
@@ -127,9 +128,33 @@
 
   const { dom, state, constants } = app;
 
+  function normalizeVoiceLocationAvailability(value) {
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase();
+    if (normalized === "available" || normalized === "unavailable" || normalized === "checking") {
+      return normalized;
+    }
+    return "checking";
+  }
+
+  function getVoiceActionLabel() {
+    if (state.isVoiceListening) {
+      return "Listening...";
+    }
+    if (state.voiceLocationAvailability === "unavailable") {
+      return "Voice Unavailable";
+    }
+    if (state.voiceLocationAvailability === "available") {
+      return "Voice Search";
+    }
+    return "Checking Voice...";
+  }
+
   function updateLocationActionButtons() {
     const disableLocate = state.isLoading || state.isVoiceListening;
-    const disableVoice = state.isLoading;
+    const disableVoice = state.isLoading || state.voiceLocationAvailability === "checking";
+    const voiceActionLabel = getVoiceActionLabel();
     if (dom.locateBtn) {
       dom.locateBtn.disabled = disableLocate;
     }
@@ -138,12 +163,11 @@
       dom.voiceLocateBtn.disabled = disableVoice;
       dom.voiceLocateBtn.classList.toggle("is-listening", state.isVoiceListening);
       dom.voiceLocateBtn.setAttribute("aria-pressed", String(state.isVoiceListening));
+      dom.voiceLocateBtn.setAttribute("aria-label", voiceActionLabel);
     }
 
     if (dom.voiceLocateBtnLabel) {
-      dom.voiceLocateBtnLabel.textContent = state.isVoiceListening
-        ? "Listening..."
-        : "Voice Search";
+      dom.voiceLocateBtnLabel.textContent = voiceActionLabel;
     }
   }
 
@@ -157,6 +181,11 @@
 
   function setVoiceListening(listening) {
     state.isVoiceListening = Boolean(listening);
+    updateLocationActionButtons();
+  }
+
+  function setVoiceLocationAvailability(availability) {
+    state.voiceLocationAvailability = normalizeVoiceLocationAvailability(availability);
     updateLocationActionButtons();
   }
 
@@ -594,6 +623,7 @@
     updateLocationActionButtons,
     setLoading,
     setVoiceListening,
+    setVoiceLocationAvailability,
     setStatus,
     setResolvedLocationHint,
     showLocationPrompt,

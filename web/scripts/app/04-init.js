@@ -209,6 +209,7 @@
 
   api.hydrateInitialState();
   api.applyModeUiState();
+  api.refreshVoiceLocationAvailability?.();
   api.updateClock();
   setInterval(api.updateClock, 1000);
 

@@ -8,16 +8,17 @@ const { defineFeature } = require("./helpers/bdd");
 const featureText = `
 Feature: Mockup-inspired cards and controls contracts
 
-Scenario: Voice action label uses Voice Search
+Scenario: Voice action starts in checking state
   Given the app shell is loaded
   And the location action state module is loaded
   When the controls row is rendered
-  Then the voice action button label is "Voice Search"
+  Then the voice action button label is "Checking Voice..."
+  And the voice action button disabled state is true
 
-Scenario: Voice action accessibility label matches control text
+Scenario: Voice action accessibility label matches checking state
   Given the app shell is loaded
   When controls accessibility labels are inspected
-  Then the voice action aria-label is "Voice Search"
+  Then the voice action aria-label is "Checking Voice..."
 
 Scenario: Refresh and Voice Search controls use tightened row layout
   Given a mobile viewport
@@ -498,6 +499,14 @@ defineFeature(test, featureText, {
         const markupLabel = world.html.match(/id="voiceLocateBtnLabel"[^>]*>([^<]+)</)?.[1]?.trim() || "";
         assert.equal(markupLabel, args[0]);
         assert.equal(world.stateHarness.dom.voiceLocateBtnLabel.textContent, args[0]);
+      },
+    },
+    {
+      pattern: /^Then the voice action button disabled state is (true|false)$/,
+      run: ({ assert, args, world }) => {
+        const markupButton = world.html.match(/id="voiceLocateBtn"[^>]*\sdisabled(?=[\s>])/) !== null;
+        assert.equal(markupButton, args[0] === "true");
+        assert.equal(world.stateHarness.dom.voiceLocateBtn.disabled, args[0] === "true");
       },
     },
     {

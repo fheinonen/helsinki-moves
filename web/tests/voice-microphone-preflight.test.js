@@ -1,0 +1,348 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+
+const { defineFeature } = require("./helpers/bdd");
+
+const featureText = `
+Feature: Voice microphone preflight
+
+Scenario: Request microphone permission before voice capture
+  Given voice preflight data API is booted
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice preflight location is requested
+  Then microphone permission preflight call count equals 1
+  And media recorder start call count equals 1
+  And speech transcription request count equals 1
+  And browser speech recognition start call count equals 0
+
+Scenario: Use typed fallback prompt when speech transcription is unavailable
+  Given voice preflight data API is booted
+  And speech transcription responds with status 503
+  And typed fallback prompt returns ""
+  When voice preflight location is requested
+  Then microphone permission preflight call count equals 1
+  And typed fallback prompt call count equals 1
+  And last prompt message equals "Voice recognition is unavailable right now. Type your location or line (number or letter) instead:\\nExample: Kamppi Helsinki, A-train, bus 52, 200"
+`;
+
+function createMediaRecorderClass(world) {
+  return class MockMediaRecorder {
+    static isTypeSupported() {
+      return true;
+    }
+
+    constructor() {
+      this.listeners = new Map();
+      this.state = "inactive";
+    }
+
+    addEventListener(type, handler) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(handler);
+    }
+
+    emit(type, event = {}) {
+      for (const handler of this.listeners.get(type) || []) {
+        handler(event);
+      }
+    }
+
+    start() {
+      this.state = "recording";
+      world.mediaRecorderStartCalls.push({});
+      setTimeout(() => {
+        this.emit("dataavailable", {
+          data: new Blob([Buffer.from("voice-sample")], { type: "audio/webm" }),
+        });
+        this.stop();
+      }, 0);
+    }
+
+    stop() {
+      if (this.state === "inactive") return;
+      this.state = "inactive";
+      this.emit("stop");
+    }
+
+    requestData() {}
+  };
+}
+
+function bootVoiceDataApi(world) {
+  const scriptPath = path.resolve(__dirname, "../scripts/app/03-data.js");
+  const scriptText = fs.readFileSync(scriptPath, "utf8");
+
+  const getUserMediaCalls = [];
+  const promptCalls = [];
+  const browserSpeechStartCalls = [];
+
+  const context = {
+    window: {
+      HMApp: {
+        api: {
+          uniqueNonEmptyStrings: (items) =>
+            [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()))].filter(
+              Boolean
+            ),
+          setVoiceListening: (value) => {
+            context.window.HMApp.state.isVoiceListening = Boolean(value);
+          },
+          setStatus: () => {},
+          getVoiceLocationErrorStatus: (error) => {
+            const code = String(error?.code || "").trim();
+            if (code === "voice_unsupported") {
+              return "Voice recognition is unavailable right now. Type your location or line (number or letter) instead.";
+            }
+            return String(error?.message || "voice-error");
+          },
+          reportClientError: () => {},
+          reportClientMetric: () => {},
+          setResolvedLocationHint: () => {},
+          setPermissionRequired: () => {},
+          safeString: (value) => String(value || ""),
+          getActiveResultsLimit: () => 8,
+          sanitizeStopSelections: () => {},
+          render: () => {},
+          setLastUpdated: () => {},
+          buildStatusFromResponse: () => "",
+          trackFirstSuccessfulRender: () => {},
+          persistUiState: () => {},
+          trackInitialNearestStopResolved: () => {},
+          updateNextSummary: () => {},
+          setLoading: () => {},
+          getLoadErrorStatus: () => "load-error",
+          updateModeButtons: () => {},
+          updateModeLabels: () => {},
+          renderResultsLimitControl: () => {},
+          renderStopControls: () => {},
+          updateDataScope: () => {},
+        },
+        dom: {
+          resultEl: {
+            classList: {
+              add() {},
+            },
+          },
+        },
+        state: {
+          isLoading: false,
+          isVoiceListening: false,
+          voiceLocationAvailability: "available",
+          currentCoords: null,
+          currentCoordsTimestampMs: null,
+          currentCoordsAccuracyMeters: null,
+          latestResponse: null,
+          locationGranted: false,
+          latestLoadToken: 0,
+          mode: "rail",
+          busStopId: null,
+          busStops: [],
+          busLineFilters: [],
+          busDestinationFilters: [],
+          hasCompletedInitialStopModeLoad: true,
+          deferInitialStopContext: false,
+        },
+        constants: {
+          MODE_RAIL: "rail",
+          MODE_TRAM: "tram",
+          MODE_METRO: "metro",
+          MODE_BUS: "bus",
+          FETCH_TIMEOUT_MS: 8000,
+          VOICE_SILENCE_STOP_MS: 1200,
+          VOICE_RECOGNITION_TIMEOUT_MS: 1000,
+          VOICE_QUERY_MIN_LENGTH: 3,
+        },
+      },
+      prompt: (message, defaultValue) => {
+        promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
+        return world.promptResponse;
+      },
+      MediaRecorder: createMediaRecorderClass(world),
+      SpeechRecognition: class MockSpeechRecognition {
+        start() {
+          browserSpeechStartCalls.push({});
+        }
+      },
+      webkitSpeechRecognition: null,
+    },
+    navigator: {
+      language: "en-US",
+      languages: ["en-US"],
+      userAgent: "Mozilla/5.0 Chrome/123.0",
+      mediaDevices: {
+        getUserMedia: async (constraints) => {
+          getUserMediaCalls.push(constraints);
+          return {
+            getTracks: () => [
+              {
+                stop: () => {},
+              },
+            ],
+          };
+        },
+      },
+    },
+    fetch: async (url) => {
+      const asText = String(url || "");
+      if (asText.startsWith("/api/v1/speech-transcribe")) {
+        world.speechTranscribeRequestCount += 1;
+        return {
+          ok: world.speechTranscribeStatus === 200,
+          status: world.speechTranscribeStatus,
+          headers: { get: () => "application/json" },
+          async json() {
+            if (world.speechTranscribeStatus === 200) {
+              return {
+                transcript: world.transcript,
+              };
+            }
+            return { error: "Google Speech is not configured" };
+          },
+        };
+      }
+
+      if (asText.startsWith("/api/v1/geocode")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => "application/json" },
+          async json() {
+            return {
+              location: {
+                lat: 60.1699,
+                lon: 24.9384,
+                label: "Kamppi, Helsinki",
+              },
+            };
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        async json() {
+          return { station: { departures: [] }, stops: [] };
+        },
+      };
+    },
+    document: {
+      createElement: () => ({
+        addEventListener() {},
+      }),
+    },
+    Blob,
+    Buffer,
+    URLSearchParams,
+    Date,
+    Math,
+    Number,
+    String,
+    Boolean,
+    Object,
+    Array,
+    Set,
+    Promise,
+    RegExp,
+    Error,
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    console,
+  };
+
+  vm.createContext(context);
+  vm.runInContext(scriptText, context, { filename: scriptPath });
+
+  world.api = context.window.HMApp.api;
+  world.getUserMediaCalls = getUserMediaCalls;
+  world.promptCalls = promptCalls;
+  world.browserSpeechStartCalls = browserSpeechStartCalls;
+}
+
+defineFeature(test, featureText, {
+  createWorld: () => ({
+    api: null,
+    transcript: "Kamppi Helsinki",
+    speechTranscribeStatus: 200,
+    promptResponse: "",
+    getUserMediaCalls: [],
+    promptCalls: [],
+    mediaRecorderStartCalls: [],
+    speechTranscribeRequestCount: 0,
+    browserSpeechStartCalls: [],
+    result: null,
+  }),
+  stepDefinitions: [
+    {
+      pattern: /^Given voice preflight data API is booted$/,
+      run: ({ world }) => {
+        bootVoiceDataApi(world);
+      },
+    },
+    {
+      pattern: /^Given speech transcription returns transcript "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.transcript = args[0];
+        world.speechTranscribeStatus = 200;
+      },
+    },
+    {
+      pattern: /^Given speech transcription responds with status (\d+)$/,
+      run: ({ args, world }) => {
+        world.speechTranscribeStatus = Number(args[0]);
+      },
+    },
+    {
+      pattern: /^Given typed fallback prompt returns "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.promptResponse = args[0];
+      },
+    },
+    {
+      pattern: /^When voice preflight location is requested$/,
+      run: async ({ world }) => {
+        world.result = await world.api.requestVoiceLocationAndLoad();
+      },
+    },
+    {
+      pattern: /^Then microphone permission preflight call count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then typed fallback prompt call count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.promptCalls.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then media recorder start call count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.mediaRecorderStartCalls.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then speech transcription request count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.speechTranscribeRequestCount, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then browser speech recognition start call count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.browserSpeechStartCalls.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then last prompt message equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(String(world.promptCalls.at(-1)?.message || ""), args[0].replace(/\\n/g, "\n"));
+      },
+    },
+  ],
+});

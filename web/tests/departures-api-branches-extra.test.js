@@ -1,4 +1,5 @@
 const test = require("node:test");
+const assert = require("node:assert/strict");
 
 const { defineFeature } = require("./helpers/bdd");
 const departuresApi = require("../api/v1/departures")._private;
@@ -29,10 +30,20 @@ Scenario: Bus no-nearby message is bus specific
   When no-nearby message helper runs
   Then no-nearby message helper output equals "No nearby bus stops"
 
+Scenario: Rail no-nearby message is rail specific
+  Given no-nearby message mode "RAIL"
+  When no-nearby message helper runs
+  Then no-nearby message helper output equals "No nearby train stations"
+
 Scenario: BUS mode is recognized as stop mode
   Given stop-mode mode "BUS"
   When stop-mode helper runs
   Then stop-mode helper output equals true
+
+Scenario: Unsupported mode is not recognized as stop mode
+  Given stop-mode mode "FERRY"
+  When stop-mode helper runs
+  Then stop-mode helper output equals false
 
 Scenario: Requested stop can match member stop id
   Given selectable stop groups with member ids
@@ -80,6 +91,22 @@ Scenario: Parse departures request accepts line intent boolean flag
   Then departures request helper has no error
   And parsed line-intent flag equals true
 
+Scenario: Parse departures request accepts numeric line intent flag
+  Given departures query with line-intent numeric flag
+  When departures request helper runs
+  Then departures request helper has no error
+  And parsed line-intent flag equals true
+
+Scenario: Parse departures request rejects invalid mode
+  Given departures query with invalid mode
+  When departures request helper runs
+  Then departures request helper error equals "Invalid mode"
+
+Scenario: Parse departures request rejects invalid results
+  Given departures query with invalid results
+  When departures request helper runs
+  Then departures request helper error equals "Invalid results"
+
 Scenario: Line-intent no-nearby message falls back to generic line label
   Given line-intent no-nearby message mode "BUS" and empty line token
   When line-intent no-nearby message helper runs
@@ -101,6 +128,11 @@ Scenario: Line matching helper returns false with empty requested lines
   And requested line filters ""
   When line matching helper runs
   Then line matching helper output equals false
+
+Scenario: Line-intent stop selection returns null when no stop matches the requested line
+  Given line-intent stop selection input with no matching lines
+  When line-intent stop selection helper runs
+  Then line-intent stop selection is null
 `;
 
 defineFeature(test, featureText, {
@@ -211,6 +243,12 @@ defineFeature(test, featureText, {
       pattern: /^Then departures request helper has no error$/,
       run: ({ assert, world }) => {
         assert.equal(world.output?.error, null);
+      },
+    },
+    {
+      pattern: /^Then departures request helper error equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output?.error, args[0]);
       },
     },
     {
@@ -328,6 +366,39 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given departures query with line-intent numeric flag$/,
+      run: ({ world }) => {
+        world.input.query = {
+          lat: "60.17",
+          lon: "24.93",
+          mode: "BUS",
+          line: "67",
+          lineIntent: "1",
+        };
+      },
+    },
+    {
+      pattern: /^Given departures query with invalid mode$/,
+      run: ({ world }) => {
+        world.input.query = {
+          lat: "60.17",
+          lon: "24.93",
+          mode: "FERRY",
+        };
+      },
+    },
+    {
+      pattern: /^Given departures query with invalid results$/,
+      run: ({ world }) => {
+        world.input.query = {
+          lat: "60.17",
+          lon: "24.93",
+          mode: "BUS",
+          results: "999",
+        };
+      },
+    },
+    {
       pattern: /^Given line-intent no-nearby message mode "([^"]*)" and empty line token$/,
       run: ({ args, world }) => {
         world.input.mode = args[0];
@@ -383,5 +454,114 @@ defineFeature(test, featureText, {
         assert.equal(world.output, args[0] === "true");
       },
     },
+    {
+      pattern: /^Given line-intent stop selection input with no matching lines$/,
+      run: ({ world }) => {
+        world.input.lineIntentStopSelection = {
+          graphqlCalls: 0,
+          stops: [
+            { id: "HSL:1", memberStopIds: ["HSL:1"] },
+            { id: "HSL:2", memberStopIds: ["HSL:2"] },
+          ],
+          requestedLines: ["67"],
+        };
+      },
+    },
+    {
+      pattern: /^When line-intent stop selection helper runs$/,
+      run: async ({ world }) => {
+        world.output = await departuresApi.selectLineIntentStop({
+          graphqlRequest: async () => {
+            world.input.lineIntentStopSelection.graphqlCalls += 1;
+            return {
+              s0: {
+                platformCode: "1",
+                stoptimesWithoutPatterns: [
+                    {
+                      serviceDay: Math.floor(Date.now() / 1000) + 3600,
+                      scheduledDeparture: 0,
+                      realtimeDeparture: 0,
+                      realtime: false,
+                    pickupType: 0,
+                    stop: { gtfsId: "HSL:1", platformCode: "1" },
+                    trip: {
+                      route: { shortName: "15", longName: "Kamppi", mode: "BUS" },
+                    },
+                    headsign: "Kamppi",
+                  },
+                ],
+              },
+              s1: {
+                platformCode: "2",
+                stoptimesWithoutPatterns: [
+                    {
+                      serviceDay: Math.floor(Date.now() / 1000) + 3600,
+                      scheduledDeparture: 0,
+                      realtimeDeparture: 0,
+                      realtime: false,
+                    pickupType: 0,
+                    stop: { gtfsId: "HSL:2", platformCode: "2" },
+                    trip: {
+                      route: { shortName: "16", longName: "Pasila", mode: "BUS" },
+                    },
+                    headsign: "Pasila",
+                  },
+                ],
+              },
+            };
+          },
+          stops: world.input.lineIntentStopSelection.stops,
+          upstreamMode: "BUS",
+          requestedResultLimit: 8,
+          requestedLines: world.input.lineIntentStopSelection.requestedLines,
+        });
+      },
+    },
+    {
+      pattern: /^Then line-intent stop selection is null$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.output, null);
+        assert.equal(world.input.lineIntentStopSelection.graphqlCalls, 1);
+      },
+    },
   ],
+});
+
+test("parseRequiredCoordinate returns null for nullish and blank inputs", () => {
+  assert.equal(departuresApi.parseRequiredCoordinate(null), null);
+  assert.equal(departuresApi.parseRequiredCoordinate("   "), null);
+});
+
+test("parseLineIntentRequested accepts later truthy values from array input", () => {
+  assert.equal(departuresApi.parseLineIntentRequested({ lineIntent: ["", "true"] }), true);
+});
+
+test("noNearbyStopModeResponse and noNearbyLineIntentResponse keep fallback structure", () => {
+  assert.deepEqual(departuresApi.noNearbyStopModeResponse("BUS"), {
+    mode: "BUS",
+    station: null,
+    stops: [],
+    selectedStopId: null,
+    filterOptions: { lines: [], destinations: [] },
+    message: "No nearby bus stops",
+  });
+  assert.deepEqual(departuresApi.noNearbyLineIntentResponse("BUS", [], ["67"]), {
+    mode: "BUS",
+    station: null,
+    stops: [],
+    selectedStopId: null,
+    filterOptions: { lines: [], destinations: [] },
+    message: "No nearby departures found for bus 67.",
+  });
+});
+
+test("buildNoNearbyLineIntentMessage covers metro and tram mode labels", () => {
+  assert.equal(
+    departuresApi.buildNoNearbyLineIntentMessage("METRO", ["M1"]),
+    "No nearby departures found for metro M1."
+  );
+  assert.equal(
+    departuresApi.buildNoNearbyLineIntentMessage("TRAM", ["9"]),
+    "No nearby departures found for tram 9."
+  );
 });

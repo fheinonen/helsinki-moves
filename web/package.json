@@ -33,8 +33,5 @@
   },
   "engines": {
     "node": "24.x"
-  },
-  "dependencies": {
-    "microsoft-cognitiveservices-speech-sdk": "^1.48.0"
   }
 }

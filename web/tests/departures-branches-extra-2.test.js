@@ -23,6 +23,28 @@ function createModeStop({
   };
 }
 
+function createStopTime({ mode = "BUS", line = "550", seconds = 60, stopId = "HSL:1234" } = {}) {
+  return {
+    serviceDay: Math.floor(Date.now() / 1000) + 120,
+    realtimeDeparture: seconds,
+    scheduledDeparture: seconds,
+    pickupType: 0,
+    headsign: "Pasila",
+    stop: {
+      gtfsId: stopId,
+      name: "Kamppi",
+      code: "1234",
+      platformCode: "A",
+    },
+    trip: {
+      route: {
+        mode,
+        shortName: line,
+      },
+    },
+  };
+}
+
 const featureText = `
 Feature: Additional departures helper branch coverage
 
@@ -76,12 +98,29 @@ Scenario: Build stop mode response with missing alias payload
   When stop mode response helper runs
   Then stop mode response departures count equals 0
 
+Scenario: Fetch departures for selectable stop falls back to canonical stop id
+  Given selectable stop helper input without member ids
+  When selectable stop departures helper runs
+  Then selectable stop departures count equals 1
+  And multi-stop departures limit equals 24
+
+Scenario: Select line-intent stop falls back to stop id when member ids are missing
+  Given line-intent stop helper input without member ids
+  When line-intent stop helper runs
+  Then line-intent selected stop id equals "HSL:target"
+
+Scenario: Stop mode response keeps requested stop when line intent also exists
+  Given stop mode response input with requested stop and line intent
+  When stop mode response helper runs
+  Then stop mode response selected stop id equals "HSL:chosen"
+
 `;
 
 defineFeature(test, featureText, {
   createWorld: () => ({
     input: {},
     output: null,
+    observedDeparturesLimit: null,
   }),
   stepDefinitions: [
     {
@@ -279,6 +318,115 @@ defineFeature(test, featureText, {
       pattern: /^Then stop mode response departures count equals (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.output.station.departures.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Given selectable stop helper input without member ids$/,
+      run: ({ world }) => {
+        world.input.selectableStopParams = {
+          graphqlRequest: async (_query, variables) => {
+            world.observedDeparturesLimit = variables.departures;
+            return {
+              s0: {
+                stoptimesWithoutPatterns: [
+                  createStopTime({ line: "550", stopId: "HSL:solo", seconds: 90 }),
+                ],
+              },
+            };
+          },
+          selectedStop: {
+            id: "HSL:solo",
+            name: "Solo Stop",
+            code: "S1",
+          },
+          upstreamMode: "BUS",
+          requestedResultLimit: 8,
+        };
+      },
+    },
+    {
+      pattern: /^When selectable stop departures helper runs$/,
+      run: async ({ world }) => {
+        world.output = await departuresApi.fetchDeparturesForSelectableStop(world.input.selectableStopParams);
+      },
+    },
+    {
+      pattern: /^Then selectable stop departures count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then multi-stop departures limit equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.observedDeparturesLimit, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Given line-intent stop helper input without member ids$/,
+      run: ({ world }) => {
+        world.input.lineIntentParams = {
+          graphqlRequest: async () => ({
+            s0: {
+              stoptimesWithoutPatterns: [
+                createStopTime({ line: "67", stopId: "HSL:target", seconds: 120 }),
+              ],
+            },
+          }),
+          stops: [
+            {
+              id: "HSL:target",
+              name: "Target Stop",
+              code: "T1",
+            },
+          ],
+          upstreamMode: "BUS",
+          requestedResultLimit: 8,
+          requestedLines: ["67"],
+        };
+      },
+    },
+    {
+      pattern: /^When line-intent stop helper runs$/,
+      run: async ({ world }) => {
+        world.output = await departuresApi.selectLineIntentStop(world.input.lineIntentParams);
+      },
+    },
+    {
+      pattern: /^Then line-intent selected stop id equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output?.selectedStop?.id, args[0]);
+      },
+    },
+    {
+      pattern: /^Given stop mode response input with requested stop and line intent$/,
+      run: ({ world }) => {
+        world.input.stopModeParams = {
+          graphqlRequest: async () => ({
+            s0: {
+              stoptimesWithoutPatterns: [
+                createStopTime({ line: "67", stopId: "HSL:chosen", seconds: 120 }),
+              ],
+            },
+          }),
+          mode: "BUS",
+          upstreamMode: "BUS",
+          modeStops: [
+            createModeStop({ id: "HSL:chosen", mode: "BUS", distance: 20, name: "Chosen", code: "1001" }),
+            createModeStop({ id: "HSL:other", mode: "BUS", distance: 40, name: "Other", code: "1002" }),
+          ],
+          requestedResultLimit: 8,
+          requestedLines: ["67"],
+          requestedDestinations: [],
+          requestedStopId: "HSL:chosen",
+          lineIntentRequested: true,
+        };
+      },
+    },
+    {
+      pattern: /^Then stop mode response selected stop id equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output.selectedStopId, args[0]);
       },
     },
   ],

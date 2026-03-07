@@ -59,6 +59,14 @@ Scenario: Strip punctuation from speech transcription before location lookup
   When voice location is requested
   Then last geocode text query equals "Kamppi Helsinki"
 
+Scenario: Use provided voice runtime recorder override during capture
+  Given voice data API is booted
+  And voice runtime recorder override is available
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice location is requested
+  Then speech transcription request count equals 1
+  And media recorder start call count equals 1
+
 `;
 
 function createMediaRecorderClass(world) {
@@ -182,11 +190,16 @@ function bootVoiceDataApi(world) {
     },
     env: {
       windowRef: {
+        __HM_TEST_VOICE_OVERRIDES__: world.useRuntimeRecorderOverride
+          ? {
+              MediaRecorder: createMediaRecorderClass(world),
+            }
+          : null,
         prompt: (message, defaultValue) => {
           promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
           return world.promptResponse;
         },
-        MediaRecorder: createMediaRecorderClass(world),
+        MediaRecorder: world.useRuntimeRecorderOverride ? null : createMediaRecorderClass(world),
         AudioContext: class MockAudioContext {
           constructor() {
             audioContextStartCalls.push({});
@@ -301,6 +314,7 @@ defineFeature(test, featureText, {
     mediaRecorderDeliversAudioAfterStop: false,
     userAgent: "Mozilla/5.0 Chrome/123.0",
     result: null,
+    useRuntimeRecorderOverride: false,
   }),
   stepDefinitions: [
     {
@@ -390,6 +404,13 @@ defineFeature(test, featureText, {
       pattern: /^Given media recorder delivers audio after stop$/,
       run: ({ world }) => {
         world.mediaRecorderDeliversAudioAfterStop = true;
+      },
+    },
+    {
+      pattern: /^Given voice runtime recorder override is available$/,
+      run: ({ world }) => {
+        world.useRuntimeRecorderOverride = true;
+        bootVoiceDataApi(world);
       },
     },
     {

@@ -1,9 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const { defineFeature } = require("../helpers/playwright-bdd");
-const {
-  installMockGetUserMediaSource,
-  installMockPropertySource,
-} = require("../helpers/browser-mock-property");
+const { installMockPropertySource } = require("../helpers/browser-mock-property");
 const { assertProbeAware } = require("../helpers/playwright-probe-assertions");
 
 function nextIso(minutesFromNow) {
@@ -336,24 +333,20 @@ async function installPromptMock(page, responses) {
 }
 
 async function installMicrophonePreflightScenario(page, scenario) {
-  await page.addInitScript(({ nextScenario, mockPropertySource, mockGetUserMediaSource }) => {
+  await page.addInitScript(({ nextScenario, mockPropertySource }) => {
     const installMockProperty = new Function(`return ${mockPropertySource};`)();
-    const installMockGetUserMedia = new Function(
-      "installMockProperty",
-      `return ${mockGetUserMediaSource};`
-    )(installMockProperty);
     const requireMockProperty = (target, propertyName, value) => {
       if (!installMockProperty(target, propertyName, value)) {
         throw new Error(`Could not install mock property "${propertyName}".`);
       }
     };
-    const requireMockGetUserMedia = (navigatorTarget, value) => {
-      if (!installMockGetUserMedia(navigatorTarget, value)) {
-        throw new Error('Could not install mock property "mediaDevices.getUserMedia".');
-      }
-    };
     const scenarioValue = String(nextScenario || "granted");
     requireMockProperty(window, "__voiceMicPreflightCalls", 0);
+    const voiceOverrides =
+      window.__HM_TEST_VOICE_OVERRIDES__ && typeof window.__HM_TEST_VOICE_OVERRIDES__ === "object"
+        ? window.__HM_TEST_VOICE_OVERRIDES__
+        : {};
+    requireMockProperty(window, "__HM_TEST_VOICE_OVERRIDES__", voiceOverrides);
 
     const mockGetUserMedia = async () => {
       window.__voiceMicPreflightCalls += 1;
@@ -376,12 +369,8 @@ async function installMicrophonePreflightScenario(page, scenario) {
       };
     };
 
-    requireMockGetUserMedia(navigator, mockGetUserMedia);
-  }, {
-    nextScenario: scenario,
-    mockPropertySource: installMockPropertySource,
-    mockGetUserMediaSource: installMockGetUserMediaSource,
-  });
+    requireMockProperty(voiceOverrides, "getUserMedia", mockGetUserMedia);
+  }, { nextScenario: scenario, mockPropertySource: installMockPropertySource });
 }
 
 async function installSpeechCaptureMock(page, { scenario, transcript }) {
@@ -396,12 +385,11 @@ async function installSpeechCaptureMock(page, { scenario, transcript }) {
     const transcriptValue = String(mockConfig?.transcript || "Kamppi Helsinki");
     requireMockProperty(window, "__speechRecorderStartCalls", 0);
     requireMockProperty(window, "__browserSpeechStartCalls", 0);
-
-    class MockSpeechRecognition {
-      start() {
-        window.__browserSpeechStartCalls += 1;
-      }
-    }
+    const voiceOverrides =
+      window.__HM_TEST_VOICE_OVERRIDES__ && typeof window.__HM_TEST_VOICE_OVERRIDES__ === "object"
+        ? window.__HM_TEST_VOICE_OVERRIDES__
+        : {};
+    requireMockProperty(window, "__HM_TEST_VOICE_OVERRIDES__", voiceOverrides);
 
     const MockMediaRecorder = class MockMediaRecorder {
       static isTypeSupported() {
@@ -447,14 +435,7 @@ async function installSpeechCaptureMock(page, { scenario, transcript }) {
 
       requestData() {}
     };
-    requireMockProperty(window, "SpeechRecognition", MockSpeechRecognition);
-    requireMockProperty(window, "webkitSpeechRecognition", MockSpeechRecognition);
-    requireMockProperty(window, "MediaRecorder", MockMediaRecorder);
-    if (globalThis !== window) {
-      requireMockProperty(globalThis, "SpeechRecognition", MockSpeechRecognition);
-      requireMockProperty(globalThis, "webkitSpeechRecognition", MockSpeechRecognition);
-      requireMockProperty(globalThis, "MediaRecorder", MockMediaRecorder);
-    }
+    requireMockProperty(voiceOverrides, "MediaRecorder", MockMediaRecorder);
   }, { scenario, transcript, mockPropertySource: installMockPropertySource });
 }
 

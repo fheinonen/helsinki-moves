@@ -170,6 +170,14 @@ function registerDataModule(app, env = {}) {
     return error;
   }
 
+  function getVoiceTestingOverrides() {
+    const overrides = windowRef?.__HM_TEST_VOICE_OVERRIDES__;
+    if (!overrides || typeof overrides !== "object") {
+      return null;
+    }
+    return overrides;
+  }
+
   function getVoiceErrorCode(error) {
     return String(error?.code || "")
       .trim()
@@ -181,6 +189,10 @@ function registerDataModule(app, env = {}) {
   }
 
   function getVoiceRecorderConstructor() {
+    const testingRecorder = getVoiceTestingOverrides()?.MediaRecorder;
+    if (typeof testingRecorder === "function") {
+      return testingRecorder;
+    }
     if (typeof windowRef.MediaRecorder === "function") {
       return windowRef.MediaRecorder;
     }
@@ -191,11 +203,14 @@ function registerDataModule(app, env = {}) {
   }
 
   function supportsVoiceLocation() {
+    const testingGetUserMedia = getVoiceTestingOverrides()?.getUserMedia;
     const mediaDevices = navigatorRef?.mediaDevices;
     return Boolean(
       getVoiceRecorderConstructor() &&
-        mediaDevices &&
-        typeof mediaDevices.getUserMedia === "function"
+        (
+          typeof testingGetUserMedia === "function" ||
+          (mediaDevices && typeof mediaDevices.getUserMedia === "function")
+        )
     );
   }
 
@@ -236,6 +251,15 @@ function registerDataModule(app, env = {}) {
   }
 
   async function requestMicrophoneStream() {
+    const testingGetUserMedia = getVoiceTestingOverrides()?.getUserMedia;
+    if (typeof testingGetUserMedia === "function") {
+      try {
+        return await testingGetUserMedia(getPreferredMicrophoneConstraints());
+      } catch (error) {
+        throw mapMicrophonePreflightError(error);
+      }
+    }
+
     const mediaDevices = navigatorRef?.mediaDevices;
     if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
       return null;

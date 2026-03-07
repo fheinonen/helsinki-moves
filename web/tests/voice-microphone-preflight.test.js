@@ -40,6 +40,14 @@ Scenario: Request browser audio processing to reduce microphone feedback
   Then requested microphone echo cancellation preference equals true
   And requested microphone noise suppression preference equals true
   And requested microphone auto gain control preference equals true
+
+Scenario: Use provided voice runtime microphone override during preflight
+  Given voice preflight data API is booted
+  And voice runtime microphone override is available
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice preflight location is requested
+  Then microphone permission preflight call count equals 1
+  And speech transcription request count equals 1
 `;
 
 function createMediaRecorderClass(world) {
@@ -141,6 +149,20 @@ function bootVoiceDataApi(world) {
     env: {
       windowRef: {
         __HM_ENABLE_VOICE_RECORDER_FALLBACK__: true,
+        __HM_TEST_VOICE_OVERRIDES__: world.useRuntimeMicrophoneOverride
+          ? {
+              getUserMedia: async (constraints) => {
+                getUserMediaCalls.push(constraints);
+                return {
+                  getTracks: () => [
+                    {
+                      stop: () => {},
+                    },
+                  ],
+                };
+              },
+            }
+          : null,
         prompt: (message, defaultValue) => {
           promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
           return world.promptResponse;
@@ -153,18 +175,20 @@ function bootVoiceDataApi(world) {
         language: "en-US",
         languages: ["en-US"],
         userAgent: "Mozilla/5.0 Chrome/123.0",
-        mediaDevices: {
-          getUserMedia: async (constraints) => {
-            getUserMediaCalls.push(constraints);
-            return {
-              getTracks: () => [
-                {
-                  stop: () => {},
-                },
-              ],
-            };
-          },
-        },
+        mediaDevices: world.useRuntimeMicrophoneOverride
+          ? null
+          : {
+              getUserMedia: async (constraints) => {
+                getUserMediaCalls.push(constraints);
+                return {
+                  getTracks: () => [
+                    {
+                      stop: () => {},
+                    },
+                  ],
+                };
+              },
+            },
       },
       fetchImpl: async (url) => {
         const asText = String(url || "");
@@ -236,6 +260,7 @@ defineFeature(test, featureText, {
     speechTranscribeRequestCount: 0,
     browserSpeechStartCalls: [],
     result: null,
+    useRuntimeMicrophoneOverride: false,
   }),
   stepDefinitions: [
     {
@@ -261,6 +286,13 @@ defineFeature(test, featureText, {
       pattern: /^Given typed fallback prompt returns "([^"]*)"$/,
       run: ({ args, world }) => {
         world.promptResponse = args[0];
+      },
+    },
+    {
+      pattern: /^Given voice runtime microphone override is available$/,
+      run: ({ world }) => {
+        world.useRuntimeMicrophoneOverride = true;
+        bootVoiceDataApi(world);
       },
     },
     {

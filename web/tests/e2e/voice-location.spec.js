@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const { defineFeature } = require("../helpers/playwright-bdd");
 const { installMockPropertySource } = require("../helpers/browser-mock-property");
+const { assertProbeAware } = require("../helpers/playwright-probe-assertions");
 
 function nextIso(minutesFromNow) {
   return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
@@ -167,6 +168,58 @@ function buildDeparturesPayload(requestUrl, profile = "default") {
           }
         : undefined,
   };
+}
+
+async function readLocatorText(locator) {
+  return String((await locator.textContent()) || "");
+}
+
+async function assertProbeAwareEquality({ assert, world, read, expected, waitFor = null }) {
+  await assertProbeAware({
+    probe: Boolean(world.probe),
+    waitFor,
+    read,
+    verify: (actual) => {
+      assert.equal(actual, expected);
+    },
+  });
+}
+
+async function assertProbeAwareMinimum({ assert, world, read, minimum, waitFor = null }) {
+  await assertProbeAware({
+    probe: Boolean(world.probe),
+    waitFor,
+    read,
+    verify: (actual) => {
+      assert.ok(actual >= minimum);
+    },
+  });
+}
+
+async function assertProbeAwareTextContains({ assert, world, locator, expected }) {
+  await assertProbeAware({
+    probe: Boolean(world.probe),
+    waitFor: async () => {
+      await expect(locator).toContainText(expected);
+    },
+    read: async () => readLocatorText(locator),
+    verify: (actual) => {
+      assert.equal(actual.includes(expected), true);
+    },
+  });
+}
+
+async function assertProbeAwareTextEquals({ assert, world, locator, expected }) {
+  await assertProbeAware({
+    probe: Boolean(world.probe),
+    waitFor: async () => {
+      await expect(locator).toHaveText(expected);
+    },
+    read: async () => readLocatorText(locator),
+    verify: (actual) => {
+      assert.equal(actual.trim(), expected);
+    },
+  });
 }
 
 async function installApiMocks(
@@ -554,9 +607,10 @@ Scenario: Use speech transcript when recognition succeeds
 
 defineFeature(test, featureText, {
   failFirstProbe: true,
-  createWorld: ({ fixtures }) => ({
+  createWorld: ({ fixtures, probe = false }) => ({
     page: fixtures.page,
     calls: null,
+    probe,
     speechCaptureScenario: "success",
     speechTranscript: "Kamppi Helsinki",
     speechTranscribeStatus: 200,
@@ -631,48 +685,90 @@ defineFeature(test, featureText, {
       pattern: /^Then geocode request count equals (\d+)$/,
       run: async ({ assert, args, world }) => {
         const expectedCount = Number(args[0]);
-        if (expectedCount > 0) {
-          await expect.poll(() => world.calls.geocode.length).toBe(expectedCount);
-        }
-        assert.equal(world.calls.geocode.length, expectedCount);
+        await assertProbeAwareEquality({
+          assert,
+          world,
+          expected: expectedCount,
+          read: async () => world.calls.geocode.length,
+          waitFor:
+            expectedCount > 0
+              ? async () => {
+                  await expect.poll(() => world.calls.geocode.length).toBe(expectedCount);
+                }
+              : null,
+        });
       },
     },
     {
       pattern: /^Then departures request count equals (\d+)$/,
       run: async ({ assert, args, world }) => {
         const expectedCount = Number(args[0]);
-        if (expectedCount > 0) {
-          await expect.poll(() => world.calls.departures.length).toBe(expectedCount);
-        }
-        assert.equal(world.calls.departures.length, expectedCount);
+        await assertProbeAwareEquality({
+          assert,
+          world,
+          expected: expectedCount,
+          read: async () => world.calls.departures.length,
+          waitFor:
+            expectedCount > 0
+              ? async () => {
+                  await expect.poll(() => world.calls.departures.length).toBe(expectedCount);
+                }
+              : null,
+        });
       },
     },
     {
       pattern: /^Then departures request count is at least (\d+)$/,
       run: async ({ assert, args, world }) => {
         const minimum = Number(args[0]);
-        await expect.poll(() => world.calls.departures.length >= minimum).toBe(true);
-        assert.ok(world.calls.departures.length >= minimum);
+        await assertProbeAwareMinimum({
+          assert,
+          world,
+          minimum,
+          read: async () => world.calls.departures.length,
+          waitFor: async () => {
+            await expect.poll(() => world.calls.departures.length >= minimum).toBe(true);
+          },
+        });
       },
     },
     {
       pattern: /^Then first departures mode query equals "([^"]*)"$/,
       run: async ({ assert, args, world }) => {
-        await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
-        assert.equal(String(world.calls.departures[0]?.mode || "").toUpperCase(), args[0]);
+        await assertProbeAwareEquality({
+          assert,
+          world,
+          expected: args[0],
+          read: async () => String(world.calls.departures[0]?.mode || "").toUpperCase(),
+          waitFor: async () => {
+            await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
+          },
+        });
       },
     },
     {
       pattern: /^Then first departures line query equals "([^"]*)"$/,
       run: async ({ assert, args, world }) => {
-        await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
-        assert.equal(String(world.calls.departures[0]?.line || ""), args[0]);
+        await assertProbeAwareEquality({
+          assert,
+          world,
+          expected: args[0],
+          read: async () => String(world.calls.departures[0]?.line || ""),
+          waitFor: async () => {
+            await expect.poll(() => world.calls.departures.length).toBeGreaterThan(0);
+          },
+        });
       },
     },
     {
       pattern: /^Then resolved location text contains "(.+)"$/,
-      run: async ({ args, world }) => {
-        await expect(world.page.locator("#resolvedLocation")).toContainText(args[0]);
+      run: async ({ assert, args, world }) => {
+        await assertProbeAwareTextContains({
+          assert,
+          world,
+          locator: world.page.locator("#resolvedLocation"),
+          expected: args[0],
+        });
       },
     },
     {
@@ -718,8 +814,13 @@ defineFeature(test, featureText, {
     },
     {
       pattern: /^Then selected stop label equals "([^"]*)"$/,
-      run: async ({ args, world }) => {
-        await expect(world.page.locator("#busStopSelectLabel")).toHaveText(args[0]);
+      run: async ({ assert, args, world }) => {
+        await assertProbeAwareTextEquals({
+          assert,
+          world,
+          locator: world.page.locator("#busStopSelectLabel"),
+          expected: args[0],
+        });
       },
     },
     {
@@ -739,8 +840,13 @@ defineFeature(test, featureText, {
     },
     {
       pattern: /^Then status text equals "([^"]*)"$/,
-      run: async ({ args, world }) => {
-        await expect(world.page.locator("#status")).toHaveText(args[0]);
+      run: async ({ assert, args, world }) => {
+        await assertProbeAwareTextEquals({
+          assert,
+          world,
+          locator: world.page.locator("#status"),
+          expected: args[0],
+        });
       },
     },
   ],

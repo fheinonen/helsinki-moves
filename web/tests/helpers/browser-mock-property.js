@@ -38,7 +38,23 @@ function installMockProperty(target, propertyName, value) {
   }
 }
 
+function installMockGetUserMedia(navigatorTarget, mockGetUserMedia) {
+  const mediaDevices = navigatorTarget?.mediaDevices;
+  if (mediaDevices && installMockProperty(mediaDevices, "getUserMedia", mockGetUserMedia)) {
+    return true;
+  }
+
+  const mergedMediaDevices =
+    mediaDevices && (typeof mediaDevices === "object" || typeof mediaDevices === "function")
+      ? { ...mediaDevices, getUserMedia: mockGetUserMedia }
+      : { getUserMedia: mockGetUserMedia };
+
+  return installMockProperty(navigatorTarget, "mediaDevices", mergedMediaDevices);
+}
+
 module.exports = {
+  installMockGetUserMedia,
+  installMockGetUserMediaSource: `(${installMockGetUserMedia.toString()})`,
   installMockProperty,
   installMockPropertySource: `(${installMockProperty.toString()})`,
 };

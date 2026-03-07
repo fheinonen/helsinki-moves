@@ -1,6 +1,9 @@
 const { test, expect } = require("@playwright/test");
 const { defineFeature } = require("../helpers/playwright-bdd");
-const { installMockPropertySource } = require("../helpers/browser-mock-property");
+const {
+  installMockGetUserMediaSource,
+  installMockPropertySource,
+} = require("../helpers/browser-mock-property");
 const { assertProbeAware } = require("../helpers/playwright-probe-assertions");
 
 function nextIso(minutesFromNow) {
@@ -333,11 +336,20 @@ async function installPromptMock(page, responses) {
 }
 
 async function installMicrophonePreflightScenario(page, scenario) {
-  await page.addInitScript(({ nextScenario, mockPropertySource }) => {
+  await page.addInitScript(({ nextScenario, mockPropertySource, mockGetUserMediaSource }) => {
     const installMockProperty = new Function(`return ${mockPropertySource};`)();
+    const installMockGetUserMedia = new Function(
+      "installMockProperty",
+      `return ${mockGetUserMediaSource};`
+    )(installMockProperty);
     const requireMockProperty = (target, propertyName, value) => {
       if (!installMockProperty(target, propertyName, value)) {
         throw new Error(`Could not install mock property "${propertyName}".`);
+      }
+    };
+    const requireMockGetUserMedia = (navigatorTarget, value) => {
+      if (!installMockGetUserMedia(navigatorTarget, value)) {
+        throw new Error('Could not install mock property "mediaDevices.getUserMedia".');
       }
     };
     const scenarioValue = String(nextScenario || "granted");
@@ -364,13 +376,12 @@ async function installMicrophonePreflightScenario(page, scenario) {
       };
     };
 
-    if (!navigator.mediaDevices) {
-      requireMockProperty(navigator, "mediaDevices", { getUserMedia: mockGetUserMedia });
-      return;
-    }
-
-    requireMockProperty(navigator.mediaDevices, "getUserMedia", mockGetUserMedia);
-  }, { nextScenario: scenario, mockPropertySource: installMockPropertySource });
+    requireMockGetUserMedia(navigator, mockGetUserMedia);
+  }, {
+    nextScenario: scenario,
+    mockPropertySource: installMockPropertySource,
+    mockGetUserMediaSource: installMockGetUserMediaSource,
+  });
 }
 
 async function installSpeechCaptureMock(page, { scenario, transcript }) {

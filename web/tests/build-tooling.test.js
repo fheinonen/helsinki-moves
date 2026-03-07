@@ -20,6 +20,11 @@ Scenario: Playwright browser projects cover the CI matrix
   Then project "chromium" exists
   And project "firefox" exists
   And project "webkit" exists
+
+Scenario: Chromium screenshot baselines use a shared cross-platform path
+  Given the Playwright configuration
+  When the screenshot path template is read
+  Then the screenshot path template equals "{snapshotDir}/{testFilePath}-snapshots/{arg}-{projectName}-linux{ext}"
 `;
 
 async function loadBuildAssetsModule() {
@@ -37,6 +42,7 @@ defineFeature(test, featureText, {
     tailwindInvocation: null,
     playwrightConfig: null,
     projectNames: [],
+    screenshotPathTemplate: "",
   }),
   stepDefinitions: [
     {
@@ -82,9 +88,22 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^When the screenshot path template is read$/,
+      run: ({ world }) => {
+        world.screenshotPathTemplate =
+          world.playwrightConfig.expect?.toHaveScreenshot?.pathTemplate || "";
+      },
+    },
+    {
       pattern: /^Then project "([^"]*)" exists$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.projectNames.includes(args[0]), true);
+      },
+    },
+    {
+      pattern: /^Then the screenshot path template equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.screenshotPathTemplate, args[0]);
       },
     },
   ],

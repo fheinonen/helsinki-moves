@@ -7,6 +7,9 @@ module.exports = defineConfig({
   timeout: 30_000,
   expect: {
     timeout: 7_000,
+    toHaveScreenshot: {
+      pathTemplate: "{snapshotDir}/{testFilePath}-snapshots/{arg}-{projectName}-linux{ext}",
+    },
   },
   fullyParallel: true,
   forbidOnly: isCI,

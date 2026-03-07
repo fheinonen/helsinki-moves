@@ -21,10 +21,15 @@ Scenario: Playwright browser projects cover the CI matrix
   And project "firefox" exists
   And project "webkit" exists
 
-Scenario: Chromium screenshot baselines use a shared cross-platform path
+Scenario: Chromium screenshot baselines keep platform-specific snapshot lookup
   Given the Playwright configuration
   When the screenshot path template is read
-  Then the screenshot path template equals "{snapshotDir}/{testFilePath}-snapshots/{arg}-{projectName}-linux{ext}"
+  Then the screenshot path template equals ""
+
+Scenario: Visual regression spec runs only on Linux Chromium
+  Given the UI visual regression spec source
+  When the visual regression skip guard is read
+  Then the visual regression skip guard contains process platform linux check
 `;
 
 async function loadBuildAssetsModule() {
@@ -36,6 +41,13 @@ function loadPlaywrightConfig() {
   return require(path.resolve(__dirname, "../playwright.config.cjs"));
 }
 
+function loadUiVisualRegressionSpecSource() {
+  return require("node:fs").readFileSync(
+    path.resolve(__dirname, "./e2e/ui-visual-regression.spec.js"),
+    "utf8"
+  );
+}
+
 defineFeature(test, featureText, {
   createWorld: () => ({
     buildAssetsModule: null,
@@ -43,6 +55,8 @@ defineFeature(test, featureText, {
     playwrightConfig: null,
     projectNames: [],
     screenshotPathTemplate: "",
+    uiVisualRegressionSpecSource: "",
+    visualSkipGuard: "",
   }),
   stepDefinitions: [
     {
@@ -95,6 +109,19 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given the UI visual regression spec source$/,
+      run: ({ world }) => {
+        world.uiVisualRegressionSpecSource = loadUiVisualRegressionSpecSource();
+      },
+    },
+    {
+      pattern: /^When the visual regression skip guard is read$/,
+      run: ({ world }) => {
+        const match = world.uiVisualRegressionSpecSource.match(/test\.skip\(([\s\S]*?)\);\n/);
+        world.visualSkipGuard = match ? match[1] : "";
+      },
+    },
+    {
       pattern: /^Then project "([^"]*)" exists$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.projectNames.includes(args[0]), true);
@@ -104,6 +131,12 @@ defineFeature(test, featureText, {
       pattern: /^Then the screenshot path template equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.screenshotPathTemplate, args[0]);
+      },
+    },
+    {
+      pattern: /^Then the visual regression skip guard contains process platform linux check$/,
+      run: ({ assert, world }) => {
+        assert.equal(world.visualSkipGuard.includes('process.platform !== "linux"'), true);
       },
     },
   ],

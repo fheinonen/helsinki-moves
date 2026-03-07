@@ -4,8 +4,8 @@ const { defineFeature } = require("../helpers/playwright-bdd");
 const FIXED_NOW_ISO = "2026-02-28T15:52:31+02:00";
 
 test.skip(
-  ({ browserName }) => browserName !== "chromium",
-  "Visual regression baselines are maintained for Chromium."
+  ({ browserName }) => browserName !== "chromium" || process.platform !== "linux",
+  "Visual regression baselines are maintained for Linux Chromium."
 );
 
 function nextIso(minutesFromNow) {

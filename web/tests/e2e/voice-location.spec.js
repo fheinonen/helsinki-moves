@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const { defineFeature } = require("../helpers/playwright-bdd");
+const { installMockPropertySource } = require("../helpers/browser-mock-property");
 
 function nextIso(minutesFromNow) {
   return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
@@ -260,22 +261,34 @@ async function installApiMocks(
 
 async function installPromptMock(page, responses) {
   await page.addInitScript(
-    ({ scriptedResponses }) => {
+    ({ scriptedResponses, mockPropertySource }) => {
+      const installMockProperty = new Function(`return ${mockPropertySource};`)();
+      const requireMockProperty = (target, propertyName, value) => {
+        if (!installMockProperty(target, propertyName, value)) {
+          throw new Error(`Could not install mock property "${propertyName}".`);
+        }
+      };
       const queue = Array.isArray(scriptedResponses) ? [...scriptedResponses] : [];
-      window.__promptCalls = [];
-      window.prompt = (message, defaultValue) => {
+      requireMockProperty(window, "__promptCalls", []);
+      requireMockProperty(window, "prompt", (message, defaultValue) => {
         window.__promptCalls.push({ message, defaultValue });
         return queue.length > 0 ? queue.shift() : null;
-      };
+      });
     },
-    { scriptedResponses: responses }
+    { scriptedResponses: responses, mockPropertySource: installMockPropertySource }
   );
 }
 
 async function installMicrophonePreflightScenario(page, scenario) {
-  await page.addInitScript(({ nextScenario }) => {
+  await page.addInitScript(({ nextScenario, mockPropertySource }) => {
+    const installMockProperty = new Function(`return ${mockPropertySource};`)();
+    const requireMockProperty = (target, propertyName, value) => {
+      if (!installMockProperty(target, propertyName, value)) {
+        throw new Error(`Could not install mock property "${propertyName}".`);
+      }
+    };
     const scenarioValue = String(nextScenario || "granted");
-    window.__voiceMicPreflightCalls = 0;
+    requireMockProperty(window, "__voiceMicPreflightCalls", 0);
 
     const mockGetUserMedia = async () => {
       window.__voiceMicPreflightCalls += 1;
@@ -299,30 +312,26 @@ async function installMicrophonePreflightScenario(page, scenario) {
     };
 
     if (!navigator.mediaDevices) {
-      Object.defineProperty(navigator, "mediaDevices", {
-        value: { getUserMedia: mockGetUserMedia },
-        configurable: true,
-      });
+      requireMockProperty(navigator, "mediaDevices", { getUserMedia: mockGetUserMedia });
       return;
     }
 
-    try {
-      navigator.mediaDevices.getUserMedia = mockGetUserMedia;
-    } catch {
-      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
-        value: mockGetUserMedia,
-        configurable: true,
-      });
-    }
-  }, { nextScenario: scenario });
+    requireMockProperty(navigator.mediaDevices, "getUserMedia", mockGetUserMedia);
+  }, { nextScenario: scenario, mockPropertySource: installMockPropertySource });
 }
 
 async function installSpeechCaptureMock(page, { scenario, transcript }) {
   await page.addInitScript((mockConfig) => {
+    const installMockProperty = new Function(`return ${mockConfig.mockPropertySource};`)();
+    const requireMockProperty = (target, propertyName, value) => {
+      if (!installMockProperty(target, propertyName, value)) {
+        throw new Error(`Could not install mock property "${propertyName}".`);
+      }
+    };
     const scenarioValue = String(mockConfig?.scenario || "success");
     const transcriptValue = String(mockConfig?.transcript || "Kamppi Helsinki");
-    window.__speechRecorderStartCalls = 0;
-    window.__browserSpeechStartCalls = 0;
+    requireMockProperty(window, "__speechRecorderStartCalls", 0);
+    requireMockProperty(window, "__browserSpeechStartCalls", 0);
 
     class MockSpeechRecognition {
       start() {
@@ -330,10 +339,7 @@ async function installSpeechCaptureMock(page, { scenario, transcript }) {
       }
     }
 
-    window.SpeechRecognition = MockSpeechRecognition;
-    window.webkitSpeechRecognition = MockSpeechRecognition;
-
-    window.MediaRecorder = class MockMediaRecorder {
+    const MockMediaRecorder = class MockMediaRecorder {
       static isTypeSupported() {
         return true;
       }
@@ -377,7 +383,15 @@ async function installSpeechCaptureMock(page, { scenario, transcript }) {
 
       requestData() {}
     };
-  }, { scenario, transcript });
+    requireMockProperty(window, "SpeechRecognition", MockSpeechRecognition);
+    requireMockProperty(window, "webkitSpeechRecognition", MockSpeechRecognition);
+    requireMockProperty(window, "MediaRecorder", MockMediaRecorder);
+    if (globalThis !== window) {
+      requireMockProperty(globalThis, "SpeechRecognition", MockSpeechRecognition);
+      requireMockProperty(globalThis, "webkitSpeechRecognition", MockSpeechRecognition);
+      requireMockProperty(globalThis, "MediaRecorder", MockMediaRecorder);
+    }
+  }, { scenario, transcript, mockPropertySource: installMockPropertySource });
 }
 
 const featureText = `

@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerUiModule } = require("../scripts/app/02-ui");
 
 const featureText = `
 Feature: Phase 2 component gaps
@@ -68,50 +69,17 @@ Scenario: Results limit uses custom dropdown instead of native select
 `;
 
 function bootUiApi() {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-
-  const context = {
-    window: {
-      HMApp: {
-        api: {
-          uniqueNonEmptyStrings: (arr) => [...new Set(arr.filter((v) => v && String(v).trim()))],
-          getActiveResultsLimit: () => 8,
-        },
-        dom: {},
-        state: {
-          mode: "rail",
-          busFilterOptions: { lines: [], destinations: [] },
-          busLineFilters: [],
-          busDestinationFilters: [],
-          busStops: [],
-        },
-        constants: {
-          MODE_RAIL: "rail",
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          RESULT_LIMIT_OPTIONS: [8, 12, 16],
-        },
-      },
+  const { app, env } = createBareApp({
+    api: {
+      uniqueNonEmptyStrings: (arr) => [...new Set(arr.filter((v) => v && String(v).trim()))],
+      getActiveResultsLimit: () => 8,
     },
-    Date,
-    Set,
-    String,
-    Number,
-    Math,
-    Array,
-    Object,
-    RegExp,
-    Boolean,
-    console,
-    setInterval: () => {},
-    document: { createElement: () => ({}) },
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-  return { api: context.window.HMApp.api, dom: context.window.HMApp.dom };
+    constants: {
+      RESULT_LIMIT_OPTIONS: [8, 12, 16],
+    },
+  });
+  registerUiModule(app, env);
+  return { api: app.api, dom: app.dom };
 }
 
 function makeFutureIso(minutesFromNow) {
@@ -182,59 +150,26 @@ defineFeature(test, featureText, {
     {
       pattern: /^When updateNextSummary is called$/,
       run: ({ world }) => {
-        const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
-        const scriptText = fs.readFileSync(scriptPath, "utf8");
-
-        const mockDom = world.mockDom;
-        const context = {
-          window: {
-            HMApp: {
-              api: {
-                uniqueNonEmptyStrings: (arr) => [...new Set(arr.filter((v) => v && String(v).trim()))],
-                getActiveResultsLimit: () => 8,
-              },
-              dom: mockDom,
-              state: {
-                mode: "rail",
-                busFilterOptions: { lines: [], destinations: [] },
-                busLineFilters: [],
-                busDestinationFilters: [],
-                busStops: [],
-              },
-              constants: {
-                MODE_RAIL: "rail",
-                MODE_TRAM: "tram",
-                MODE_METRO: "metro",
-                MODE_BUS: "bus",
-                RESULT_LIMIT_OPTIONS: [8, 12, 16],
-              },
-            },
+        const { app, env } = createBareApp({
+          api: {
+            uniqueNonEmptyStrings: (arr) => [...new Set(arr.filter((v) => v && String(v).trim()))],
+            getActiveResultsLimit: () => 8,
           },
-          Date,
-          Set,
-          String,
-          Number,
-          Math,
-          Array,
-          Object,
-          RegExp,
-          Boolean,
-          console,
-          setInterval: () => {},
-          document: { createElement: () => ({}) },
-        };
+          dom: world.mockDom,
+          constants: {
+            RESULT_LIMIT_OPTIONS: [8, 12, 16],
+          },
+        });
+        registerUiModule(app, env);
 
-        vm.createContext(context);
-        vm.runInContext(scriptText, context, { filename: scriptPath });
-
-        context.window.HMApp.api.updateNextSummary({
+        app.api.updateNextSummary({
           departureIso: world.iso,
           line: "A",
           destination: "Helsinki",
           track: "1",
         });
 
-        world.summaryClasses = mockDom.nextSummaryEl._classes;
+        world.summaryClasses = world.mockDom.nextSummaryEl._classes;
       },
     },
     {

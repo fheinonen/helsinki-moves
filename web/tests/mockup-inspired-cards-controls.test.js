@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { registerStateModule } = require("../scripts/app/01-state");
+const { registerUiModule } = require("../scripts/app/02-ui");
 
 const featureText = `
 Feature: Mockup-inspired cards and controls contracts
@@ -246,40 +247,29 @@ function createStateHarness() {
 
   byId.voiceLocateBtnLabel.textContent = "Describe Location";
 
-  const scriptPath = path.resolve(__dirname, "../scripts/app/01-state.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-  const context = {
-    window: {
-      HMApp: {},
-      localStorage: {
-        getItem: () => null,
-        setItem: () => {},
-      },
-    },
-    document: {
-      getElementById(id) {
-        return byId[id] || null;
-      },
-      querySelector() {
-        return null;
-      },
-    },
-    Math,
-    Date,
-    Set,
-    String,
-    Number,
-    Array,
-    Object,
-    JSON,
-    console,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-
   return {
-    app: context.window.HMApp,
+    app: registerStateModule(
+      {},
+      {
+        windowRef: {
+          localStorage: {
+            getItem: () => null,
+            setItem: () => {},
+          },
+          location: { href: "https://example.test/", search: "", pathname: "/", hash: "" },
+          history: { replaceState() {} },
+        },
+        documentRef: {
+          getElementById(id) {
+            return byId[id] || null;
+          },
+          querySelector() {
+            return null;
+          },
+        },
+        consoleRef: console,
+      }
+    ),
     dom: byId,
   };
 }
@@ -419,33 +409,17 @@ function createUiHarness({
     },
   };
 
-  const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-  const context = {
-    window: {
-      HMApp: app,
+  registerUiModule(app, {
+    windowRef: {
       innerWidth: 390,
       matchMedia: () => ({ matches: false }),
     },
-    document: {
+    documentRef: {
       createElement: (tagName) => createMockElement(tagName),
     },
-    setTimeout: () => 1,
-    clearTimeout: () => {},
-    Date,
-    Set,
-    String,
-    Number,
-    Math,
-    Array,
-    Object,
-    RegExp,
-    Boolean,
-    console,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
+    setTimeoutRef: () => 1,
+    clearTimeoutRef: () => {},
+  });
 
   return {
     app,

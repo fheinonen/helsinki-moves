@@ -89,6 +89,12 @@ Scenario: Return GraphQL data for successful responses
   Given graphql runtime with successful data payload
   When graphql request is executed
   Then graphql request returns data with key "ok"
+
+Scenario: Build a GraphQL client with injected runtime dependencies
+  Given graphql runtime with successful data payload
+  And graphql client dependencies are injected
+  When graphql request is executed
+  Then graphql request returns data with key "ok"
 `;
 
 defineFeature(test, featureText, {
@@ -254,18 +260,32 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given graphql client dependencies are injected$/,
+      run: ({ world }) => {
+        world.input.useInjectedClient = true;
+      },
+    },
+    {
       pattern: /^When graphql request is executed$/,
       run: async ({ world }) => {
         world.error = null;
         world.output = null;
         try {
-          world.output = await withMockedRuntime(
-            {
-              apiKey: world.input.apiKey,
+          if (world.input.useInjectedClient) {
+            const client = digitransit.createDigitransitClient({
               fetchImpl: world.input.fetchImpl,
-            },
-            () => digitransit.graphqlRequest("query Test { ok }", {})
-          );
+              getApiKey: () => world.input.apiKey,
+            });
+            world.output = await client.graphqlRequest("query Test { ok }", {});
+          } else {
+            world.output = await withMockedRuntime(
+              {
+                apiKey: world.input.apiKey,
+                fetchImpl: world.input.fetchImpl,
+              },
+              () => digitransit.graphqlRequest("query Test { ok }", {})
+            );
+          }
         } catch (error) {
           world.error = error;
         }

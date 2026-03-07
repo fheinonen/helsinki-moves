@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createMockElement } = require("./helpers/frontend-app");
+const { registerInitModule } = require("../scripts/app/04-init");
 
 const featureText = `
 Feature: Firefox interaction performance contracts
@@ -34,6 +35,7 @@ Scenario: Legacy realtime pulse styles are removed
 
 function createEventTarget() {
   const listeners = new Map();
+  const attributes = new Map();
   return {
     addEventListener(type, handler) {
       if (!listeners.has(type)) listeners.set(type, []);
@@ -45,6 +47,13 @@ function createEventTarget() {
         handler(event);
       }
     },
+    setAttribute(name, value) {
+      attributes.set(String(name), String(value));
+    },
+    getAttribute(name) {
+      return attributes.has(String(name)) ? attributes.get(String(name)) : null;
+    },
+    focus() {},
   };
 }
 
@@ -90,14 +99,8 @@ function createModeInitHarness() {
       stopFiltersToggleBtnEl: createEventTarget(),
       locationPromptAllowEl: createEventTarget(),
       permissionRetryBtnEl: createEventTarget(),
-      busStopSelectListEl: {
-        querySelector: () => null,
-        querySelectorAll: () => [],
-      },
-      resultsLimitSelectListEl: {
-        querySelector: () => null,
-        querySelectorAll: () => [],
-      },
+      busStopSelectListEl: createMockElement("ul", ["hidden"]),
+      resultsLimitSelectListEl: createMockElement("ul", ["hidden"]),
       resultsLimitSelectLabelEl: { textContent: "" },
       modeEyebrowEl: { textContent: "" },
       nextLabelEl: { textContent: "" },
@@ -120,31 +123,26 @@ function createModeInitHarness() {
     },
   };
 
-  const context = {
-    window: {
-      HMApp: app,
+  registerInitModule(app, {
+    windowRef: {
       addEventListener: () => {},
-      location: { search: "", pathname: "/" },
-      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      location: { search: "", pathname: "/", hash: "" },
+      history: { replaceState() {} },
+      matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
       requestAnimationFrame: (callback) => {
         rafQueue.push(callback);
         return rafQueue.length;
       },
-      setInterval: () => 1,
     },
-    document: {
+    documentRef: {
       addEventListener: () => {},
       getElementById: () => null,
     },
-    setInterval: () => 1,
-    clearInterval: () => {},
-    console,
-  };
-
-  const scriptPath = path.resolve(__dirname, "../scripts/app/04-init.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
+    setIntervalRef: () => 1,
+    setTimeoutRef: setTimeout,
+    clearTimeoutRef: clearTimeout,
+  });
+  app.initialize();
 
   return {
     clickBusMode() {

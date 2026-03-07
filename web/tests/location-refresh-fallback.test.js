@@ -1,9 +1,8 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerDataModule } = require("../scripts/app/03-data");
 
 const featureText = `
 Feature: Location refresh fallback
@@ -58,9 +57,6 @@ Scenario: Do not promote low-quality watched fallback fix when watch fails
 `;
 
 function bootDataApi(world) {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/03-data.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-
   const geolocationCalls = [];
   const watchCalls = [];
   const clearWatchCalls = [];
@@ -82,105 +78,63 @@ function bootDataApi(world) {
   const permissionRequiredCalls = [];
   const statusCalls = [];
   const fetchCalls = [];
-
-  const context = {
-    window: {
-      HMApp: {
-        api: {
-          setResolvedLocationHint: () => {},
-          setStatus: (status) => statusCalls.push(status),
-          setPermissionRequired: (required) => permissionRequiredCalls.push(Boolean(required)),
-          setLoading: () => {},
-          setStorageItem: () => {},
-          getGeolocationErrorStatus: (error) => `geo:${error?.code ?? "unknown"}`,
-          updateNextSummary: () => {},
-          uniqueNonEmptyStrings: (items) =>
-            [...new Set((Array.isArray(items) ? items : []).filter((item) => String(item || "").trim()))],
-          sanitizeStopSelections: () => {},
-          getActiveResultsLimit: () => 8,
-          render: () => {},
-          setLastUpdated: () => {},
-          buildStatusFromResponse: () => "",
-          trackFirstSuccessfulRender: () => {},
-          persistUiState: () => {},
-          trackInitialNearestStopResolved: () => {},
-          reportClientError: () => {},
-          getLoadErrorStatus: () => "load-error",
-        },
-        dom: {
-          resultEl: {
-            classList: {
-              add: () => {},
-            },
-          },
-        },
-        state: {
-          isLoading: false,
-          isVoiceListening: false,
-          currentCoords: null,
-          currentCoordsTimestampMs: null,
-          currentCoordsAccuracyMeters: null,
-          latestResponse: null,
-          locationGranted: false,
-          latestLoadToken: 0,
-          mode: "rail",
-          busStopId: null,
-          hasCompletedInitialStopModeLoad: true,
-          deferInitialStopContext: false,
-        },
-        constants: {
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          FETCH_TIMEOUT_MS: 8000,
-          VOICE_SILENCE_STOP_MS: 1200,
-          VOICE_RECOGNITION_TIMEOUT_MS: 8000,
-          VOICE_QUERY_MIN_LENGTH: 3,
+  const { app, env } = createBareApp({
+    api: {
+      setResolvedLocationHint: () => {},
+      setStatus: (status) => statusCalls.push(status),
+      setPermissionRequired: (required) => permissionRequiredCalls.push(Boolean(required)),
+      setLoading: () => {},
+      setStorageItem: () => {},
+      getGeolocationErrorStatus: (error) => `geo:${error?.code ?? "unknown"}`,
+      updateNextSummary: () => {},
+      uniqueNonEmptyStrings: (items) =>
+        [...new Set((Array.isArray(items) ? items : []).filter((item) => String(item || "").trim()))],
+      sanitizeStopSelections: () => {},
+      getActiveResultsLimit: () => 8,
+      render: () => {},
+      setLastUpdated: () => {},
+      buildStatusFromResponse: () => "",
+      trackFirstSuccessfulRender: () => {},
+      persistUiState: () => {},
+      trackInitialNearestStopResolved: () => {},
+      reportClientError: () => {},
+      getLoadErrorStatus: () => "load-error",
+    },
+    dom: {
+      resultEl: {
+        classList: {
+          add: () => {},
         },
       },
     },
-    navigator: {
-      geolocation,
-      language: "en-US",
-      languages: ["en-US"],
+    env: {
+      navigatorRef: {
+        geolocation,
+        language: "en-US",
+        languages: ["en-US"],
+      },
+      fetchImpl: async (url) => {
+        fetchCalls.push(String(url || ""));
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => "application/json" },
+          async json() {
+            return { station: { departures: [] }, stops: [] };
+          },
+        };
+      },
+      documentRef: {
+        createElement: () => ({
+          addEventListener: () => {},
+        }),
+      },
     },
-    fetch: async (url) => {
-      fetchCalls.push(String(url || ""));
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: () => "application/json" },
-        json: async () => ({ station: { departures: [] }, stops: [] }),
-      };
-    },
-    document: {
-      createElement: () => ({
-        addEventListener: () => {},
-      }),
-    },
-    URLSearchParams,
-    Date,
-    Math,
-    Number,
-    String,
-    Boolean,
-    Object,
-    Array,
-    Set,
-    Promise,
-    RegExp,
-    Error,
-    AbortController,
-    setTimeout,
-    clearTimeout,
-    console,
-  };
+  });
+  registerDataModule(app, env);
 
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-
-  world.api = context.window.HMApp.api;
-  world.state = context.window.HMApp.state;
+  world.api = app.api;
+  world.state = app.state;
   world.geolocationCalls = geolocationCalls;
   world.watchCalls = watchCalls;
   world.clearWatchCalls = clearWatchCalls;

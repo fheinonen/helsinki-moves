@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerUiModule } = require("../scripts/app/02-ui");
 
 const featureText = `
 Feature: Frontend overhaul contracts
@@ -69,44 +70,13 @@ Scenario: Stop mode status line stays concise
 `;
 
 function bootUiApi() {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-
-  const context = {
-    window: {
-      HMApp: {
-        api: {},
-        dom: {},
-        state: {
-          mode: "rail",
-          busFilterOptions: { lines: [], destinations: [] },
-          busLineFilters: [],
-          busDestinationFilters: [],
-          busStops: [],
-        },
-        constants: {
-          MODE_RAIL: "rail",
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          RESULT_LIMIT_OPTIONS: [8, 12, 16],
-        },
-      },
+  const { app, env } = createBareApp({
+    constants: {
+      RESULT_LIMIT_OPTIONS: [8, 12, 16],
     },
-    Date,
-    Set,
-    String,
-    Number,
-    Math,
-    Array,
-    Object,
-    RegExp,
-    console,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-  return context.window.HMApp;
+  });
+  registerUiModule(app, env);
+  return app;
 }
 
 defineFeature(test, featureText, {

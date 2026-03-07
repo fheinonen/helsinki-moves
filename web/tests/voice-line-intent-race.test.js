@@ -1,9 +1,8 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerDataModule } = require("../scripts/app/03-data");
 
 const featureText = `
 Feature: Voice line-intent stale response handling
@@ -55,126 +54,81 @@ function createLineIntentResponse(stopId) {
 }
 
 function bootVoiceLineIntentApi(world) {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/03-data.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-
   const renderCalls = [];
   let persistCalls = 0;
   const deferredFetchResolvers = [];
-
-  const context = {
-    window: {
-      HMApp: {
-        api: {
-          uniqueNonEmptyStrings: (items) =>
-            [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()))].filter(
-              Boolean
-            ),
-          getActiveResultsLimit: () => 8,
-          persistUiState: () => {
-            persistCalls += 1;
-          },
-          render: (payload) => {
-            renderCalls.push(payload);
-          },
-          sanitizeStopSelections: () => {},
-          setStatus: () => {},
-          safeString: (value) => String(value || ""),
-          setResolvedLocationHint: () => {},
-          setPermissionRequired: () => {},
-          setLastUpdated: () => {},
-          trackFirstSuccessfulRender: () => {},
-          trackInitialNearestStopResolved: () => {},
-          reportClientMetric: () => {},
-          reportClientError: () => {},
-          updateModeButtons: () => {},
-          updateModeLabels: () => {},
-          renderResultsLimitControl: () => {},
-          renderStopControls: () => {},
-          updateDataScope: () => {},
-          updateNextSummary: () => {},
-          setLoading: () => {},
-          getLoadErrorStatus: () => "load-error",
-        },
-        dom: {
-          resultEl: {
-            classList: {
-              add: () => {},
-            },
-          },
-        },
-        state: {
-          mode: "rail",
-          busStops: [],
-          busStopId: null,
-          busLineFilters: [],
-          busDestinationFilters: [],
-          busFilterOptions: { lines: [], destinations: [] },
-          stopFilterPinned: false,
-          busStopMemberFilterId: null,
-          hasCompletedInitialStopModeLoad: true,
-          deferInitialStopContext: false,
-          latestLoadToken: 0,
-          currentCoords: { lat: 60.1699, lon: 24.9384 },
-          currentCoordsTimestampMs: Date.now(),
-          currentCoordsAccuracyMeters: null,
-          latestResponse: null,
-        },
-        constants: {
-          MODE_RAIL: "rail",
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          FETCH_TIMEOUT_MS: 8000,
-          VOICE_SILENCE_STOP_MS: 1200,
-          VOICE_RECOGNITION_TIMEOUT_MS: 8000,
-          VOICE_QUERY_MIN_LENGTH: 3,
+  const { app, env } = createBareApp({
+    api: {
+      uniqueNonEmptyStrings: (items) =>
+        [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()))].filter(
+          Boolean
+        ),
+      getActiveResultsLimit: () => 8,
+      persistUiState: () => {
+        persistCalls += 1;
+      },
+      render: (payload) => {
+        renderCalls.push(payload);
+      },
+      sanitizeStopSelections: () => {},
+      setStatus: () => {},
+      safeString: (value) => String(value || ""),
+      setResolvedLocationHint: () => {},
+      setPermissionRequired: () => {},
+      setLastUpdated: () => {},
+      trackFirstSuccessfulRender: () => {},
+      trackInitialNearestStopResolved: () => {},
+      reportClientMetric: () => {},
+      reportClientError: () => {},
+      updateModeButtons: () => {},
+      updateModeLabels: () => {},
+      renderResultsLimitControl: () => {},
+      renderStopControls: () => {},
+      updateDataScope: () => {},
+      updateNextSummary: () => {},
+      setLoading: () => {},
+      getLoadErrorStatus: () => "load-error",
+    },
+    dom: {
+      resultEl: {
+        classList: {
+          add: () => {},
         },
       },
     },
-    navigator: {
-      language: "en-US",
-      languages: ["en-US"],
+    state: {
+      currentCoords: { lat: 60.1699, lon: 24.9384 },
+      currentCoordsTimestampMs: Date.now(),
     },
-    fetch: () =>
-      new Promise((resolve) => {
-        deferredFetchResolvers.push(() =>
-          resolve({
-            ok: true,
-            status: 200,
-            headers: { get: () => "application/json" },
-            json: async () => createLineIntentResponse("HSL:BUS67"),
-          })
-        );
-      }),
-    document: {
-      createElement: () => ({
-        addEventListener: () => {},
-      }),
+    env: {
+      navigatorRef: {
+        language: "en-US",
+        languages: ["en-US"],
+      },
+      fetchImpl: () =>
+        new Promise((resolve) => {
+          deferredFetchResolvers.push(() =>
+            resolve({
+              ok: true,
+              status: 200,
+              headers: { get: () => "application/json" },
+              async json() {
+                return createLineIntentResponse("HSL:BUS67");
+              },
+            })
+          );
+        }),
+      documentRef: {
+        createElement: () => ({
+          addEventListener: () => {},
+        }),
+      },
     },
-    URLSearchParams,
-    Date,
-    Math,
-    Number,
-    String,
-    Boolean,
-    Object,
-    Array,
-    Set,
-    Promise,
-    RegExp,
-    Error,
-    AbortController,
-    setTimeout,
-    clearTimeout,
-    console,
-  };
+  });
+  registerDataModule(app, env);
 
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-
-  world.api = context.window.HMApp.api;
-  world.state = context.window.HMApp.state;
+  world.api = app.api;
+  world.state = app.state;
   world.renderCalls = renderCalls;
   world.getPersistCalls = () => persistCalls;
   world.deferredFetchResolvers = deferredFetchResolvers;

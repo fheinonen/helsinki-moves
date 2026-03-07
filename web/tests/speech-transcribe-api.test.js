@@ -30,6 +30,7 @@ async function runHandler({
   apiKey = "",
   model = TEST_TRANSCRIPTION_MODEL,
   language = "fi",
+  logError = () => {},
 } = {}) {
   const handler = createSpeechTranscribeHandler({
     fetchImpl,
@@ -37,6 +38,7 @@ async function runHandler({
     getApiKey: () => apiKey,
     getModel: () => model,
     getLanguage: () => language,
+    logError,
   });
   const req = createMockRequest({ method, body });
   const res = createMockResponse();
@@ -115,6 +117,13 @@ Scenario: Report upstream transcription failures as bad gateway
   When the speech transcription API is called
   Then the speech transcription response status is 502
   And the speech transcription payload error is "Could not transcribe speech"
+
+Scenario: Use the injected logger for transcription failures
+  Given speech transcription configuration is present
+  And the transcription service request fails with status 401
+  When the speech transcription API is called with an injected logger
+  Then the speech transcription response status is 502
+  And the injected logger call count is 1
 `;
 
 defineFeature(test, featureText, {
@@ -131,6 +140,7 @@ defineFeature(test, featureText, {
     upstreamPayload: { text: "Kamppi Helsinki" },
     response: null,
     upstreamRequests: [],
+    logCalls: [],
   }),
   stepDefinitions: [
     {
@@ -233,6 +243,42 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^When the speech transcription API is called with an injected logger$/,
+      run: async ({ world }) => {
+        world.response = await runHandler({
+          method: world.method,
+          body: world.body,
+          apiUrl: world.apiUrl,
+          apiKey: world.apiKey,
+          model: world.model,
+          language: world.language,
+          logError: (...args) => {
+            world.logCalls.push(args);
+          },
+          fetchImpl: async (url, options = {}) => {
+            world.upstreamRequests.push({
+              url: String(url || ""),
+              options,
+            });
+            return {
+              ok: world.upstreamStatus >= 200 && world.upstreamStatus < 300,
+              status: world.upstreamStatus,
+              headers: {
+                get(name) {
+                  return String(name || "").toLowerCase() === "content-type"
+                    ? "application/json"
+                    : null;
+                },
+              },
+              async json() {
+                return world.upstreamPayload;
+              },
+            };
+          },
+        });
+      },
+    },
+    {
       pattern: /^Then the speech transcription response status is (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.response.res.statusCode, Number(args[0]));
@@ -289,6 +335,12 @@ defineFeature(test, featureText, {
       run: ({ assert, args, world }) => {
         const file = world.upstreamRequests.at(-1)?.options?.body?.get("file");
         assert.equal(file?.type, args[0]);
+      },
+    },
+    {
+      pattern: /^Then the injected logger call count is (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.logCalls.length, Number(args[0]));
       },
     },
   ],

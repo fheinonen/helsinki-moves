@@ -1,14 +1,6 @@
-const { MODE_RAIL, MODE_BUS, MODE_TRAM, MODE_METRO } = require("./digitransit");
+const { parseRequestedMode, MODE_RAIL } = require("./mode-policy");
 const MIN_RESULT_LIMIT = 1;
 const MAX_RESULT_LIMIT = 60;
-
-function parseRequestedMode(rawMode) {
-  const mode = String(rawMode || MODE_RAIL).trim().toUpperCase();
-  if (mode === MODE_RAIL || mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO) {
-    return mode;
-  }
-  return null;
-}
 
 function parseMultiQueryParam(rawValue) {
   if (rawValue == null) return [];

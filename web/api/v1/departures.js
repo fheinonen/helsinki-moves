@@ -3,6 +3,13 @@ const {
   MODE_BUS,
   MODE_TRAM,
   MODE_METRO,
+  getDefaultResultLimit,
+  getNoNearbyStopsMessage,
+  isSupportedMode,
+  getUpstreamMode,
+  getLineIntentModeLabel,
+} = require("../lib/mode-policy");
+const {
   nearbyStopsQuery,
   buildMultiStopDeparturesQuery,
   graphqlRequest: defaultGraphqlRequest,
@@ -113,23 +120,8 @@ function filterDeparturesBySelections(departures, requestedLines, requestedDesti
     });
 }
 
-function getDefaultResultLimit(mode) {
-  return mode === MODE_BUS ? 24 : 8;
-}
-
-function getNoNearbyStopsMessage(mode) {
-  if (mode === MODE_RAIL) return "No nearby train stations";
-  if (mode === MODE_METRO) return "No nearby metro stops";
-  return mode === MODE_TRAM ? "No nearby tram stops" : "No nearby bus stops";
-}
-
 function isStopMode(mode) {
-  return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO || mode === MODE_RAIL;
-}
-
-function getUpstreamMode(mode) {
-  // Digitransit labels metro routes/stops as SUBWAY while API mode remains METRO.
-  return mode === MODE_METRO ? "SUBWAY" : mode;
+  return isSupportedMode(mode);
 }
 
 function noNearbyStopModeResponse(mode) {
@@ -175,8 +167,7 @@ function normalizeLineToken(value) {
 }
 
 function buildNoNearbyLineIntentMessage(mode, requestedLines) {
-  const modeLabel =
-    mode === MODE_RAIL ? "rail" : mode === MODE_TRAM ? "tram" : mode === MODE_METRO ? "metro" : "bus";
+  const modeLabel = getLineIntentModeLabel(mode);
   const lineLabel = normalizeLineToken(requestedLines?.[0]) || "line";
 
   return `No nearby departures found for ${modeLabel} ${lineLabel}.`;

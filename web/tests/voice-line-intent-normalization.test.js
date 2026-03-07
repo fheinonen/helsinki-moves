@@ -1,9 +1,8 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerDataModule } = require("../scripts/app/03-data");
 
 const featureText = `
 Feature: Voice line intent normalization
@@ -28,69 +27,16 @@ Scenario: Treat letter transcript with trailing period as a line token
 `;
 
 function bootVoiceLineIntentApi() {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/03-data.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-  const context = {
-    window: {
-      HMApp: {
-        api: {
-          uniqueNonEmptyStrings(values) {
-            if (!Array.isArray(values)) return [];
-            return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
-          },
-        },
-        dom: {},
-        state: {
-          mode: "rail",
-          currentCoords: null,
-        },
-        constants: {
-          MODE_RAIL: "rail",
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          FETCH_TIMEOUT_MS: 8000,
-          VOICE_SILENCE_STOP_MS: 1200,
-          VOICE_RECOGNITION_TIMEOUT_MS: 1000,
-          VOICE_QUERY_MIN_LENGTH: 3,
-        },
+  const { app, env } = createBareApp({
+    api: {
+      uniqueNonEmptyStrings(values) {
+        if (!Array.isArray(values)) return [];
+        return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
       },
     },
-    navigator: {},
-    fetch: async () => ({
-      ok: true,
-      status: 200,
-      headers: { get: () => "application/json" },
-      async json() {
-        return {};
-      },
-    }),
-    document: {
-      createElement: () => ({
-        addEventListener() {},
-      }),
-    },
-    URLSearchParams,
-    Date,
-    Math,
-    Number,
-    String,
-    Boolean,
-    Object,
-    Array,
-    Set,
-    Promise,
-    RegExp,
-    Error,
-    AbortController,
-    setTimeout,
-    clearTimeout,
-    console,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-  return context.window.HMApp.api;
+  });
+  registerDataModule(app, env);
+  return app.api;
 }
 
 defineFeature(test, featureText, {

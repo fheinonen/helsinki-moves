@@ -109,6 +109,7 @@ function createSpeechTranscribeHandler({
   getLanguage = () => process.env.SPEECH_TRANSCRIBE_LANGUAGE || DEFAULT_TRANSCRIPTION_LANGUAGE,
   getDefaultFileName = () => DEFAULT_AUDIO_FILE_NAME,
   getDefaultMimeType = () => DEFAULT_AUDIO_MIME_TYPE,
+  logError = console.error,
 } = {}) {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -149,7 +150,7 @@ function createSpeechTranscribeHandler({
       }
       return res.status(200).json({ transcript });
     } catch (error) {
-      console.error("speech transcribe error:", error);
+      logError("speech transcribe error:", error);
       return errorResponse(res, 502, "Could not transcribe speech");
     }
   };

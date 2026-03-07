@@ -1,9 +1,7 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { registerUiModule } = require("../scripts/app/02-ui");
 
 const featureText = `
 Feature: Result cards can toggle stop mode filters
@@ -307,29 +305,14 @@ function createUiHarness({
     },
   };
 
-  const scriptPath = path.resolve(__dirname, "../scripts/app/02-ui.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-  const context = {
-    window: { HMApp: app, innerWidth: viewportWidth },
-    document: {
+  registerUiModule(app, {
+    windowRef: { innerWidth: viewportWidth },
+    documentRef: {
       createElement: (tagName) => createMockElement(tagName),
     },
-    setTimeout: () => 1,
-    clearTimeout: () => {},
-    Date,
-    Set,
-    String,
-    Number,
-    Math,
-    Array,
-    Object,
-    RegExp,
-    Boolean,
-    console,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
+    setTimeoutRef: () => 1,
+    clearTimeoutRef: () => {},
+  });
 
   return { app, dom, calls };
 }

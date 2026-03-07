@@ -1,9 +1,8 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const { defineFeature } = require("./helpers/bdd");
+const { createBareApp } = require("./helpers/frontend-app");
+const { registerDataModule } = require("../scripts/app/03-data");
 
 const featureText = `
 Feature: Voice microphone preflight
@@ -33,6 +32,14 @@ Scenario: Request 16 kHz mono audio as microphone constraints
   Then microphone permission preflight call count equals 1
   And requested microphone sample rate preference equals 16000
   And requested microphone channel count preference equals 1
+
+Scenario: Request browser audio processing to reduce microphone feedback
+  Given voice preflight data API is booted
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice preflight location is requested
+  Then requested microphone echo cancellation preference equals true
+  And requested microphone noise suppression preference equals true
+  And requested microphone auto gain control preference equals true
 `;
 
 function createMediaRecorderClass(world) {
@@ -79,193 +86,139 @@ function createMediaRecorderClass(world) {
 }
 
 function bootVoiceDataApi(world) {
-  const scriptPath = path.resolve(__dirname, "../scripts/app/03-data.js");
-  const scriptText = fs.readFileSync(scriptPath, "utf8");
-
   const getUserMediaCalls = [];
   const promptCalls = [];
   const browserSpeechStartCalls = [];
-
-  const context = {
-    window: {
-      HMApp: {
-        api: {
-          uniqueNonEmptyStrings: (items) =>
-            [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()))].filter(
-              Boolean
-            ),
-          setVoiceListening: (value) => {
-            context.window.HMApp.state.isVoiceListening = Boolean(value);
-          },
-          setStatus: () => {},
-          getVoiceLocationErrorStatus: (error) => {
-            const code = String(error?.code || "").trim();
-            if (code === "voice_unsupported") {
-              return "Voice recognition is unavailable right now. Type your location or line (number or letter) instead.";
-            }
-            return String(error?.message || "voice-error");
-          },
-          reportClientError: () => {},
-          reportClientMetric: () => {},
-          setResolvedLocationHint: () => {},
-          setPermissionRequired: () => {},
-          safeString: (value) => String(value || ""),
-          getActiveResultsLimit: () => 8,
-          sanitizeStopSelections: () => {},
-          render: () => {},
-          setLastUpdated: () => {},
-          buildStatusFromResponse: () => "",
-          trackFirstSuccessfulRender: () => {},
-          persistUiState: () => {},
-          trackInitialNearestStopResolved: () => {},
-          updateNextSummary: () => {},
-          setLoading: () => {},
-          getLoadErrorStatus: () => "load-error",
-          updateModeButtons: () => {},
-          updateModeLabels: () => {},
-          renderResultsLimitControl: () => {},
-          renderStopControls: () => {},
-          updateDataScope: () => {},
-        },
-        dom: {
-          resultEl: {
-            classList: {
-              add() {},
-            },
-          },
-        },
-        state: {
-          isLoading: false,
-          isVoiceListening: false,
-          voiceLocationAvailability: "available",
-          currentCoords: null,
-          currentCoordsTimestampMs: null,
-          currentCoordsAccuracyMeters: null,
-          latestResponse: null,
-          locationGranted: false,
-          latestLoadToken: 0,
-          mode: "rail",
-          busStopId: null,
-          busStops: [],
-          busLineFilters: [],
-          busDestinationFilters: [],
-          hasCompletedInitialStopModeLoad: true,
-          deferInitialStopContext: false,
-        },
-        constants: {
-          MODE_RAIL: "rail",
-          MODE_TRAM: "tram",
-          MODE_METRO: "metro",
-          MODE_BUS: "bus",
-          FETCH_TIMEOUT_MS: 8000,
-          VOICE_SILENCE_STOP_MS: 1200,
-          VOICE_RECOGNITION_TIMEOUT_MS: 1000,
-          VOICE_QUERY_MIN_LENGTH: 3,
-        },
+  const { app, env } = createBareApp({
+    api: {
+      uniqueNonEmptyStrings: (items) =>
+        [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()))].filter(
+          Boolean
+        ),
+      setVoiceListening: (value) => {
+        app.state.isVoiceListening = Boolean(value);
       },
-      prompt: (message, defaultValue) => {
-        promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
-        return world.promptResponse;
-      },
-      MediaRecorder: createMediaRecorderClass(world),
-      SpeechRecognition: class MockSpeechRecognition {
-        start() {
-          browserSpeechStartCalls.push({});
+      setStatus: () => {},
+      getVoiceLocationErrorStatus: (error) => {
+        const code = String(error?.code || "").trim();
+        if (code === "voice_unsupported") {
+          return "Voice recognition is unavailable right now. Type your location or line (number or letter) instead.";
         }
+        return String(error?.message || "voice-error");
       },
-      webkitSpeechRecognition: null,
+      reportClientError: () => {},
+      reportClientMetric: () => {},
+      setResolvedLocationHint: () => {},
+      setPermissionRequired: () => {},
+      safeString: (value) => String(value || ""),
+      getActiveResultsLimit: () => 8,
+      sanitizeStopSelections: () => {},
+      render: () => {},
+      setLastUpdated: () => {},
+      buildStatusFromResponse: () => "",
+      trackFirstSuccessfulRender: () => {},
+      persistUiState: () => {},
+      trackInitialNearestStopResolved: () => {},
+      updateNextSummary: () => {},
+      setLoading: () => {},
+      getLoadErrorStatus: () => "load-error",
+      updateModeButtons: () => {},
+      updateModeLabels: () => {},
+      renderResultsLimitControl: () => {},
+      renderStopControls: () => {},
+      updateDataScope: () => {},
     },
-    navigator: {
-      language: "en-US",
-      languages: ["en-US"],
-      userAgent: "Mozilla/5.0 Chrome/123.0",
-      mediaDevices: {
-        getUserMedia: async (constraints) => {
-          getUserMediaCalls.push(constraints);
-          return {
-            getTracks: () => [
-              {
-                stop: () => {},
-              },
-            ],
-          };
+    dom: {
+      resultEl: {
+        classList: {
+          add() {},
         },
       },
     },
-    fetch: async (url) => {
-      const asText = String(url || "");
-      if (asText.startsWith("/api/v1/speech-transcribe")) {
-        world.speechTranscribeRequestCount += 1;
-        return {
-          ok: world.speechTranscribeStatus === 200,
-          status: world.speechTranscribeStatus,
-          headers: { get: () => "application/json" },
-          async json() {
-            if (world.speechTranscribeStatus === 200) {
-              return {
-                transcript: world.transcript,
-              };
-            }
-            return { error: "Speech transcription is not configured" };
+    state: {
+      voiceLocationAvailability: "available",
+    },
+    env: {
+      windowRef: {
+        __HM_ENABLE_VOICE_RECORDER_FALLBACK__: true,
+        prompt: (message, defaultValue) => {
+          promptCalls.push({ message: String(message || ""), defaultValue: String(defaultValue || "") });
+          return world.promptResponse;
+        },
+        MediaRecorder: createMediaRecorderClass(world),
+        SpeechRecognition: null,
+        webkitSpeechRecognition: null,
+      },
+      navigatorRef: {
+        language: "en-US",
+        languages: ["en-US"],
+        userAgent: "Mozilla/5.0 Chrome/123.0",
+        mediaDevices: {
+          getUserMedia: async (constraints) => {
+            getUserMediaCalls.push(constraints);
+            return {
+              getTracks: () => [
+                {
+                  stop: () => {},
+                },
+              ],
+            };
           },
-        };
-      }
-
-      if (asText.startsWith("/api/v1/geocode")) {
+        },
+      },
+      fetchImpl: async (url) => {
+        const asText = String(url || "");
+        if (asText.startsWith("/api/v1/speech-transcribe")) {
+          world.speechTranscribeRequestCount += 1;
+          return {
+            ok: world.speechTranscribeStatus === 200,
+            status: world.speechTranscribeStatus,
+            headers: { get: () => "application/json" },
+            async json() {
+              if (world.speechTranscribeStatus === 200) {
+                return {
+                  transcript: world.transcript,
+                };
+              }
+              return { error: "Speech transcription is not configured" };
+            },
+          };
+        }
+        if (asText.startsWith("/api/v1/geocode")) {
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => "application/json" },
+            async json() {
+              return {
+                location: {
+                  lat: 60.1699,
+                  lon: 24.9384,
+                  label: "Kamppi, Helsinki",
+                },
+              };
+            },
+          };
+        }
         return {
           ok: true,
           status: 200,
           headers: { get: () => "application/json" },
           async json() {
-            return {
-              location: {
-                lat: 60.1699,
-                lon: 24.9384,
-                label: "Kamppi, Helsinki",
-              },
-            };
+            return { station: { departures: [] }, stops: [] };
           },
         };
-      }
-
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: () => "application/json" },
-        async json() {
-          return { station: { departures: [] }, stops: [] };
-        },
-      };
+      },
+      documentRef: {
+        createElement: () => ({
+          addEventListener() {},
+        }),
+      },
     },
-    document: {
-      createElement: () => ({
-        addEventListener() {},
-      }),
-    },
-    Blob,
-    Buffer,
-    URLSearchParams,
-    Date,
-    Math,
-    Number,
-    String,
-    Boolean,
-    Object,
-    Array,
-    Set,
-    Promise,
-    RegExp,
-    Error,
-    AbortController,
-    setTimeout,
-    clearTimeout,
-    console,
-  };
+  });
+  registerDataModule(app, env);
 
-  vm.createContext(context);
-  vm.runInContext(scriptText, context, { filename: scriptPath });
-
-  world.api = context.window.HMApp.api;
+  world.api = app.api;
   world.getUserMediaCalls = getUserMediaCalls;
   world.promptCalls = promptCalls;
   world.browserSpeechStartCalls = browserSpeechStartCalls;
@@ -362,6 +315,24 @@ defineFeature(test, featureText, {
       pattern: /^Then requested microphone channel count preference equals (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.getUserMediaCalls.at(-1)?.audio?.channelCount?.ideal, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then requested microphone echo cancellation preference equals (true|false)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.at(-1)?.audio?.echoCancellation?.ideal, args[0] === "true");
+      },
+    },
+    {
+      pattern: /^Then requested microphone noise suppression preference equals (true|false)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.at(-1)?.audio?.noiseSuppression?.ideal, args[0] === "true");
+      },
+    },
+    {
+      pattern: /^Then requested microphone auto gain control preference equals (true|false)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.at(-1)?.audio?.autoGainControl?.ideal, args[0] === "true");
       },
     },
   ],

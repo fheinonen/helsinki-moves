@@ -1,9 +1,12 @@
+const {
+  MODE_RAIL,
+  MODE_BUS,
+  MODE_TRAM,
+  MODE_METRO,
+} = require("./mode-policy");
+
 const DIGITRANSIT_ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
 const DIGITRANSIT_TIMEOUT_MS = 7000;
-const MODE_RAIL = "RAIL";
-const MODE_BUS = "BUS";
-const MODE_TRAM = "TRAM";
-const MODE_METRO = "METRO";
 
 const nearbyStopsQuery = `
   query NearbyStops($lat: Float!, $lon: Float!, $radius: Int!) {
@@ -147,52 +150,68 @@ ${stopFields.join("\n")}
   return { query, variables, aliases };
 }
 
-async function graphqlRequest(query, variables) {
-  const key = process.env.DIGITRANSIT_API_KEY;
-  if (!key) {
-    throw new Error("Missing DIGITRANSIT_API_KEY environment variable.");
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DIGITRANSIT_TIMEOUT_MS);
-  let response;
-
-  try {
-    response = await fetch(DIGITRANSIT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "digitransit-subscription-key": key,
-      },
-      body: JSON.stringify({ query, variables }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error("Digitransit request timed out");
+function createDigitransitClient({
+  fetchImpl = (...args) => fetch(...args),
+  getApiKey = () => process.env.DIGITRANSIT_API_KEY,
+  endpoint = DIGITRANSIT_ENDPOINT,
+  timeoutMs = DIGITRANSIT_TIMEOUT_MS,
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout,
+} = {}) {
+  async function graphqlRequest(query, variables) {
+    const key = getApiKey();
+    if (!key) {
+      throw new Error("Missing DIGITRANSIT_API_KEY environment variable.");
     }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeoutImpl(() => controller.abort(), timeoutMs);
+    let response;
+
+    try {
+      response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "digitransit-subscription-key": key,
+        },
+        body: JSON.stringify({ query, variables }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("Digitransit request timed out");
+      }
+      throw error;
+    } finally {
+      clearTimeoutImpl(timeoutId);
+    }
+
+    let json;
+    try {
+      json = await response.json();
+    } catch {
+      throw new Error(`Digitransit invalid response (HTTP ${response.status})`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Digitransit HTTP ${response.status}`);
+    }
+
+    if (json.errors && json.errors.length > 0) {
+      throw new Error(json.errors.map((e) => e.message).join(" | "));
+    }
+
+    return json.data;
   }
 
-  let json;
-  try {
-    json = await response.json();
-  } catch {
-    throw new Error(`Digitransit invalid response (HTTP ${response.status})`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Digitransit HTTP ${response.status}`);
-  }
-
-  if (json.errors && json.errors.length > 0) {
-    throw new Error(json.errors.map((e) => e.message).join(" | "));
-  }
-
-  return json.data;
+  return {
+    graphqlRequest,
+  };
 }
+
+const defaultClient = createDigitransitClient();
+const { graphqlRequest } = defaultClient;
 
 module.exports = {
   MODE_RAIL,
@@ -203,5 +222,6 @@ module.exports = {
   stopDeparturesQuery,
   stationDeparturesQuery,
   buildMultiStopDeparturesQuery,
+  createDigitransitClient,
   graphqlRequest,
 };

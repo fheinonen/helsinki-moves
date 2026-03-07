@@ -1,186 +1,99 @@
-const crypto = require("node:crypto");
-const fs = require("node:fs");
-
-const TOKEN_TIMEOUT_MS = 7000;
-const GOOGLE_TOKEN_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
-
-let accessTokenCache = null;
+const TRANSCRIBE_TIMEOUT_MS = 7000;
+const DEFAULT_TRANSCRIPTION_LANGUAGE = "fi";
+const DEFAULT_AUDIO_FILE_NAME = "voice-query.webm";
+const DEFAULT_AUDIO_MIME_TYPE = "audio/webm";
 
 function errorResponse(res, status, message) {
   return res.status(status).json({ error: message });
 }
 
-function normalizeLocation(rawLocation) {
-  const location = String(rawLocation || "").trim().toLowerCase();
-  if (!location) return "eu";
-  if (!/^[a-z0-9-]+$/.test(location)) return "";
-  return location;
-}
-
-function parseServiceAccountJson(rawJson) {
-  if (!rawJson) return null;
-  try {
-    const parsed = JSON.parse(String(rawJson));
-    const clientEmail = String(parsed?.client_email || "").trim();
-    const privateKey = String(parsed?.private_key || "").trim();
-    const tokenUri = String(parsed?.token_uri || "https://oauth2.googleapis.com/token").trim();
-    if (!clientEmail || !privateKey || !tokenUri) return null;
-    return { clientEmail, privateKey, tokenUri };
-  } catch {
-    return null;
-  }
-}
-
-function loadServiceAccount({ rawJson = "", filePath = "" } = {}) {
-  const fromJson = parseServiceAccountJson(rawJson);
-  if (fromJson) return fromJson;
-
-  const normalizedPath = String(filePath || "").trim();
-  if (!normalizedPath) return null;
+function normalizeTranscriptionApiUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
 
   try {
-    return parseServiceAccountJson(fs.readFileSync(normalizedPath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function base64UrlEncode(value) {
-  return Buffer.from(value)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-function createAssertion({
-  clientEmail,
-  privateKey,
-  tokenUri,
-  nowMs = Date.now(),
-}) {
-  const issuedAt = Math.floor(nowMs / 1000);
-  const expiresAt = issuedAt + 3600;
-  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const claimSet = base64UrlEncode(
-    JSON.stringify({
-      iss: clientEmail,
-      scope: GOOGLE_TOKEN_SCOPE,
-      aud: tokenUri,
-      exp: expiresAt,
-      iat: issuedAt,
-    })
-  );
-  const signingInput = `${header}.${claimSet}`;
-  const signature = crypto
-    .createSign("RSA-SHA256")
-    .update(signingInput)
-    .end()
-    .sign(privateKey, "base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-  return `${signingInput}.${signature}`;
-}
-
-async function fetchGoogleAccessToken({
-  fetchImpl = fetch,
-  serviceAccount,
-  createAssertionFn = createAssertion,
-  nowMs = Date.now(),
-}) {
-  if (accessTokenCache && nowMs < accessTokenCache.expiresAtMs) {
-    return accessTokenCache.accessToken;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TOKEN_TIMEOUT_MS);
-
-  try {
-    const assertion = createAssertionFn({
-      clientEmail: serviceAccount.clientEmail,
-      privateKey: serviceAccount.privateKey,
-      tokenUri: serviceAccount.tokenUri,
-      nowMs,
-    });
-    const response = await fetchImpl(serviceAccount.tokenUri, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion,
-      }).toString(),
-      signal: controller.signal,
-    });
-    const json = await response.json();
-    const accessToken = String(json?.access_token || "").trim();
-    const expiresInSeconds = Number(json?.expires_in) || 3600;
-    if (!response.ok || !accessToken) {
-      throw new Error(`Google access token request failed with HTTP ${response.status}`);
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return "";
     }
-    accessTokenCache = {
-      accessToken,
-      expiresAtMs: nowMs + Math.max(60_000, (expiresInSeconds - 60) * 1000),
-    };
-    return accessToken;
-  } finally {
-    clearTimeout(timeoutId);
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeOptionalText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeAudioFileName(fileName) {
+  const normalized = normalizeOptionalText(fileName).replace(/[^\w.-]+/g, "-");
+  return normalized || DEFAULT_AUDIO_FILE_NAME;
+}
+
+function normalizeAudioMimeType(mimeType) {
+  const normalized = normalizeOptionalText(mimeType).toLowerCase();
+  return normalized || DEFAULT_AUDIO_MIME_TYPE;
+}
+
+function decodeBase64AudioContent(content) {
+  return Buffer.from(String(content || ""), "base64");
+}
+
+function createAudioFile({
+  content,
+  fileName = DEFAULT_AUDIO_FILE_NAME,
+  mimeType = DEFAULT_AUDIO_MIME_TYPE,
+} = {}) {
+  const bytes = decodeBase64AudioContent(content);
+  return new File([bytes], normalizeAudioFileName(fileName), {
+    type: normalizeAudioMimeType(mimeType),
+  });
+}
+
+async function readJsonResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
   }
 }
 
 function extractTranscript(responseJson) {
-  const results = Array.isArray(responseJson?.results) ? responseJson.results : [];
-  const transcript = results
-    .map((result) => String(result?.alternatives?.[0]?.transcript || "").trim())
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return transcript;
+  const transcript = responseJson?.text ?? responseJson?.transcript ?? "";
+  return String(transcript || "").trim();
 }
 
-function getSpeechApiBaseUrl(location) {
-  if (location === "global") return "https://speech.googleapis.com";
-  return `https://${location}-speech.googleapis.com`;
-}
-
-async function recognizeSpeech({
+async function transcribeSpeech({
   fetchImpl = fetch,
-  accessToken,
-  projectId,
-  location,
-  content,
-  languageCode = "fi-FI",
-  model = "chirp_3",
-}) {
+  apiUrl,
+  apiKey,
+  model,
+  language = DEFAULT_TRANSCRIPTION_LANGUAGE,
+  audioFile,
+} = {}) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TOKEN_TIMEOUT_MS);
-  const baseUrl = getSpeechApiBaseUrl(location);
+  const timeoutId = setTimeout(() => controller.abort(), TRANSCRIBE_TIMEOUT_MS);
+  const form = new FormData();
+
+  form.append("file", audioFile, audioFile?.name || DEFAULT_AUDIO_FILE_NAME);
+  form.append("model", normalizeOptionalText(model));
+  if (normalizeOptionalText(language)) {
+    form.append("language", normalizeOptionalText(language));
+  }
 
   try {
-    const response = await fetchImpl(
-      `${baseUrl}/v2/projects/${projectId}/locations/${location}/recognizers/_:recognize`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          config: {
-            autoDecodingConfig: {},
-            languageCodes: [languageCode],
-            model,
-          },
-          content,
-        }),
-        signal: controller.signal,
-      }
-    );
-    const json = await response.json();
+    const response = await fetchImpl(apiUrl, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+    const json = await readJsonResponse(response);
     if (!response.ok) {
-      throw new Error(`Google speech recognize failed with HTTP ${response.status}`);
+      throw new Error(`Speech transcription request failed with HTTP ${response.status}`);
     }
     return extractTranscript(json);
   } finally {
@@ -190,11 +103,12 @@ async function recognizeSpeech({
 
 function createSpeechTranscribeHandler({
   fetchImpl = fetch,
-  getServiceAccountJson = () => process.env.GOOGLE_SPEECH_SERVICE_ACCOUNT_JSON,
-  getServiceAccountPath = () => process.env.GOOGLE_SPEECH_SERVICE_ACCOUNT_PATH,
-  getProjectId = () => process.env.GOOGLE_CLOUD_PROJECT_ID,
-  getLocation = () => process.env.GOOGLE_SPEECH_LOCATION,
-  createAssertionFn = createAssertion,
+  getApiUrl = () => process.env.SPEECH_TRANSCRIBE_API_URL,
+  getApiKey = () => process.env.SPEECH_TRANSCRIBE_API_KEY || process.env.OPENAI_API_KEY,
+  getModel = () => process.env.SPEECH_TRANSCRIBE_MODEL,
+  getLanguage = () => process.env.SPEECH_TRANSCRIBE_LANGUAGE || DEFAULT_TRANSCRIPTION_LANGUAGE,
+  getDefaultFileName = () => DEFAULT_AUDIO_FILE_NAME,
+  getDefaultMimeType = () => DEFAULT_AUDIO_MIME_TYPE,
 } = {}) {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -204,40 +118,38 @@ function createSpeechTranscribeHandler({
       return errorResponse(res, 405, "Method not allowed");
     }
 
-    const serviceAccount = loadServiceAccount({
-      rawJson: getServiceAccountJson(),
-      filePath: getServiceAccountPath(),
-    });
-    const projectId = String(getProjectId() || "").trim();
-    const location = normalizeLocation(getLocation());
-    if (!serviceAccount || !projectId || !location) {
-      return errorResponse(res, 503, "Google Speech is not configured");
+    const apiUrl = normalizeTranscriptionApiUrl(getApiUrl());
+    const apiKey = normalizeOptionalText(getApiKey());
+    const model = normalizeOptionalText(getModel());
+    const language = normalizeOptionalText(getLanguage());
+    if (!apiUrl || !apiKey || !model) {
+      return errorResponse(res, 503, "Speech transcription is not configured");
     }
 
-    const content = String(req.body?.content || "").trim();
+    const content = normalizeOptionalText(req.body?.content);
     if (!content) {
       return errorResponse(res, 400, "Audio content is required");
     }
 
     try {
-      const accessToken = await fetchGoogleAccessToken({
+      const transcript = await transcribeSpeech({
         fetchImpl,
-        serviceAccount,
-        createAssertionFn,
-      });
-      const transcript = await recognizeSpeech({
-        fetchImpl,
-        accessToken,
-        projectId,
-        location,
-        content,
+        apiUrl,
+        apiKey,
+        model,
+        language,
+        audioFile: createAudioFile({
+          content,
+          fileName: req.body?.fileName || getDefaultFileName(),
+          mimeType: req.body?.mimeType || getDefaultMimeType(),
+        }),
       });
       if (!transcript) {
         return errorResponse(res, 422, "No speech detected");
       }
       return res.status(200).json({ transcript });
     } catch (error) {
-      console.error("google speech transcribe error:", error);
+      console.error("speech transcribe error:", error);
       return errorResponse(res, 502, "Could not transcribe speech");
     }
   };
@@ -247,15 +159,16 @@ const handler = createSpeechTranscribeHandler();
 
 module.exports = handler;
 module.exports._private = {
+  TRANSCRIBE_TIMEOUT_MS,
+  DEFAULT_TRANSCRIPTION_LANGUAGE,
+  DEFAULT_AUDIO_FILE_NAME,
+  DEFAULT_AUDIO_MIME_TYPE,
   errorResponse,
-  normalizeLocation,
-  parseServiceAccountJson,
-  loadServiceAccount,
-  base64UrlEncode,
-  createAssertion,
-  fetchGoogleAccessToken,
+  normalizeTranscriptionApiUrl,
+  decodeBase64AudioContent,
+  createAudioFile,
+  readJsonResponse,
   extractTranscript,
-  getSpeechApiBaseUrl,
-  recognizeSpeech,
+  transcribeSpeech,
   createSpeechTranscribeHandler,
 };

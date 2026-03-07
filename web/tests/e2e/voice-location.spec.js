@@ -237,7 +237,7 @@ async function installApiMocks(
             : {
                 error:
                   speechTranscribeStatus === 503
-                    ? "Google Speech is not configured"
+                    ? "Speech transcription is not configured"
                     : "Could not transcribe speech",
               }
         ),

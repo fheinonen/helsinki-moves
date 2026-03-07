@@ -188,6 +188,15 @@
     return availability === "available";
   }
 
+  function getPreferredMicrophoneConstraints() {
+    return {
+      audio: {
+        sampleRate: { ideal: 16000 },
+        channelCount: { ideal: 1 },
+      },
+    };
+  }
+
   function mapMicrophonePreflightError(error) {
     const errorName = String(error?.name || "")
       .trim()
@@ -213,7 +222,7 @@
     }
 
     try {
-      return await mediaDevices.getUserMedia({ audio: true });
+      return await mediaDevices.getUserMedia(getPreferredMicrophoneConstraints());
     } catch (error) {
       throw mapMicrophonePreflightError(error);
     }

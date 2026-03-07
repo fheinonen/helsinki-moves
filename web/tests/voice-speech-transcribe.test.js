@@ -6,7 +6,7 @@ const vm = require("node:vm");
 const { defineFeature } = require("./helpers/bdd");
 
 const featureText = `
-Feature: Google speech voice capture
+Feature: Speech transcription voice capture
 
 Scenario: Use speech transcription API even when browser speech recognition exists
   Given voice data API is booted
@@ -202,7 +202,7 @@ function bootVoiceDataApi(world) {
                 transcript: world.transcript,
               };
             }
-            return { error: "Google Speech is not configured" };
+            return { error: "Speech transcription is not configured" };
           },
         };
       }

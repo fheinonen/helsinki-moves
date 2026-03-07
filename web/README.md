@@ -15,7 +15,7 @@
 - `assets/icons/` app icons
 - `api/v1/departures.js` departures Vercel serverless API
 - `api/v1/client-error.js` client error report API
-- `api/v1/speech-transcribe.js` Google Speech transcription API
+- `api/v1/speech-transcribe.js` OpenAI-compatible speech transcription API
 - `api/lib/digitransit.js` Digitransit GraphQL client + query helpers
 - `api/lib/departures-utils.js` shared departures parsing/filtering utilities
 - `vercel.json` Vercel config
@@ -28,9 +28,10 @@
    - `cp .env.example .env`
 3. Set your key in `.env`:
    - `DIGITRANSIT_API_KEY=...`
-   - `GOOGLE_CLOUD_PROJECT_ID=...`
-   - `GOOGLE_SPEECH_LOCATION=eu`
-   - `GOOGLE_SPEECH_SERVICE_ACCOUNT_JSON=...`
+   - `SPEECH_TRANSCRIBE_API_URL=https://speech.fheinonen.eu/v1/audio/transcriptions`
+   - `SPEECH_TRANSCRIBE_API_KEY=...`
+   - `SPEECH_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`
+   - `SPEECH_TRANSCRIBE_LANGUAGE=fi`
 4. Install dependencies and build assets:
    - `npm install`
    - `npm run build`
@@ -72,9 +73,10 @@ Target a single engine:
 3. Set **Root Directory** to `web`.
 4. Add environment variable:
    - `DIGITRANSIT_API_KEY`
-   - `GOOGLE_CLOUD_PROJECT_ID`
-   - `GOOGLE_SPEECH_LOCATION`
-   - `GOOGLE_SPEECH_SERVICE_ACCOUNT_JSON`
+   - `SPEECH_TRANSCRIBE_API_KEY`
+   - `SPEECH_TRANSCRIBE_API_URL`
+   - `SPEECH_TRANSCRIBE_MODEL`
+   - `SPEECH_TRANSCRIBE_LANGUAGE` (optional)
 5. Deploy.
 
 Vercel runs `npm run build` (configured in `vercel.json`) before deployment.

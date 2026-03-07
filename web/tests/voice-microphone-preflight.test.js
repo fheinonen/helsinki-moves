@@ -25,6 +25,14 @@ Scenario: Use typed fallback prompt when speech transcription is unavailable
   Then microphone permission preflight call count equals 1
   And typed fallback prompt call count equals 1
   And last prompt message equals "Voice recognition is unavailable right now. Type your location or line (number or letter) instead:\\nExample: Kamppi Helsinki, A-train, bus 52, 200"
+
+Scenario: Request 16 kHz mono audio as microphone constraints
+  Given voice preflight data API is booted
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice preflight location is requested
+  Then microphone permission preflight call count equals 1
+  And requested microphone sample rate preference equals 16000
+  And requested microphone channel count preference equals 1
 `;
 
 function createMediaRecorderClass(world) {
@@ -198,7 +206,7 @@ function bootVoiceDataApi(world) {
                 transcript: world.transcript,
               };
             }
-            return { error: "Google Speech is not configured" };
+            return { error: "Speech transcription is not configured" };
           },
         };
       }
@@ -342,6 +350,18 @@ defineFeature(test, featureText, {
       pattern: /^Then last prompt message equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(String(world.promptCalls.at(-1)?.message || ""), args[0].replace(/\\n/g, "\n"));
+      },
+    },
+    {
+      pattern: /^Then requested microphone sample rate preference equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.at(-1)?.audio?.sampleRate?.ideal, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then requested microphone channel count preference equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.getUserMediaCalls.at(-1)?.audio?.channelCount?.ideal, Number(args[0]));
       },
     },
   ],

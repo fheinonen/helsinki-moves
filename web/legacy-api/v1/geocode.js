@@ -1,4 +1,4 @@
-const { graphqlRequest } = require("../lib/digitransit");
+const { graphqlRequest } = require("../../api/lib/digitransit");
 const {
   parseCoordinate,
   isValidLatLon,
@@ -7,14 +7,14 @@ const {
   buildGeocodeTextVariants,
   parseGeocodeRequest,
   buildNoMatchPayload,
-} = require("../lib/geocode-query");
+} = require("../../api/lib/geocode-query");
 const {
   getGeocodingUrl,
   parseFeature,
   geocode,
   hasNearbyHslStop,
   filterHslValidCandidates,
-} = require("../lib/geocode-client");
+} = require("../../api/lib/geocode-client");
 const {
   normalizeForMatch,
   tokenMatches,
@@ -23,7 +23,7 @@ const {
   rankCandidatesForQuery,
   buildAmbiguousChoices,
   buildLocationPayload,
-} = require("../lib/geocode-ranking");
+} = require("../../api/lib/geocode-ranking");
 
 async function collectGeocodeCandidates({
   textVariants,

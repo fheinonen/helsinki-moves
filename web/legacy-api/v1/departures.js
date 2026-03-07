@@ -8,19 +8,19 @@ const {
   isSupportedMode,
   getUpstreamMode,
   getLineIntentModeLabel,
-} = require("../lib/mode-policy");
+} = require("../../api/lib/mode-policy");
 const {
   nearbyStopsQuery,
   buildMultiStopDeparturesQuery,
   graphqlRequest: defaultGraphqlRequest,
-} = require("../lib/digitransit");
+} = require("../../api/lib/digitransit");
 const {
   parseRequestedMode,
   parseMultiQueryParam,
   parseRequestedResultLimit,
   parseDeparture,
   buildFilterOptions,
-} = require("../lib/departures-utils");
+} = require("../../api/lib/departures-utils");
 
 function getModeStops(nearbyData, mode) {
   const edges = (nearbyData?.stopsByRadius?.edges || [])

@@ -1,102 +1,92 @@
-# Simple Vercel App: Helsinki Moves
+# Helsinki Moves Rewrite
 
-## Structure
+This directory now hosts the greenfield rewrite of Helsinki Moves.
 
-- `index.html` app shell
-- `scripts/app/*.js` frontend runtime modules
-- `scripts/app/entry.js` JS bundle entry (imports app modules in order)
-- `scripts/README.md` script module boundaries/load order (`window.HMApp` contract)
-- inline theme bootstrap in `index.html` head (sets `data-theme` before CSS load)
-- `styles/main.css` stylesheet entrypoint/import manifest
-- `styles/*.css` modular stylesheets
-- `styles/README.md` stylesheet maintenance guide
-- `dist/` generated frontend bundles served by `index.html`
-- `tools/build-assets.mjs` frontend bundling script
-- `assets/icons/` app icons
-- `api/v1/departures.js` departures Vercel serverless API
-- `api/v1/client-error.js` client error report API
-- `api/v1/speech-transcribe.js` OpenAI-compatible speech transcription API
-- `api/lib/digitransit.js` Digitransit GraphQL client + query helpers
-- `api/lib/departures-utils.js` shared departures parsing/filtering utilities
-- `vercel.json` Vercel config
+The rewrite targets:
 
-## Local run
+- `Vite` for the client build and local dev server
+- `TypeScript` in strict mode
+- `Hono` for Vercel API routing
+- a small custom client store instead of a UI framework
+- `Vitest` for unit and contract coverage
+- `Playwright` for browser and visual checks
 
-1. Install Vercel CLI:
-   - `npm i -g vercel`
-2. From this folder (`web/`), create local env file:
-   - `cp .env.example .env`
-3. Set your key in `.env`:
-   - `DIGITRANSIT_API_KEY=...`
-   - `SPEECH_TRANSCRIBE_API_URL=https://speech.fheinonen.eu/v1/audio/transcriptions`
-   - `SPEECH_TRANSCRIBE_API_KEY=...`
-   - `SPEECH_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`
-   - `SPEECH_TRANSCRIBE_LANGUAGE=fi`
-4. Install dependencies and build assets:
-   - `npm install`
-   - `npm run build`
-5. Run:
-   - `vercel dev`
+## Architecture
 
-## Quick checks
+### Top-level structure
 
-From repository root:
+- `src/client/`
+  - browser bootstrap, app shell, features, styles, and client-side state
+- `src/server/`
+  - Hono app, routes, services, and request validation
+- `src/shared/`
+  - domain types, contracts, and reusable pure utilities
+- `api/`
+  - Vercel route entrypoints
+- `tests/unit/`
+  - unit and contract tests written with strict Given/When/Then scenarios
+- `tests/e2e/`
+  - Playwright scenarios for browser behavior
 
-- `node --check web/scripts/app/entry.js`
-- `node --check web/scripts/app/01-state.js`
-- `node --check web/scripts/app/02-ui.js`
-- `node --check web/scripts/app/03-data.js`
-- `node --check web/scripts/app/04-init.js`
-- `node --check web/tools/build-assets.mjs`
-- `node --check web/api/v1/departures.js`
-- `node --check web/api/v1/client-error.js`
-- `node --check web/api/lib/digitransit.js`
-- `node --check web/api/lib/departures-utils.js`
+### Module boundary rules
 
-## Cross-browser E2E (voice/microphone flows)
+- `src/client/` may import from `src/shared/` and client-local modules only.
+- `src/server/` may import from `src/shared/` and server-local modules only.
+- `src/shared/` must stay framework-free and side-effect free.
+- Route handlers stay thin and delegate logic to validators and services.
+- Views do not mutate global state directly; state changes flow through store actions.
+
+## Local Development
 
 From `web/`:
 
-- `npm run test:e2e:install`
+1. `cp .env.example .env`
+2. Set the required runtime secrets in `.env`
+3. `npm install`
+4. `npm run dev`
+
+Required runtime secrets:
+
+- `DIGITRANSIT_API_KEY`
+- `SPEECH_TRANSCRIBE_API_KEY`
+- `SPEECH_TRANSCRIBE_MODEL`
+
+Optional runtime secrets:
+
+- `SPEECH_TRANSCRIBE_API_URL`
+- `SPEECH_TRANSCRIBE_LANGUAGE`
+- `OPENAI_API_KEY` as a fallback for speech auth only
+
+Preview the production build locally:
+
+- `npm run build`
+- `npm run preview`
+
+## Commands
+
+- `npm run typecheck`
+- `npm run test:unit`
+- `npm run test:coverage`
 - `npm run test:e2e`
-
-Target a single engine:
-
 - `npm run test:e2e:chromium`
-- `npm run test:e2e:firefox`
-- `npm run test:e2e:webkit`
+- `npm run release:validate`
+- `npm run ci`
+
+## Testing Rules
+
+- New behavior starts as Given/When/Then scenarios.
+- Scenarios must fail before implementation.
+- Step definitions must execute real production code.
+- Test commands should emit failure-focused output only.
 
 ## Deploy
 
-1. Push this repo to GitHub/GitLab/Bitbucket.
-2. In Vercel dashboard, import repo.
-3. Set **Root Directory** to `web`.
-4. Add environment variable:
-   - `DIGITRANSIT_API_KEY`
-   - `SPEECH_TRANSCRIBE_API_KEY`
-   - `SPEECH_TRANSCRIBE_API_URL`
-   - `SPEECH_TRANSCRIBE_MODEL`
-   - `SPEECH_TRANSCRIBE_LANGUAGE` (optional)
-5. Deploy.
+Deploy from `web/`:
 
-Vercel runs `npm run build` (configured in `vercel.json`) before deployment.
+- `vercel --prod --yes`
 
-## API used
+Vercel serves the built frontend from `dist/` and API routes from `api/`.
 
-- Endpoint: `https://api.digitransit.fi/routing/v2/hsl/gtfs/v1`
-- Header: `digitransit-subscription-key`
+For cutover validation and release gates, use:
 
-## Notes
-
-- Frontend requests your browser location and calls `/api/v1/departures`.
-- API supports multiple modes via `mode` (`RAIL`, `TRAM`, `METRO`, `BUS`).
-- BUS/TRAM/METRO modes support `stopId`, `line`, and `dest` query filters.
-- Metro mode is mapped to Digitransit's upstream `SUBWAY` route mode.
-- Frontend also posts sanitized client errors to `/api/v1/client-error`.
-- Frontend records short voice clips and transcribes them via `/api/v1/speech-transcribe`.
-- Frontend also emits sampled `type: "metric"` events to `/api/v1/client-error` with:
-  - `context.metricName`: `first_successful_render`
-  - `context.metricName`: `initial_nearest_stop_resolved`
-  - `context.metricName`: `first_manual_interaction`
-  - `context.metricName`: `first_manual_stop_context_change`
-- Theme supports manual light/dark toggle with system preference fallback.
+- `docs/RELEASE-CHECKLIST-greenfield-rewrite.md`

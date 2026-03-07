@@ -2,7 +2,7 @@ const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
 const { createMockRequest, createMockResponse } = require("./helpers/http-mocks");
-const departuresModule = require("../api/v1/departures");
+const departuresModule = require("../legacy-api/v1/departures");
 
 const { createDeparturesHandler } = departuresModule._private;
 

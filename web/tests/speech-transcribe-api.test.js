@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { defineFeature } = require("./helpers/bdd");
 const { createMockRequest, createMockResponse } = require("./helpers/http-mocks");
 
-const speechTranscribeModule = require("../api/v1/speech-transcribe");
+const speechTranscribeModule = require("../legacy-api/v1/speech-transcribe");
 
 const {
   createSpeechTranscribeHandler,

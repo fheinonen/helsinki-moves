@@ -7,6 +7,7 @@
 
 ## Code Quality
 - Keep functions small; cyclomatic complexity no greater than five where practical.
+- Follow SOLID principles strictly.
 - Decouple tests from production code via a testing API: as tests get more specific, code gets more generic.
 - Keep test coverage in the high 90s for line and branch.
 - Use available linters.
@@ -46,6 +47,11 @@
 ## Git Discipline
 - Check test coverage before commit.
 - Never push to git without asking first.
+
+## Rewrite Tracking
+- For the greenfield rewrite, use `docs/REWRITE-TRACKER.md` as the live execution source of truth.
+- Keep `docs/EPICS-greenfield-rewrite.md` as the high-level backlog and `docs/SPRINT-PLAN-greenfield-rewrite.md` as the planned sequence.
+- Update `docs/REWRITE-TRACKER.md` whenever a rewrite task starts, completes, or becomes blocked so progress does not depend on chat history.
 
 ## Local Development
 

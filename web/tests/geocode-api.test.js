@@ -2,7 +2,7 @@ const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
 const { createMockRequest, createMockResponse } = require("./helpers/http-mocks");
-const geocodeModule = require("../api/v1/geocode");
+const geocodeModule = require("../legacy-api/v1/geocode");
 
 const { createGeocodeHandler } = geocodeModule._private;
 

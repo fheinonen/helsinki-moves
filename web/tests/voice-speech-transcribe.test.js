@@ -26,17 +26,28 @@ Scenario: Keep typed fallback when speech transcription is unavailable
   And media recorder start call count equals 1
   And browser speech recognition start call count equals 0
   And last status equals "Voice recognition is unavailable right now. Type your location or line (number or letter) instead."
+
+Scenario: Use Safari-compatible recording metadata for speech transcription
+  Given voice data API is booted
+  And supported voice recording mime types are "audio/mp4"
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice location is requested
+  Then media recorder start call count equals 1
+  And media recorder requested mime type is "audio/mp4"
+  And speech transcription request mime type is "audio/mp4"
+  And speech transcription request file name is "voice-query.m4a"
 `;
 
 function createMediaRecorderClass(world) {
   return class MockMediaRecorder {
-    static isTypeSupported() {
-      return true;
+    static isTypeSupported(mimeType) {
+      return world.supportedMimeTypes.has(String(mimeType || "").trim().toLowerCase());
     }
 
-    constructor() {
+    constructor(_stream, options = {}) {
       this.listeners = new Map();
       this.state = "inactive";
+      world.mediaRecorderConstructorOptions.push(options);
     }
 
     addEventListener(type, handler) {
@@ -55,7 +66,11 @@ function createMediaRecorderClass(world) {
       world.mediaRecorderStartCalls.push({});
       setTimeout(() => {
         this.emit("dataavailable", {
-          data: new Blob([Buffer.from("voice-sample")], { type: "audio/webm" }),
+          data: new Blob([Buffer.from("voice-sample")], {
+            type:
+              String(world.mediaRecorderConstructorOptions.at(-1)?.mimeType || "").trim() ||
+              "audio/webm",
+          }),
         });
         this.stop();
       }, 0);
@@ -78,6 +93,7 @@ function bootVoiceDataApi(world) {
   const promptCalls = [];
   const browserSpeechStartCalls = [];
   const statusCalls = [];
+  const speechTranscribeRequests = [];
 
   const context = {
     window: {
@@ -188,10 +204,11 @@ function bootVoiceDataApi(world) {
         }),
       },
     },
-    fetch: async (url) => {
+    fetch: async (url, options = {}) => {
       const asText = String(url || "");
       if (asText.startsWith("/api/v1/speech-transcribe")) {
         world.speechTranscribeRequestCount += 1;
+        speechTranscribeRequests.push(JSON.parse(String(options.body || "{}")));
         return {
           ok: world.speechTranscribeStatus === 200,
           status: world.speechTranscribeStatus,
@@ -266,6 +283,7 @@ function bootVoiceDataApi(world) {
   world.browserSpeechStartCalls = browserSpeechStartCalls;
   world.promptCalls = promptCalls;
   world.statusCalls = statusCalls;
+  world.speechTranscribeRequests = speechTranscribeRequests;
 }
 
 defineFeature(test, featureText, {
@@ -276,10 +294,18 @@ defineFeature(test, featureText, {
     speechTranscribeStatus: 200,
     promptResponse: "",
     mediaRecorderStartCalls: [],
+    mediaRecorderConstructorOptions: [],
     speechTranscribeRequestCount: 0,
+    speechTranscribeRequests: [],
     browserSpeechStartCalls: [],
     promptCalls: [],
     statusCalls: [],
+    supportedMimeTypes: new Set([
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ]),
     result: null,
   }),
   stepDefinitions: [
@@ -309,6 +335,17 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given supported voice recording mime types are "([^"]*)"$/,
+      run: ({ args, world }) => {
+        world.supportedMimeTypes = new Set(
+          args[0]
+            .split(",")
+            .map((item) => String(item || "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+      },
+    },
+    {
       pattern: /^When voice location is requested$/,
       run: async ({ world }) => {
         world.result = await world.api.requestVoiceLocationAndLoad();
@@ -330,6 +367,24 @@ defineFeature(test, featureText, {
       pattern: /^Then browser speech recognition start call count equals (\d+)$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.browserSpeechStartCalls.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then media recorder requested mime type is "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.mediaRecorderConstructorOptions.at(-1)?.mimeType || "", args[0]);
+      },
+    },
+    {
+      pattern: /^Then speech transcription request mime type is "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.speechTranscribeRequests.at(-1)?.mimeType || "", args[0]);
+      },
+    },
+    {
+      pattern: /^Then speech transcription request file name is "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.speechTranscribeRequests.at(-1)?.fileName || "", args[0]);
       },
     },
     {

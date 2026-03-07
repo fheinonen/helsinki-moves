@@ -6,9 +6,12 @@
   const DEFAULT_VOICE_RECORDING_MIME_TYPES = [
     "audio/webm;codecs=opus",
     "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
     "audio/ogg;codecs=opus",
     "audio/ogg",
   ];
+  const DEFAULT_VOICE_AUDIO_FILE_NAME = "voice-query.webm";
 
   function isStopMode(mode) {
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO || mode === MODE_RAIL;
@@ -342,7 +345,31 @@
     };
   }
 
-  async function requestSpeechTranscript(base64Content) {
+  function normalizeRecordedVoiceMimeType(mimeType) {
+    return String(mimeType || "").trim().toLowerCase();
+  }
+
+  function buildRecordedVoiceFileName(mimeType) {
+    const normalizedMimeType = normalizeRecordedVoiceMimeType(mimeType);
+    if (normalizedMimeType.startsWith("audio/mp4") || normalizedMimeType.startsWith("audio/x-m4a")) {
+      return "voice-query.m4a";
+    }
+    if (normalizedMimeType.startsWith("audio/ogg")) {
+      return "voice-query.ogg";
+    }
+    return DEFAULT_VOICE_AUDIO_FILE_NAME;
+  }
+
+  async function requestSpeechTranscript(base64Content, metadata = {}) {
+    const payload = {
+      content: base64Content,
+    };
+    const mimeType = normalizeRecordedVoiceMimeType(metadata.mimeType);
+    if (mimeType) {
+      payload.mimeType = mimeType;
+      payload.fileName = buildRecordedVoiceFileName(mimeType);
+    }
+
     let res;
     try {
       res = await fetchWithTimeout("/api/v1/speech-transcribe", {
@@ -350,7 +377,7 @@
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ content: base64Content }),
+        body: JSON.stringify(payload),
       });
     } catch {
       throw createVoiceError("voice_recognition_network", "Voice recognition network error.");
@@ -371,6 +398,21 @@
       throw createVoiceError("voice_no_speech", "No speech detected.");
     }
     return transcript;
+  }
+
+  function getRecordedVoiceBlobMimeType(recorder, chunks, preferredMimeType = "") {
+    const chunkMimeType = normalizeRecordedVoiceMimeType(
+      chunks.find((chunk) => normalizeRecordedVoiceMimeType(chunk?.type))?.type
+    );
+    if (chunkMimeType) return chunkMimeType;
+
+    const recorderMimeType = normalizeRecordedVoiceMimeType(recorder?.mimeType);
+    if (recorderMimeType) return recorderMimeType;
+
+    return (
+      normalizeRecordedVoiceMimeType(preferredMimeType) ||
+      normalizeRecordedVoiceMimeType(DEFAULT_VOICE_RECORDING_MIME_TYPES[0])
+    );
   }
 
   function stopMediaStream(stream) {
@@ -474,7 +516,7 @@
           finish(reject, createVoiceError("voice_no_speech", "No speech detected."));
           return;
         }
-        finish(resolve, new Blob(chunks, { type: mimeType || "audio/webm" }));
+        finish(resolve, new Blob(chunks, { type: getRecordedVoiceBlobMimeType(recorder, chunks, mimeType) }));
       });
 
       try {
@@ -489,7 +531,9 @@
   async function captureVoiceQuery(microphoneStream = null) {
     const audioBlob = await recordVoiceClip(microphoneStream);
     const base64Content = await blobToBase64(audioBlob);
-    return requestSpeechTranscript(base64Content);
+    return requestSpeechTranscript(base64Content, {
+      mimeType: audioBlob?.type,
+    });
   }
 
   function supportsSpeechTranscription() {

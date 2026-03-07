@@ -673,7 +673,7 @@ function registerUiModule(app, env = {}) {
     }
 
     state.busStopId = stopId;
-    state.stopFilterPinned = true;
+    state.stopFilterPinned = false;
     state.busStopMemberFilterId = null;
     toggleStopDropdown(false);
 

@@ -133,6 +133,11 @@ Scenario: Line-intent stop selection returns null when no stop matches the reque
   Given line-intent stop selection input with no matching lines
   When line-intent stop selection helper runs
   Then line-intent stop selection is null
+
+Scenario: Line-intent stop selection falls back to stop id when member stop ids are missing
+  Given line-intent stop selection input without member stop ids
+  When line-intent stop selection helper runs
+  Then line-intent stop selection helper id equals "HSL:solo"
 `;
 
 defineFeature(test, featureText, {
@@ -468,11 +473,42 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^Given line-intent stop selection input without member stop ids$/,
+      run: ({ world }) => {
+        world.input.lineIntentStopSelection = {
+          graphqlCalls: 0,
+          stops: [{ id: "HSL:solo" }],
+          requestedLines: ["67"],
+        };
+      },
+    },
+    {
       pattern: /^When line-intent stop selection helper runs$/,
       run: async ({ world }) => {
         world.output = await departuresApi.selectLineIntentStop({
           graphqlRequest: async () => {
             world.input.lineIntentStopSelection.graphqlCalls += 1;
+            if ((world.input.lineIntentStopSelection.stops || []).length === 1) {
+              return {
+                s0: {
+                  platformCode: "1",
+                  stoptimesWithoutPatterns: [
+                    {
+                      serviceDay: Math.floor(Date.now() / 1000) + 3600,
+                      scheduledDeparture: 0,
+                      realtimeDeparture: 0,
+                      realtime: false,
+                      pickupType: 0,
+                      stop: { gtfsId: "HSL:solo", platformCode: "1" },
+                      trip: {
+                        route: { shortName: "67", longName: "Pasila", mode: "BUS" },
+                      },
+                      headsign: "Pasila",
+                    },
+                  ],
+                },
+              };
+            }
             return {
               s0: {
                 platformCode: "1",
@@ -522,6 +558,12 @@ defineFeature(test, featureText, {
       run: ({ assert, world }) => {
         assert.equal(world.output, null);
         assert.equal(world.input.lineIntentStopSelection.graphqlCalls, 1);
+      },
+    },
+    {
+      pattern: /^Then line-intent stop selection helper id equals "([^"]*)"$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.output?.selectedStop?.id, args[0]);
       },
     },
   ],

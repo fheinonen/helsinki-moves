@@ -127,8 +127,6 @@ function registerDataModule(app, env = {}) {
     const nearestStopId = stops[0]?.id || null;
     if (!state.busStopId) {
       state.stopFilterPinned = false;
-    } else if (nearestStopId && state.busStopId !== nearestStopId) {
-      state.stopFilterPinned = true;
     } else if (hadInvalidSelectedStop) {
       state.stopFilterPinned = false;
     }

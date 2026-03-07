@@ -1,22 +1,45 @@
 import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
+const require = createRequire(import.meta.url);
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(toolsDir, "..");
 const distDir = path.resolve(webDir, "dist");
 
-async function buildAssets() {
+function resolveTailwindCliModulePath() {
+  const packageJsonPath = require.resolve("@tailwindcss/cli/package.json");
+  const packageJson = require(packageJsonPath);
+  const binPath =
+    typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.tailwindcss;
+  if (!binPath) {
+    throw new Error("Could not resolve @tailwindcss/cli bin path");
+  }
+  return path.resolve(path.dirname(packageJsonPath), binPath);
+}
+
+export function getTailwindCliInvocation(_platform = process.platform) {
+  return {
+    command: process.execPath,
+    args: [
+      resolveTailwindCliModulePath(),
+      "-i",
+      "styles/main.css",
+      "-o",
+      "dist/.tailwind-intermediate.css",
+    ],
+  };
+}
+
+export async function buildAssets() {
   await rm(distDir, { recursive: true, force: true });
 
   // Step 1: Tailwind CLI processes main.css → intermediate file
-  execFileSync(
-    path.resolve(webDir, "node_modules/.bin/tailwindcss"),
-    ["-i", "styles/main.css", "-o", "dist/.tailwind-intermediate.css"],
-    { cwd: webDir, stdio: "inherit" },
-  );
+  const tailwindCli = getTailwindCliInvocation();
+  execFileSync(tailwindCli.command, tailwindCli.args, { cwd: webDir, stdio: "inherit" });
 
   // Step 2: esbuild bundles JS + Tailwind-processed CSS in parallel
   await Promise.all([
@@ -42,7 +65,9 @@ async function buildAssets() {
   process.stdout.write("Built frontend bundles in web/dist\n");
 }
 
-buildAssets().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  buildAssets().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

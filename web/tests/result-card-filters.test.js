@@ -42,6 +42,16 @@ Scenario: Tapping alternative stop applies stop filter state
   Then selected stop equals "custom-stop"
   And stop filter summary text equals "1 filter"
 
+Scenario: Selecting a stop from the dropdown changes context without a stop filter pill
+  Given stop mode with nearest stop "nearest-stop" and alternative stop "custom-stop"
+  When stop dropdown controls are rendered
+  And stop "custom-stop" is selected from dropdown
+  Then selected stop equals "custom-stop"
+  And stop filter summary text equals "No filters"
+  And data scope is hidden
+  And visible departures count equals 2
+  And stop context reload count equals 1
+
 Scenario: Filters dropdown lists real stop ids with card stop code labels
   Given stop mode departures with stop ids "HSL:1001" and "HSL:2002"
   When stop filters panel controls are rendered
@@ -613,6 +623,26 @@ defineFeature(test, featureText, {
       },
     },
     {
+      pattern: /^When stop dropdown controls are rendered$/,
+      run: ({ world }) => {
+        world.harness.app.api.renderStopControls();
+      },
+    },
+    {
+      pattern: /^When stop "([^"]*)" is selected from dropdown$/,
+      run: ({ args, world }) => {
+        const option = (world.harness.dom.busStopSelectListEl.children || []).find(
+          (item) => String(item?.dataset?.value || "").trim() === args[0]
+        );
+        if (!option) throw new Error(`Could not find stop dropdown option ${args[0]}`);
+        option.dispatch("click");
+        world.harness.app.api.updateDataScope(world.harness.app.state.latestResponse);
+        world.lastVisibleDepartures = world.harness.app.api.getVisibleDepartures(
+          world.harness.app.state.latestResponse.station.departures
+        );
+      },
+    },
+    {
       pattern: /^Then filters panel stop id options equal "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         const expected = args[0].split(",").map((value) => value.trim()).filter(Boolean);
@@ -776,6 +806,18 @@ defineFeature(test, featureText, {
       pattern: /^Then stop filter summary text equals "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.harness.dom.stopFilterSummaryEl.textContent, args[0]);
+      },
+    },
+    {
+      pattern: /^Then visible departures count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.lastVisibleDepartures.length, Number(args[0]));
+      },
+    },
+    {
+      pattern: /^Then stop context reload count equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.harness.calls.load, Number(args[0]));
       },
     },
     {

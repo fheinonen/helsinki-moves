@@ -36,6 +36,16 @@ Scenario: Use Safari-compatible recording metadata for speech transcription
   And media recorder requested mime type is "audio/mp4"
   And speech transcription request mime type is "audio/mp4"
   And speech transcription request file name is "voice-query.m4a"
+
+Scenario: Keep final audio chunk when recorder delivers it after stop
+  Given voice data API is booted
+  And media recorder delivers audio after stop
+  And speech transcription returns transcript "Kamppi Helsinki"
+  When voice location is requested
+  Then media recorder start call count equals 1
+  And media recorder start timeslice equals 250
+  And speech transcription request count equals 1
+  And voice request result equals true
 `;
 
 function createMediaRecorderClass(world) {
@@ -61,10 +71,23 @@ function createMediaRecorderClass(world) {
       }
     }
 
-    start() {
+    start(timeslice) {
       this.state = "recording";
-      world.mediaRecorderStartCalls.push({});
+      world.mediaRecorderStartCalls.push({ timeslice: Number(timeslice) || 0 });
       setTimeout(() => {
+        if (world.mediaRecorderDeliversAudioAfterStop) {
+          this.stop();
+          setTimeout(() => {
+            this.emit("dataavailable", {
+              data: new Blob([Buffer.from("voice-sample")], {
+                type:
+                  String(world.mediaRecorderConstructorOptions.at(-1)?.mimeType || "").trim() ||
+                  "audio/webm",
+              }),
+            });
+          }, 0);
+          return;
+        }
         this.emit("dataavailable", {
           data: new Blob([Buffer.from("voice-sample")], {
             type:
@@ -306,6 +329,7 @@ defineFeature(test, featureText, {
       "audio/ogg;codecs=opus",
       "audio/ogg",
     ]),
+    mediaRecorderDeliversAudioAfterStop: false,
     result: null,
   }),
   stepDefinitions: [
@@ -343,6 +367,12 @@ defineFeature(test, featureText, {
             .map((item) => String(item || "").trim().toLowerCase())
             .filter(Boolean)
         );
+      },
+    },
+    {
+      pattern: /^Given media recorder delivers audio after stop$/,
+      run: ({ world }) => {
+        world.mediaRecorderDeliversAudioAfterStop = true;
       },
     },
     {
@@ -385,6 +415,12 @@ defineFeature(test, featureText, {
       pattern: /^Then speech transcription request file name is "([^"]*)"$/,
       run: ({ assert, args, world }) => {
         assert.equal(world.speechTranscribeRequests.at(-1)?.fileName || "", args[0]);
+      },
+    },
+    {
+      pattern: /^Then media recorder start timeslice equals (\d+)$/,
+      run: ({ assert, args, world }) => {
+        assert.equal(world.mediaRecorderStartCalls.at(-1)?.timeslice || 0, Number(args[0]));
       },
     },
     {

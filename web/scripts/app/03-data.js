@@ -12,6 +12,8 @@
     "audio/ogg",
   ];
   const DEFAULT_VOICE_AUDIO_FILE_NAME = "voice-query.webm";
+  const VOICE_RECORDING_CHUNK_MS = 250;
+  const VOICE_RECORDER_STOP_GRACE_MS = 250;
 
   function isStopMode(mode) {
     return mode === MODE_BUS || mode === MODE_TRAM || mode === MODE_METRO || mode === MODE_RAIL;
@@ -415,6 +417,26 @@
     );
   }
 
+  function buildRecordedVoiceBlob(recorder, chunks, preferredMimeType = "") {
+    return new Blob(chunks, {
+      type: getRecordedVoiceBlobMimeType(recorder, chunks, preferredMimeType),
+    });
+  }
+
+  function startVoiceRecorder(recorder) {
+    try {
+      recorder.start(VOICE_RECORDING_CHUNK_MS);
+      return;
+    } catch (timesliceError) {
+      try {
+        recorder.start();
+        return;
+      } catch {
+        throw timesliceError;
+      }
+    }
+  }
+
   function stopMediaStream(stream) {
     const tracks = typeof stream?.getTracks === "function" ? stream.getTracks() : [];
     for (const track of tracks) {
@@ -456,11 +478,13 @@
       let settled = false;
       let recorder = null;
       let silenceMonitor = null;
+      let stopGraceTimeoutId = null;
       const chunks = [];
       const mimeType = getSupportedVoiceRecordingMimeType(MediaRecorderCtor);
 
       const cleanup = () => {
         clearTimeout(timeoutId);
+        clearTimeout(stopGraceTimeoutId);
         silenceMonitor?.stop?.();
         stopMediaStream(microphoneStream);
       };
@@ -507,20 +531,29 @@
         if (event?.data && Number(event.data.size) > 0) {
           chunks.push(event.data);
         }
+        if (stopGraceTimeoutId && recorder?.state === "inactive" && chunks.length > 0) {
+          finish(resolve, buildRecordedVoiceBlob(recorder, chunks, mimeType));
+        }
       });
       recorder.addEventListener("error", (event) => {
         finish(reject, createVoiceError("voice_not_understood", String(event?.error?.message || "")));
       });
       recorder.addEventListener("stop", () => {
         if (chunks.length === 0) {
-          finish(reject, createVoiceError("voice_no_speech", "No speech detected."));
+          stopGraceTimeoutId = setTimeout(() => {
+            if (chunks.length === 0) {
+              finish(reject, createVoiceError("voice_no_speech", "No speech detected."));
+              return;
+            }
+            finish(resolve, buildRecordedVoiceBlob(recorder, chunks, mimeType));
+          }, VOICE_RECORDER_STOP_GRACE_MS);
           return;
         }
-        finish(resolve, new Blob(chunks, { type: getRecordedVoiceBlobMimeType(recorder, chunks, mimeType) }));
+        finish(resolve, buildRecordedVoiceBlob(recorder, chunks, mimeType));
       });
 
       try {
-        recorder.start();
+        startVoiceRecorder(recorder);
         silenceMonitor?.start?.();
       } catch (error) {
         finish(reject, createVoiceError("voice_not_understood", String(error?.message || "")));

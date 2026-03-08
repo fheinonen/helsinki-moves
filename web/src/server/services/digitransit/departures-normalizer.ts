@@ -3,15 +3,101 @@ import type { FilterOption } from "../../../shared/domain/filter.js";
 import type { Stop } from "../../../shared/domain/stop.js";
 import type { NearbyStopNode } from "./types.js";
 
-function countByValue(values: string[]): FilterOption[] {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) || 0) + 1);
+const FINNISH_LOCALE = "fi-FI";
+const NON_ALPHANUMERIC_PATTERN = /[^\p{L}\p{N}]+/gu;
+
+function normalizeDisplayValue(value: string): string {
+  return value.trim().replace(/\s+/g, " ").normalize("NFC");
+}
+
+function normalizeComparableValue(value: string): string {
+  return normalizeDisplayValue(value)
+    .toLocaleLowerCase(FINNISH_LOCALE)
+    .replace(NON_ALPHANUMERIC_PATTERN, "");
+}
+
+function normalizeFilterSet(values: string[]): Set<string> {
+  return new Set(values.map((value) => normalizeComparableValue(value)).filter(Boolean));
+}
+
+function matchesNormalizedFilter(value: string, filters: Set<string>): boolean {
+  if (filters.size === 0) {
+    return true;
   }
 
-  return [...counts.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .map(([value, count]) => ({ count, value }));
+  return filters.has(normalizeComparableValue(value));
+}
+
+function createEmptyStopGroup(node: NearbyStopNode): {
+  code: string | null;
+  distanceMeters: number;
+  id: string;
+  memberStopIds: Set<string>;
+  name: string;
+  stopCodes: Set<string>;
+} {
+  const stopId = node.stop.gtfsId;
+  const stopCode = node.stop.code?.trim() || null;
+
+  return {
+    code: stopCode,
+    distanceMeters: Math.round(node.distance),
+    id: stopId,
+    memberStopIds: new Set([stopId]),
+    name: node.stop.name.trim(),
+    stopCodes: new Set(stopCode ? [stopCode] : []),
+  };
+}
+
+function updateStopGroup(
+  group: {
+    code: string | null;
+    distanceMeters: number;
+    id: string;
+    memberStopIds: Set<string>;
+    name: string;
+    stopCodes: Set<string>;
+  },
+  node: NearbyStopNode
+): void {
+  const stopId = node.stop.gtfsId;
+  const stopCode = node.stop.code?.trim() || null;
+  const roundedDistance = Math.round(node.distance);
+
+  group.memberStopIds.add(stopId);
+  if (stopCode) {
+    group.stopCodes.add(stopCode);
+  }
+  if (roundedDistance >= group.distanceMeters) {
+    return;
+  }
+
+  group.id = stopId;
+  group.code = stopCode || group.code;
+  group.distanceMeters = roundedDistance;
+}
+
+function countByValue(values: string[]): FilterOption[] {
+  const counts = new Map<string, { count: number; value: string }>();
+  for (const value of values) {
+    const normalizedValue = normalizeComparableValue(value);
+    if (!normalizedValue) {
+      continue;
+    }
+    const current = counts.get(normalizedValue);
+    if (current) {
+      current.count += 1;
+      continue;
+    }
+    counts.set(normalizedValue, {
+      count: 1,
+      value: normalizeDisplayValue(value),
+    });
+  }
+
+  return [...counts.values()]
+    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value))
+    .map(({ count, value }) => ({ count, value }));
 }
 
 export function buildFilterOptions(departures: Departure[]): {
@@ -45,34 +131,18 @@ export function buildSelectableStops(modeStops: NearbyStopNode[]): Stop[] {
   for (const node of modeStops) {
     const stopId = node.stop.gtfsId;
     const stopName = node.stop.name.trim();
-    const stopCode = node.stop.code?.trim() || null;
     if (!stopId || !stopName) {
       continue;
     }
 
-    const groupKey = stopName.toLowerCase();
+    const groupKey = stopName.toLocaleLowerCase(FINNISH_LOCALE);
     const existingGroup = stopGroups.get(groupKey);
     if (!existingGroup) {
-      stopGroups.set(groupKey, {
-        code: stopCode,
-        distanceMeters: Math.round(node.distance),
-        id: stopId,
-        memberStopIds: new Set([stopId]),
-        name: stopName,
-        stopCodes: new Set(stopCode ? [stopCode] : []),
-      });
+      stopGroups.set(groupKey, createEmptyStopGroup(node));
       continue;
     }
 
-    existingGroup.memberStopIds.add(stopId);
-    if (stopCode) {
-      existingGroup.stopCodes.add(stopCode);
-    }
-    if (node.distance < existingGroup.distanceMeters) {
-      existingGroup.id = stopId;
-      existingGroup.code = stopCode || existingGroup.code;
-      existingGroup.distanceMeters = Math.round(node.distance);
-    }
+    updateStopGroup(existingGroup, node);
   }
 
   return [...stopGroups.values()]
@@ -84,7 +154,7 @@ export function buildSelectableStops(modeStops: NearbyStopNode[]): Stop[] {
       id: group.id,
       memberStopIds: [...group.memberStopIds],
       name: group.name,
-      stopCodes: [...group.stopCodes].sort((left, right) => left.localeCompare(right)),
+      stopCodes: [...group.stopCodes].sort((left, right) => left.localeCompare(right, FINNISH_LOCALE)),
     }));
 }
 
@@ -95,20 +165,12 @@ export function filterDeparturesBySelections(
     lines: string[];
   }
 ): Departure[] {
-  const destinationFilterSet = new Set(input.destinations);
-  const lineFilterSet = new Set(input.lines);
+  const destinationFilterSet = normalizeFilterSet(input.destinations);
+  const lineFilterSet = normalizeFilterSet(input.lines);
 
-  return departures
-    .filter((departure) => {
-      if (lineFilterSet.size === 0) {
-        return true;
-      }
-      return lineFilterSet.has(departure.line.trim());
-    })
-    .filter((departure) => {
-      if (destinationFilterSet.size === 0) {
-        return true;
-      }
-      return destinationFilterSet.has(departure.destination.trim());
-    });
+  return departures.filter(
+    (departure) =>
+      matchesNormalizedFilter(departure.line, lineFilterSet) &&
+      matchesNormalizedFilter(departure.destination, destinationFilterSet)
+  );
 }

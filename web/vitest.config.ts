@@ -14,9 +14,21 @@ export default defineConfig({
     environment: "jsdom",
     include: ["tests/unit/**/*.test.ts"],
     coverage: {
+      exclude: [
+        "src/**/*.d.ts",
+        "src/client/main.ts",
+        "src/server/services/digitransit/types.ts",
+        "src/shared/contracts/**/*.ts",
+        "src/shared/domain/departure.ts",
+        "src/shared/domain/stop.ts",
+      ],
       provider: "v8",
       reporter: ["text", "html"],
-      include: ["src/**/*.ts", "api/**/*.ts"],
+      include: [
+        "src/**/*.ts",
+        "api/health.ts",
+        "api/v1/**/*.ts",
+      ],
     },
   },
 });

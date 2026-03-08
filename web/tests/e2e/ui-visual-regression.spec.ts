@@ -2,16 +2,23 @@ import { test, expect } from "@playwright/test";
 import { definePlaywrightFeature } from "@tests/helpers/playwright-bdd-runner";
 import { installFixedNow } from "@tests/helpers/install-fixed-now";
 
-const FIXED_NOW_MS = Date.parse("2026-03-07T10:00:00.000Z");
+const FIXED_NOW_MS = Date.parse("2026-03-07T12:32:07.000Z");
 
 function buildPayload() {
   return {
     filterOptions: {
       destinations: [
-        { count: 1, value: "Kamppi" },
+        { count: 2, value: "Kamppi" },
         { count: 1, value: "Ruoholahti" },
+        { count: 1, value: "Eira" },
       ],
       lines: [
+        { count: 2, value: "14" },
+        { count: 1, value: "18" },
+        { count: 1, value: "21" },
+        { count: 1, value: "63" },
+        { count: 1, value: "65A" },
+        { count: 1, value: "8" },
         { count: 1, value: "550" },
         { count: 1, value: "560" },
       ],
@@ -24,11 +31,55 @@ function buildPayload() {
           departureIso: new Date(FIXED_NOW_MS + 5 * 60_000).toISOString(),
           destination: "Kamppi",
           line: "550",
+          stopCode: "A1",
         },
         {
           departureIso: new Date(FIXED_NOW_MS + 8 * 60_000).toISOString(),
           destination: "Ruoholahti",
           line: "560",
+          stopCode: "A1",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 2 * 60_000).toISOString(),
+          destination: "Eira",
+          line: "18",
+          stopCode: "A2",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 14 * 60_000).toISOString(),
+          destination: "Rautatientori",
+          line: "65A",
+          stopCode: "A3",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 18 * 60_000).toISOString(),
+          destination: "Lauttasaari",
+          line: "14",
+          stopCode: "A1",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 22 * 60_000).toISOString(),
+          destination: "Kamppi",
+          line: "14",
+          stopCode: "A2",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 25 * 60_000).toISOString(),
+          destination: "Herttoniemi",
+          line: "21",
+          stopCode: "A3",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 30 * 60_000).toISOString(),
+          destination: "Ruskeasuo",
+          line: "63",
+          stopCode: "A1",
+        },
+        {
+          departureIso: new Date(FIXED_NOW_MS + 35 * 60_000).toISOString(),
+          destination: "Toolo",
+          line: "8",
+          stopCode: "A2",
         },
       ],
       distanceMeters: 80,

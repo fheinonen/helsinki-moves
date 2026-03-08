@@ -106,6 +106,8 @@ Feature: Light theme controls stability
           await page.setViewportSize({ width: 1280, height: 960 });
           await page.goto("/?mode=bus");
           await page.waitForSelector("[data-controls-panel]");
+          await page.locator("[data-filter-toggle]").click();
+          await page.waitForSelector("[data-filter-panel]");
           await page.waitForSelector("[data-line-filter='550']");
         },
       },

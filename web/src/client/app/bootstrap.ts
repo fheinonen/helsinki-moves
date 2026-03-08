@@ -25,7 +25,7 @@ interface BootstrapOptions {
 
 function resolveTheme(storage?: StorageLike): ThemeMode {
   const savedTheme = storage?.getItem("theme");
-  return savedTheme === "dark" ? "dark" : "light";
+  return savedTheme === "light" ? "light" : "dark";
 }
 
 export function bootstrapApp(options: BootstrapOptions): AppStore {

@@ -3,65 +3,62 @@ import { defineFeature } from "@tests/helpers/bdd-runner";
 import { summarizeBundleBudgets } from "@shared/performance/bundle-budget";
 
 interface World {
-  summary?: ReturnType<typeof summarizeBundleBudgets>;
+  result?: ReturnType<typeof summarizeBundleBudgets>;
 }
 
 defineFeature<World>(
   test,
   `
-Feature: Bundle budget checks
+Feature: Bundle budgets
 
-  Scenario: Bundled assets stay within the gzip budgets
-    Given bundled assets total 60 KiB of JavaScript and 20 KiB of CSS
-    When bundle budgets are evaluated
-    Then the bundle budget has no violations
+  Scenario: Assets under budget produce no violations
+    Given gzip bundle assets under the configured budgets
+    When bundle budgets are summarized
+    Then the bundle budget violation count is 0
 
-  Scenario: Bundled assets exceed the JavaScript gzip budget
-    Given bundled assets total 96 KiB of JavaScript and 20 KiB of CSS
-    When bundle budgets are evaluated
-    Then the bundle budget reports a JavaScript violation
+  Scenario: Assets over both budgets produce two violations
+    Given gzip bundle assets over the configured budgets
+    When bundle budgets are summarized
+    Then the bundle budget violation count is 2
+    And the bundle budget totals are 90000 JavaScript bytes and 50000 CSS bytes
   `,
   {
     createWorld: () => ({}),
     stepDefinitions: [
       {
-        pattern: /^Given bundled assets total (\d+) KiB of JavaScript and (\d+) KiB of CSS$/,
-        run: ({ args, world }) => {
-          world.summary = summarizeBundleBudgets([
-            {
-              fileName: "app.js",
-              gzipBytes: Number(args[0]) * 1024,
-              type: "js",
-            },
-            {
-              fileName: "app.css",
-              gzipBytes: Number(args[1]) * 1024,
-              type: "css",
-            },
+        pattern: /^Given gzip bundle assets under the configured budgets$/,
+        run: ({ world }) => {
+          world.result = summarizeBundleBudgets([
+            { fileName: "app.js", gzipBytes: 10_000, type: "js" },
+            { fileName: "app.css", gzipBytes: 2_000, type: "css" },
           ]);
         },
       },
       {
-        pattern: /^When bundle budgets are evaluated$/,
+        pattern: /^Given gzip bundle assets over the configured budgets$/,
         run: ({ world }) => {
-          if (!world.summary) {
-            throw new Error("Expected bundle summary");
-          }
+          world.result = summarizeBundleBudgets([
+            { fileName: "vendor.js", gzipBytes: 80_000, type: "js" },
+            { fileName: "app.js", gzipBytes: 10_000, type: "js" },
+            { fileName: "app.css", gzipBytes: 50_000, type: "css" },
+          ]);
         },
       },
       {
-        pattern: /^Then the bundle budget has no violations$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.summary?.violations.length, 0);
+        pattern: /^When bundle budgets are summarized$/,
+        run: () => {},
+      },
+      {
+        pattern: /^Then the bundle budget violation count is (\d+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.result?.violations.length, Number(args[0]));
         },
       },
       {
-        pattern: /^Then the bundle budget reports a JavaScript violation$/,
-        run: ({ assert, world }) => {
-          assert.equal(
-            world.summary?.violations.some((violation) => violation.type === "js"),
-            true
-          );
+        pattern: /^Then the bundle budget totals are (\d+) JavaScript bytes and (\d+) CSS bytes$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.result?.jsGzipBytes, Number(args[0]));
+          assert.equal(world.result?.cssGzipBytes, Number(args[1]));
         },
       },
     ],

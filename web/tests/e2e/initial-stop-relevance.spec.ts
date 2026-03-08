@@ -145,7 +145,8 @@ Feature: Stop-mode relevance
         pattern: /^When the user selects stop (.+)$/,
         run: async ({ args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          await page.locator("[data-stop-select]").selectOption(args[0]);
+          await page.locator("[data-stop-select]").click();
+          await page.locator(`[data-stop-option="${args[0]}"]`).click();
         },
       },
       {

@@ -4,7 +4,8 @@ import { createApp } from "@server/app";
 import type { SpeechTranscriptionService } from "@server/services/voice/transcribe-service";
 
 interface World {
-  speechTranscriptionService?: SpeechTranscriptionService;
+  payload?: { error?: string; transcript?: string };
+  speechTranscriptionService?: SpeechTranscriptionService | null;
   response?: Response;
 }
 
@@ -18,6 +19,30 @@ Feature: Speech transcribe route
     When the speech transcribe route handles a valid payload
     Then the speech transcribe response status is 200
     And the speech transcribe response transcript is Kamppi
+
+  Scenario: Speech transcribe route returns 503 when transcription is not configured
+    Given the speech transcribe route has no transcription service
+    When the speech transcribe route handles a valid payload
+    Then the speech transcribe response status is 503
+    And the speech transcribe response error is Speech transcription is not configured
+
+  Scenario: Speech transcribe route returns 400 for invalid payloads
+    Given the speech transcribe route has a configured transcription service
+    When the speech transcribe route handles an invalid payload
+    Then the speech transcribe response status is 400
+    And the speech transcribe response error is invalid payload
+
+  Scenario: Speech transcribe route returns 422 when the transcript is empty
+    Given the speech transcribe route has an empty-transcript service
+    When the speech transcribe route handles a valid payload
+    Then the speech transcribe response status is 422
+    And the speech transcribe response error is No speech detected
+
+  Scenario: Speech transcribe route returns 502 when transcription fails
+    Given the speech transcribe route has a failing transcription service
+    When the speech transcribe route handles a valid payload
+    Then the speech transcribe response status is 502
+    And the speech transcribe response error is Could not transcribe speech
   `,
   {
     createWorld: () => ({}),
@@ -28,6 +53,32 @@ Feature: Speech transcribe route
           world.speechTranscriptionService = {
             async transcribe() {
               return "Kamppi";
+            },
+          };
+        },
+      },
+      {
+        pattern: /^Given the speech transcribe route has no transcription service$/,
+        run: ({ world }) => {
+          world.speechTranscriptionService = null;
+        },
+      },
+      {
+        pattern: /^Given the speech transcribe route has an empty-transcript service$/,
+        run: ({ world }) => {
+          world.speechTranscriptionService = {
+            async transcribe() {
+              return "";
+            },
+          };
+        },
+      },
+      {
+        pattern: /^Given the speech transcribe route has a failing transcription service$/,
+        run: ({ world }) => {
+          world.speechTranscriptionService = {
+            async transcribe() {
+              throw new Error("boom");
             },
           };
         },
@@ -52,9 +103,26 @@ Feature: Speech transcribe route
         },
       },
       {
-        pattern: /^Then the speech transcribe response status is 200$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.response?.status, 200);
+        pattern: /^When the speech transcribe route handles an invalid payload$/,
+        run: async ({ world }) => {
+          const app = createApp({
+            speechTranscriptionService: world.speechTranscriptionService,
+          });
+          world.response = await app.request("http://localhost/api/v1/speech-transcribe", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              fileName: "voice.webm",
+            }),
+          });
+        },
+      },
+      {
+        pattern: /^Then the speech transcribe response status is (\d+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.response?.status, Number(args[0]));
         },
       },
       {
@@ -62,6 +130,13 @@ Feature: Speech transcribe route
         run: async ({ assert, world }) => {
           const payload = (await world.response?.json()) as { transcript: string };
           assert.equal(payload.transcript, "Kamppi");
+        },
+      },
+      {
+        pattern: /^Then the speech transcribe response error is (.+)$/,
+        run: async ({ args, assert, world }) => {
+          const payload = (await world.response?.json()) as { error?: string };
+          assert.equal(payload.error, args[0]);
         },
       },
     ],

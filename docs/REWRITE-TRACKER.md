@@ -189,6 +189,14 @@ Update this file whenever a rewrite task:
 - Post-parity fix completed:
   - browser voice recorder auto-stop window increased so voice capture no longer ends before the user can start speaking
   - recorder contract coverage added for the minimum speech window and verified against browser voice e2e
+- Transit-board UI refinement completed:
+  - rewrite shell styling now matches the compact dark transit-board direction used for the latest bus mockup
+  - geometry contracts now lock the framed shell, shared control rows, and aligned three-column departures layout on desktop and mobile
+  - filter controls now stay collapsed by default in the shell while interaction and light-theme stability coverage open the panel explicitly
+- Cleanup pass completed:
+  - transit-board responsive sizing now flows through shared shell tokens instead of repeated per-breakpoint overrides
+  - departures normalization and route assembly helpers are reduced to smaller reusable functions without changing filter or ordering behavior
+  - shell-side stop/filter/departure helpers are split into smaller render and sync utilities so the UI iteration code is easier to maintain
 
 ## Decisions Locked
 

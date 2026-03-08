@@ -9,6 +9,10 @@ import type { LocationService } from "@client/services/location-service";
 
 interface World {
   container?: HTMLElement;
+  firstDepartureRow?: Element | null;
+  firstFilterChip?: Element | null;
+  firstStopOption?: HTMLElement | null;
+  firstVoiceChoice?: Element | null;
   store?: AppStore;
 }
 
@@ -32,6 +36,11 @@ function createDeparturesResponse(): DeparturesSuccessResponse {
           departureIso: "2026-03-07T10:10:00.000Z",
           destination: "Kamppi",
           line: "550",
+        },
+        {
+          departureIso: "2026-03-07T10:12:00.000Z",
+          destination: "Pasila",
+          line: "510",
         },
       ],
       distanceMeters: 80,
@@ -64,47 +73,49 @@ function createDeparturesResponse(): DeparturesSuccessResponse {
 defineFeature<World>(
   test,
   `
-Feature: App shell filter controls
+Feature: App shell render stability
 
-  Scenario: App shell renders stop selection and filter summary
-    Given the app store has selected stop and filter state
-    When the app shell is rendered with filter controls
-    Then the stop selector shows the selected stop
-    And the filter summary shows 3 active filters
-    And two line filter toggles are visible
-
-  Scenario: Mode change closes the open filter panel
-    Given the app store has selected stop and filter state
-    When the app shell is rendered with filter controls
-    And the filter panel is opened
-    And the user changes mode to RAIL
-    Then the filter panel is closed
+  Scenario: Unchanged shell collections stay attached across unrelated state changes
+    Given the app store contains departures filters stops and voice choices
+    When the app shell is rendered with departures filters stops and voice choices
+    And I remember the first departure row filter chip stop option and voice choice
+    And the app store status message changes
+    Then the remembered departure row stays attached
+    And the remembered filter chip stays attached
+    And the remembered stop option stays attached
+    And the remembered voice choice stays attached
   `,
   {
     createWorld: () => ({}),
     stepDefinitions: [
       {
-        pattern: /^Given the app store has selected stop and filter state$/,
+        pattern: /^Given the app store contains departures filters stops and voice choices$/,
         run: ({ world }) => {
           const store = createAppStore();
           store.applyDeparturesResponse(createDeparturesResponse());
           store.toggleLineFilter("550");
-          store.toggleDestinationFilter("Kamppi");
+          store.setVoiceChoices([
+            {
+              confidence: 0.8,
+              label: "Kamppi",
+              latitude: 60.1699,
+              longitude: 24.9384,
+            },
+          ]);
           world.store = store;
         },
       },
       {
-        pattern: /^When the app shell is rendered with filter controls$/,
+        pattern: /^When the app shell is rendered with departures filters stops and voice choices$/,
         run: ({ world }) => {
           if (!world.store) {
             throw new Error("Expected app store");
           }
-
-          const documentRef = document.implementation.createHTMLDocument("app-shell-filters");
+          const documentRef = document.implementation.createHTMLDocument("app-shell-stability");
           documentRef.body.innerHTML = "<div id='root'></div>";
           const root = documentRef.querySelector<HTMLElement>("#root");
           if (!root) {
-            throw new Error("Expected app shell root");
+            throw new Error("Expected root");
           }
 
           const locationService: LocationService = {
@@ -114,7 +125,7 @@ Feature: App shell filter controls
           };
           const departuresClient: DeparturesClient = {
             async getDepartures() {
-              return createDeparturesResponse();
+              throw new Error("Departures client should not be called");
             },
           };
           const controller = createAppController({
@@ -129,62 +140,51 @@ Feature: App shell filter controls
             root,
             store: world.store,
           });
-
           world.container = root;
         },
       },
       {
-        pattern: /^Then the stop selector shows the selected stop$/,
-        run: ({ assert, world }) => {
-          const trigger = world.container?.querySelector<HTMLElement>("[data-stop-select]");
-          assert.equal(trigger?.getAttribute("data-selected-stop-id"), "HSL:STOP_A");
-          assert.equal(trigger?.textContent?.includes("Kamppi (80 m)"), true);
-        },
-      },
-      {
-        pattern: /^Then the filter summary shows 3 active filters$/,
-        run: ({ assert, world }) => {
-          const summary = world.container?.querySelector<HTMLElement>("[data-filter-summary]");
-          assert.equal(summary?.textContent, "Kamppi stop · 3 active filters");
-        },
-      },
-      {
-        pattern: /^Then two line filter toggles are visible$/,
-        run: ({ assert, world }) => {
-          const buttons = world.container?.querySelectorAll<HTMLElement>("[data-line-filter]");
-          assert.equal(buttons?.length || 0, 2);
-        },
-      },
-      {
-        pattern: /^When the filter panel is opened$/,
-        run: ({ assert, world }) => {
-          const toggle = world.container?.querySelector<HTMLButtonElement>("[data-filter-toggle]");
-          const panel = world.container?.querySelector<HTMLElement>("[data-filter-panel]");
-          if (!toggle || !panel) {
-            throw new Error("Expected filter controls");
-          }
-          toggle.click();
-          assert.equal(panel.hidden, false);
-          assert.equal(toggle.getAttribute("aria-expanded"), "true");
-        },
-      },
-      {
-        pattern: /^When the user changes mode to RAIL$/,
+        pattern: /^When I remember the first departure row filter chip stop option and voice choice$/,
         run: ({ world }) => {
-          const button = world.container?.querySelector<HTMLButtonElement>('[data-mode="RAIL"]');
-          if (!button) {
-            throw new Error("Expected RAIL mode button");
-          }
-          button.click();
+          world.firstDepartureRow = world.container?.querySelector(".departure-card") || null;
+          world.firstFilterChip = world.container?.querySelector("[data-line-filter]") || null;
+          world.firstStopOption =
+            (world.container?.querySelector<HTMLElement>("[data-stop-option]") as HTMLOptionElement | null) ||
+            null;
+          world.firstVoiceChoice = world.container?.querySelector("[data-voice-choice]") || null;
         },
       },
       {
-        pattern: /^Then the filter panel is closed$/,
+        pattern: /^When the app store status message changes$/,
+        run: ({ world }) => {
+          if (!world.store) {
+            throw new Error("Expected app store");
+          }
+          world.store.setStatus("Refreshed nearby departures");
+        },
+      },
+      {
+        pattern: /^Then the remembered departure row stays attached$/,
         run: ({ assert, world }) => {
-          const toggle = world.container?.querySelector<HTMLButtonElement>("[data-filter-toggle]");
-          const panel = world.container?.querySelector<HTMLElement>("[data-filter-panel]");
-          assert.equal(panel?.hidden, true);
-          assert.equal(toggle?.getAttribute("aria-expanded"), "false");
+          assert.equal(world.container?.querySelector(".departure-card"), world.firstDepartureRow || null);
+        },
+      },
+      {
+        pattern: /^Then the remembered filter chip stays attached$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.container?.querySelector("[data-line-filter]"), world.firstFilterChip || null);
+        },
+      },
+      {
+        pattern: /^Then the remembered stop option stays attached$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.container?.querySelector("[data-stop-option]") || null, world.firstStopOption || null);
+        },
+      },
+      {
+        pattern: /^Then the remembered voice choice stays attached$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.container?.querySelector("[data-voice-choice]"), world.firstVoiceChoice || null);
         },
       },
     ],

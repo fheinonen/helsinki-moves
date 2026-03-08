@@ -72,6 +72,7 @@ Feature: Departures interactions
     When the user opens the app
     And the user selects BUS mode
     And the user selects stop HSL:STOP_B
+    And the user opens the filters
     And the user toggles line filter 560
     Then the latest departures request includes stop HSL:STOP_B
     And the latest departures request includes line 560
@@ -233,7 +234,8 @@ Feature: Departures interactions
         pattern: /^When the user selects stop (.+)$/,
         run: async ({ args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          await page.locator("[data-stop-select]").selectOption(args[0]);
+          await page.locator("[data-stop-select]").click();
+          await page.locator(`[data-stop-option="${args[0]}"]`).click();
         },
       },
       {
@@ -241,6 +243,14 @@ Feature: Departures interactions
         run: async ({ args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator(`[data-line-filter="${args[0]}"]`).click();
+        },
+      },
+      {
+        pattern: /^When the user opens the filters$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.locator("[data-filter-toggle]").click();
+          await page.locator("[data-filter-panel]").waitFor({ state: "visible" });
         },
       },
       {
@@ -262,7 +272,7 @@ Feature: Departures interactions
         pattern: /^Then the station title is (.+)$/,
         run: async ({ args, assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          await page.waitForSelector("[data-station-title]");
+          await page.locator("[data-station-title]").waitFor({ state: "attached" });
           assert.equal(await page.locator("[data-station-title]").textContent(), args[0]);
         },
       },

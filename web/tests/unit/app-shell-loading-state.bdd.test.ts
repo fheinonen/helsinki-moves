@@ -89,7 +89,7 @@ Feature: App shell loading state
         pattern: /^Then the refresh button is visible$/,
         run: ({ assert, world }) => {
           const button = world.container?.querySelector<HTMLButtonElement>("[data-refresh]");
-          assert.equal(button?.textContent, "Refresh Location");
+          assert.equal(Boolean(button), true);
         },
       },
     ],

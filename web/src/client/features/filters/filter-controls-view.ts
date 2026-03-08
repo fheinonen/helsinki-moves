@@ -12,29 +12,77 @@ export interface FilterControlsView {
   sync(state: AppState): void;
 }
 
-function renderButtons(input: {
-  activeValues: string[];
+interface FilterButtonGroupRenderer {
+  sync(activeValues: string[], options: Array<{ count: number; value: string }>): void;
+}
+
+function resolveSelectedStopName(state: AppState): string | null {
+  return (
+    state.stops.find((stop) => stop.id === state.filters.stopId)?.name ||
+    state.station?.stopName ||
+    null
+  );
+}
+
+function buildFilterGroupSignature(
+  activeValues: string[],
+  options: Array<{ count: number; value: string }>
+): string {
+  const activeValueSet = new Set(activeValues);
+  return options
+    .map((option) => `${option.value}:${option.count}:${activeValueSet.has(option.value) ? "1" : "0"}`)
+    .join("\u001f");
+}
+
+function createButtonGroupRenderer(input: {
   container: HTMLElement;
   dataAttribute: "lineFilter" | "destinationFilter";
   documentRef: Document;
   onSelect(value: string): void;
-  options: Array<{ count: number; value: string }>;
-}): void {
-  const { activeValues, container, dataAttribute, documentRef, onSelect, options } = input;
-  container.innerHTML = "";
+}): FilterButtonGroupRenderer {
+  const { container, dataAttribute, documentRef, onSelect } = input;
+  const buttonsByValue = new Map<string, HTMLButtonElement>();
+  let previousSignature = "";
 
-  for (const option of options) {
-    const button = documentRef.createElement("button");
-    button.className = "filter-chip";
-    button.dataset[dataAttribute] = option.value;
-    button.type = "button";
-    button.textContent = `${option.value} · ${option.count}`;
-    button.classList.toggle("is-active", activeValues.includes(option.value));
-    button.addEventListener("click", () => {
-      onSelect(option.value);
-    });
-    container.appendChild(button);
-  }
+  return {
+    sync(activeValues, options) {
+      const signature = buildFilterGroupSignature(activeValues, options);
+      if (signature === previousSignature) {
+        return;
+      }
+      previousSignature = signature;
+
+      const activeValueSet = new Set(activeValues);
+      const renderedValues = new Set<string>();
+
+      for (const option of options) {
+        let button = buttonsByValue.get(option.value);
+        if (!button) {
+          button = documentRef.createElement("button");
+          button.className = "filter-chip";
+          button.type = "button";
+          button.addEventListener("click", () => {
+            onSelect(option.value);
+          });
+          buttonsByValue.set(option.value, button);
+        }
+
+        button.dataset[dataAttribute] = option.value;
+        button.textContent = `${option.value} (${option.count})`;
+        button.classList.toggle("is-active", activeValueSet.has(option.value));
+        container.appendChild(button);
+        renderedValues.add(option.value);
+      }
+
+      for (const [value, button] of buttonsByValue.entries()) {
+        if (renderedValues.has(value)) {
+          continue;
+        }
+        button.remove();
+        buttonsByValue.delete(value);
+      }
+    },
+  };
 }
 
 export function createFilterControlsView(
@@ -64,37 +112,35 @@ export function createFilterControlsView(
   destinations.className = "filter-controls__group";
 
   section.append(summary, linesLabel, lines, destinationsLabel, destinations);
+  const lineButtons = createButtonGroupRenderer({
+    container: lines,
+    dataAttribute: "lineFilter",
+    documentRef,
+    onSelect(value) {
+      void controller.toggleLineFilter(value);
+    },
+  });
+  const destinationButtons = createButtonGroupRenderer({
+    container: destinations,
+    dataAttribute: "destinationFilter",
+    documentRef,
+    onSelect(value) {
+      void controller.toggleDestinationFilter(value);
+    },
+  });
+  let previousSummary = "";
 
   return {
     element: section,
     sync(state) {
-      const stopName =
-        state.stops.find((stop) => stop.id === state.filters.stopId)?.name ||
-        state.station?.stopName ||
-        null;
-      summary.textContent = buildFilterSummary(state.filters, stopName);
+      const nextSummary = buildFilterSummary(state.filters, resolveSelectedStopName(state));
+      if (nextSummary !== previousSummary) {
+        summary.textContent = nextSummary;
+        previousSummary = nextSummary;
+      }
 
-      renderButtons({
-        activeValues: state.filters.lines,
-        container: lines,
-        dataAttribute: "lineFilter",
-        documentRef,
-        onSelect(value) {
-          void controller.toggleLineFilter(value);
-        },
-        options: state.filterOptions.lines,
-      });
-
-      renderButtons({
-        activeValues: state.filters.destinations,
-        container: destinations,
-        dataAttribute: "destinationFilter",
-        documentRef,
-        onSelect(value) {
-          void controller.toggleDestinationFilter(value);
-        },
-        options: state.filterOptions.destinations,
-      });
+      lineButtons.sync(state.filters.lines, state.filterOptions.lines);
+      destinationButtons.sync(state.filters.destinations, state.filterOptions.destinations);
     },
   };
 }

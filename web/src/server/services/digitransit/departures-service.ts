@@ -3,7 +3,7 @@ import type {
   DeparturesSuccessResponse,
   StopStation,
 } from "../../../shared/contracts/departures-contract.js";
-import { getNoNearbyStopsMessage, getUpstreamMode } from "../../../shared/domain/mode.js";
+import { getNoNearbyStopsMessage, getUpstreamMode, type Mode } from "../../../shared/domain/mode.js";
 import type { Stop } from "../../../shared/domain/stop.js";
 import {
   buildFilterOptions,
@@ -15,6 +15,24 @@ import type { Departure } from "../../../shared/domain/departure.js";
 
 const SEARCH_RADIUS_METERS = 1200;
 
+function buildEmptyResponse(mode: Mode): DeparturesSuccessResponse {
+  return {
+    filterOptions: {
+      destinations: [],
+      lines: [],
+    },
+    message: getNoNearbyStopsMessage(mode),
+    mode,
+    selectedStopId: null,
+    station: null,
+    stops: [],
+  };
+}
+
+function compareDeparturesByTime(left: Departure, right: Departure): number {
+  return new Date(left.departureIso).getTime() - new Date(right.departureIso).getTime();
+}
+
 function filterModeStops(nearbyStops: NearbyStopNode[], upstreamMode: string): NearbyStopNode[] {
   return nearbyStops
     .filter((node) => (node.stop.vehicleMode || "").toUpperCase() === upstreamMode)
@@ -25,7 +43,7 @@ function mergeDeparturesForStopIds(
   departuresByStopId: Map<string, Departure[]>,
   stopIds: string[]
 ): Departure[] {
-  return stopIds.flatMap((stopId) => departuresByStopId.get(stopId) || []);
+  return stopIds.flatMap((stopId) => departuresByStopId.get(stopId) || []).sort(compareDeparturesByTime);
 }
 
 function selectStop(stops: Stop[], requestedStopId: string | null): Stop | null {
@@ -63,33 +81,13 @@ export class DeparturesService {
     });
     const modeStops = filterModeStops(nearbyStops, getUpstreamMode(request.mode));
     if (modeStops.length === 0) {
-      return {
-        filterOptions: {
-          destinations: [],
-          lines: [],
-        },
-        message: getNoNearbyStopsMessage(request.mode),
-        mode: request.mode,
-        selectedStopId: null,
-        station: null,
-        stops: [],
-      };
+      return buildEmptyResponse(request.mode);
     }
 
     const selectableStops = buildSelectableStops(modeStops);
     const selectedStop = selectStop(selectableStops, request.stopId);
     if (!selectedStop) {
-      return {
-        filterOptions: {
-          destinations: [],
-          lines: [],
-        },
-        message: getNoNearbyStopsMessage(request.mode),
-        mode: request.mode,
-        selectedStopId: null,
-        station: null,
-        stops: [],
-      };
+      return buildEmptyResponse(request.mode);
     }
 
     const departuresByStopId = await this.digitransitService.getDeparturesForStopIds(

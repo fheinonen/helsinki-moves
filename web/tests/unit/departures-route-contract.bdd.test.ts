@@ -44,6 +44,11 @@ Feature: Departures route contract
     And the selected stop id is HSL:STOP_A
     And the station departures include line 550 and 551
     And the departures filter options include line 550 count 2
+
+  Scenario: Line filtering preserves departure order across grouped stop members
+    Given Digitransit returns grouped stop members with interleaved line departures
+    When the departures route handles a nearby bus request with selected stop HSL:STOP_A and line 550
+    Then the filtered station departures stay in chronological order
   `,
   {
     createWorld: () => ({}),
@@ -175,6 +180,104 @@ Feature: Departures route contract
         run: ({ assert, world }) => {
           const line550 = world.payload?.filterOptions.lines.find((option) => option.value === "550");
           assert.equal(line550?.count, 2);
+        },
+      },
+      {
+        pattern: /^Given Digitransit returns grouped stop members with interleaved line departures$/,
+        run: ({ world }) => {
+          world.service = {
+            async getDeparturesForStopIds(stopIds) {
+              const departuresByStopId = new Map<string, Departure[]>();
+              for (const stopId of stopIds) {
+                if (stopId === "HSL:STOP_A") {
+                  departuresByStopId.set(stopId, [
+                    {
+                      departureIso: "2026-03-07T10:10:00.000Z",
+                      destination: "Kamppi",
+                      line: "550",
+                      stopId,
+                    },
+                    {
+                      departureIso: "2026-03-07T10:14:00.000Z",
+                      destination: "Kamppi",
+                      line: "550",
+                      stopId,
+                    },
+                  ]);
+                }
+                if (stopId === "HSL:STOP_B") {
+                  departuresByStopId.set(stopId, [
+                    {
+                      departureIso: "2026-03-07T10:11:00.000Z",
+                      destination: "Ruoholahti",
+                      line: "550",
+                      stopId,
+                    },
+                    {
+                      departureIso: "2026-03-07T10:12:00.000Z",
+                      destination: "Kamppi",
+                      line: "550",
+                      stopId,
+                    },
+                  ]);
+                }
+              }
+              return departuresByStopId;
+            },
+            async getNearbyStops() {
+              return [
+                {
+                  distance: 80,
+                  stop: {
+                    code: "A1",
+                    gtfsId: "HSL:STOP_A",
+                    name: "Kamppi",
+                    vehicleMode: "BUS",
+                  },
+                },
+                {
+                  distance: 120,
+                  stop: {
+                    code: "A2",
+                    gtfsId: "HSL:STOP_B",
+                    name: "Kamppi",
+                    vehicleMode: "BUS",
+                  },
+                },
+              ];
+            },
+          };
+        },
+      },
+      {
+        pattern: /^When the departures route handles a nearby bus request with selected stop HSL:STOP_A and line 550$/,
+        run: async ({ world }) => {
+          if (!world.service) {
+            throw new Error("Expected Digitransit service");
+          }
+          const app = createApp({ digitransitService: world.service });
+          world.response = await app.request(
+            "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=BUS&stopId=HSL:STOP_A&line=550"
+          );
+          world.payload = (await world.response.json()) as DeparturesSuccessResponse;
+        },
+      },
+      {
+        pattern: /^Then the filtered station departures stay in chronological order$/,
+        run: ({ assert, world }) => {
+          const departures =
+            world.payload?.station?.departures
+              .map((departure) => `${departure.departureIso}:${departure.destination}`)
+              .join("|") || "";
+          assert.equal(
+            departures,
+            [
+              "2026-03-07T10:10:00.000Z:Kamppi",
+              "2026-03-07T10:11:00.000Z:Ruoholahti",
+              "2026-03-07T10:12:00.000Z:Kamppi",
+              "2026-03-07T10:14:00.000Z:Kamppi",
+            ].join("|")
+          );
         },
       },
     ],

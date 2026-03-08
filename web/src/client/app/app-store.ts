@@ -87,7 +87,7 @@ function createInitialState(): AppState {
     station: null,
     statusMessage: null,
     stops: [],
-    theme: "light",
+    theme: "dark",
     voice: {
       availability: "checking",
       choices: [],

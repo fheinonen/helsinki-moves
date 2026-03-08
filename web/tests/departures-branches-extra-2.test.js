@@ -1,7 +1,7 @@
 const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
-const departuresApi = require("../api/v1/departures")._private;
+const departuresApi = require("../legacy-api/v1/departures")._private;
 
 function createModeStop({
   id,

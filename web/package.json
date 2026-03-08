@@ -1,37 +1,51 @@
 {
   "name": "helsinki-moves",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
-    "build": "node tools/build-assets.mjs",
+    "build": "vite build",
+    "check:syntax": "tsc --noEmit --pretty false",
+    "ci": "npm run ci:syntax && npm run ci:unit && npm run ci:coverage && npm run ci:e2e",
+    "ci:coverage": "npm run test:coverage",
+    "ci:e2e": "npm run test:e2e:chromium",
+    "ci:syntax": "npm run typecheck",
+    "ci:unit": "npm run test:unit",
+    "dev": "vite",
+    "env:check": "node tools/check-runtime-env.mjs",
     "lint": "npm run check:syntax",
-    "check:syntax": "rg --files api scripts tools tests | rg '\\.(c?js|mjs)$' | xargs -r -n1 node --check && node --check playwright.config.cjs",
-    "test:unit": "node --test tests/**/*.test.js",
-    "test:coverage:critical": "node --test --experimental-test-coverage --test-coverage-include=\"api/v1/client-error.js\" --test-coverage-include=\"api/lib/digitransit.js\" --test-coverage-lines=95 --test-coverage-branches=95 tests/**/*.test.js",
-    "test:coverage:api:global": "node --test --experimental-test-coverage --test-coverage-include=\"api/**/*.js\" --test-coverage-lines=98 --test-coverage-branches=93 tests/**/*.test.js",
-    "test:coverage:api:departures": "node --test --experimental-test-coverage --test-coverage-include=\"api/v1/departures.js\" --test-coverage-lines=100 --test-coverage-branches=95 tests/**/*.test.js",
-    "test:coverage:api:geocode": "node --test --experimental-test-coverage --test-coverage-include=\"api/v1/geocode.js\" --test-coverage-lines=100 --test-coverage-branches=90 tests/**/*.test.js",
-    "test:coverage:api": "npm run test:coverage:api:global && npm run test:coverage:api:departures && npm run test:coverage:api:geocode",
-    "test:coverage": "npm run test:coverage:critical && npm run test:coverage:api",
-    "test:quick": "npm run test:unit && npm run check:syntax",
-    "test": "npm run test:coverage && npm run lint",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "perf:bundle": "npm run build && node tools/check-bundle-budgets.mjs",
+    "release:validate": "npm run env:check && npm run check:syntax && npm run test:unit && npm run ui:perf && npm run ui:flicker && npm run perf:bundle && npm run ui:check && npx playwright test tests/e2e/voice-search.spec.ts --project=chromium && npx playwright test tests/e2e/voice-search.spec.ts --project=mobile-chromium",
+    "smoke:live": "playwright test -c playwright.smoke.config.ts",
+    "test": "npm run lint && npm run test:coverage",
+    "test:coverage": "vitest run --coverage --reporter=verbose 2>&1 | node tools/filter-vitest-output.mjs",
+    "test:quick": "npm run test:unit && npm run lint",
+    "test:unit": "vitest run --reporter=verbose 2>&1 | node tools/filter-vitest-output.mjs",
     "test:e2e": "playwright test",
     "test:e2e:chromium": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",
     "test:e2e:webkit": "playwright test --project=webkit",
     "test:e2e:install": "playwright install --with-deps chromium firefox webkit",
-    "ui:geometry": "playwright test tests/e2e/ui-geometry-contracts.spec.js --project=chromium --reporter=line",
-    "ui:overlay": "playwright test tests/e2e/ui-overlay-tools.spec.js --project=chromium --reporter=line",
-    "ui:fast": "npm run ui:geometry && npm run ui:overlay",
-    "ui:check": "playwright test tests/e2e/ui-visual-regression.spec.js --project=chromium --reporter=line",
-    "ui:baseline": "playwright test tests/e2e/ui-visual-regression.spec.js --project=chromium --update-snapshots --reporter=line"
+    "ui:baseline": "playwright test tests/e2e/ui-visual-regression.spec.ts --project=chromium --update-snapshots",
+    "ui:check": "playwright test tests/e2e/ui-visual-regression.spec.ts --project=chromium",
+    "ui:fast": "npm run ui:geometry && playwright test tests/e2e/departures-interactions.spec.ts --project=chromium",
+    "ui:flicker": "playwright test tests/e2e/light-theme-controls-stability.spec.ts --project=chromium",
+    "ui:geometry": "playwright test tests/e2e/ui-geometry-contracts.spec.ts --project=chromium",
+    "ui:perf": "playwright test tests/e2e/mode-switch-responsiveness.spec.ts --project=chromium",
+    "typecheck": "tsc --noEmit --pretty false"
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",
-    "@tailwindcss/cli": "^4.2.1",
-    "esbuild": "^0.27.3",
-    "tailwindcss": "^4.2.1"
+    "@types/node": "^24.3.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
   },
-  "engines": {
-    "node": "24.x"
+  "dependencies": {
+    "hono": "^4.9.6"
   }
 }

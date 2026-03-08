@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { defineFeature } = require("./helpers/bdd");
-const departuresApi = require("../api/v1/departures")._private;
+const departuresApi = require("../legacy-api/v1/departures")._private;
 
 function createModeStop(id, mode, distance, name = "Stop", code = "1001") {
   return {

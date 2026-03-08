@@ -2,7 +2,7 @@ const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
 const { createMockRequest, createMockResponse } = require("./helpers/http-mocks");
-const clientErrorModule = require("../api/v1/client-error");
+const clientErrorModule = require("../legacy-api/v1/client-error");
 
 const helpers = clientErrorModule._private;
 const { createClientErrorHandler } = helpers;

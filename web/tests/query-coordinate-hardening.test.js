@@ -1,8 +1,8 @@
 const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
-const departuresApi = require("../api/v1/departures")._private;
-const geocodeApi = require("../api/v1/geocode")._private;
+const departuresApi = require("../legacy-api/v1/departures")._private;
+const geocodeApi = require("../legacy-api/v1/geocode")._private;
 
 const featureText = `
 Feature: Query coordinate parser hardening

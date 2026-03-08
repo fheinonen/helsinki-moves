@@ -1,7 +1,7 @@
 const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
-const geocodeHelpers = require("../api/v1/geocode")._private;
+const geocodeHelpers = require("../legacy-api/v1/geocode")._private;
 
 function createJsonResponse(body, { status = 200, ok = true } = {}) {
   return {

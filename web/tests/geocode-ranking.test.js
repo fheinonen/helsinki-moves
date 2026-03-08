@@ -1,7 +1,7 @@
 const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
-const geocodeModule = require("../api/v1/geocode");
+const geocodeModule = require("../legacy-api/v1/geocode");
 
 const helpers = geocodeModule._private;
 

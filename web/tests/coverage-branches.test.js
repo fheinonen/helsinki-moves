@@ -2,9 +2,9 @@ const test = require("node:test");
 
 const { defineFeature } = require("./helpers/bdd");
 const departuresUtils = require("../api/lib/departures-utils");
-const departuresApi = require("../api/v1/departures")._private;
-const geocodeHelpers = require("../api/v1/geocode")._private;
-const clientErrorHelpers = require("../api/v1/client-error")._private;
+const departuresApi = require("../legacy-api/v1/departures")._private;
+const geocodeHelpers = require("../legacy-api/v1/geocode")._private;
+const clientErrorHelpers = require("../legacy-api/v1/client-error")._private;
 
 function createJsonResponse(body, { status = 200, ok = true } = {}) {
   return {

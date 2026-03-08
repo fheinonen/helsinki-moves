@@ -94,7 +94,9 @@ button {
   --eyebrow-letter-spacing: 0.08em;
   --column-line-width: 3rem;
   --column-gap: 0.48rem;
+  --column-destination-gap: 0.62rem;
   --column-time-width: 4.35rem;
+  --departures-edge-inset: 0.2rem;
   --column-header-font-size: 0.68rem;
   --column-header-letter-spacing: 0.08em;
   --departure-line-font-size: 1.18rem;
@@ -520,7 +522,8 @@ button {
 }
 
 .app-shell__departures-table {
-  width: 100%;
+  width: calc(100% - (var(--departures-edge-inset) * 2));
+  margin-inline: var(--departures-edge-inset);
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -553,11 +556,12 @@ button {
 .app-shell__column-headers th:first-child,
 .departure-card__line {
   width: var(--column-line-width);
+  text-align: center;
 }
 
 .app-shell__column-headers th:nth-child(2),
 .departure-card__destination {
-  padding-left: var(--column-gap);
+  padding-left: var(--column-destination-gap);
 }
 
 .app-shell__column-headers th:last-child,
@@ -605,6 +609,7 @@ button {
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.5;
+  padding-left: var(--departure-destination-inner-offset);
 }
 
 .departure-card__time {
@@ -666,9 +671,11 @@ button {
     --filter-toggle-padding-bottom: clamp(0.56rem, 2vw, 0.64rem);
     --filter-toggle-padding-left: clamp(0.58rem, 2vw, 0.92rem);
     --eyebrow-font-size: clamp(0.58rem, 1.9vw, 0.72rem);
-    --column-line-width: clamp(2rem, 5.8vw, 2.5rem);
+    --column-line-width: clamp(2.08rem, 6.2vw, 2.48rem);
     --column-gap: clamp(0.38rem, 1.4vw, 0.48rem);
+    --column-destination-gap: clamp(0.88rem, 3.8vw, 0.98rem);
     --column-time-width: clamp(3.1rem, 13vw, 4.35rem);
+    --departures-edge-inset: clamp(0.14rem, 0.9vw, 0.2rem);
     --column-header-font-size: clamp(0.58rem, 1.9vw, 0.72rem);
     --column-header-letter-spacing: 0.03em;
     --departure-line-font-size: clamp(0.88rem, 4.3vw, 1.15rem);

@@ -2,7 +2,8 @@ import type { SpeechTranscribeRequest } from "@shared/contracts/speech-contract"
 import { createVoiceError } from "@client/features/voice/voice-errors";
 
 const DEFAULT_CAPTURE_DURATION_MS = 4500;
-const DEFAULT_FILE_NAME = "voice-query.webm";
+const DEFAULT_CAPTURE_TIMESLICE_MS = 250;
+const DEFAULT_FILE_NAME_ROOT = "voice-query";
 const DEFAULT_MIME_TYPE = "audio/webm";
 export const PREFERRED_VOICE_MICROPHONE_CONSTRAINTS: MediaStreamConstraints = {
   audio: {
@@ -79,6 +80,33 @@ function getSupportedMimeType(
   return preferredMimeTypes.find((mimeType) => MediaRecorderCtor.isTypeSupported(mimeType)) || "";
 }
 
+function normalizeAudioMimeType(mimeType: string): string {
+  return String(mimeType || "")
+    .trim()
+    .toLowerCase()
+    .split(";")[0] || DEFAULT_MIME_TYPE;
+}
+
+function getDefaultAudioFileName(mimeType: string): string {
+  const normalizedMimeType = normalizeAudioMimeType(mimeType);
+  if (normalizedMimeType === "audio/mp4") {
+    return `${DEFAULT_FILE_NAME_ROOT}.m4a`;
+  }
+  if (normalizedMimeType === "audio/ogg") {
+    return `${DEFAULT_FILE_NAME_ROOT}.ogg`;
+  }
+  return `${DEFAULT_FILE_NAME_ROOT}.webm`;
+}
+
+function buildAudioFileName(fileName: string | undefined, mimeType: string): string {
+  return String(fileName || "").trim() || getDefaultAudioFileName(mimeType);
+}
+
+function buildCapturedAudioBlob(chunks: Blob[], fallbackMimeType: string): Blob {
+  const chunkMimeType = chunks.find((chunk) => String(chunk.type || "").trim())?.type || fallbackMimeType;
+  return new Blob(chunks, { type: chunkMimeType });
+}
+
 function mapMicrophonePreflightError(error: unknown): Error {
   const errorName = String((error as { name?: unknown } | null)?.name || "")
     .trim()
@@ -109,7 +137,7 @@ export function createBrowserVoiceRecorder(
   const {
     captureDurationMs = DEFAULT_CAPTURE_DURATION_MS,
     clearTimeoutImpl = clearTimeout,
-    fileName = DEFAULT_FILE_NAME,
+    fileName,
     MediaRecorderCtor,
     mediaDevices,
     preferredMimeTypes = DEFAULT_PREFERRED_MIME_TYPES,
@@ -135,9 +163,13 @@ export function createBrowserVoiceRecorder(
         const chunks: Blob[] = [];
         let settled = false;
         const mimeType = getSupportedMimeType(MediaRecorderCtor, preferredMimeTypes) || DEFAULT_MIME_TYPE;
+        let postStopFinalizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
         const cleanup = () => {
           clearTimeoutImpl(stopTimeoutId);
+          if (postStopFinalizeTimeoutId !== null) {
+            clearTimeout(postStopFinalizeTimeoutId);
+          }
           stopMediaStream(microphoneStream);
         };
 
@@ -158,9 +190,23 @@ export function createBrowserVoiceRecorder(
 
           callback({
             content: await blobToBase64(value),
-            fileName,
+            fileName: buildAudioFileName(fileName, value.type || mimeType),
             mimeType: value.type || mimeType,
           });
+        };
+
+        const finishFromChunks = () => {
+          if (chunks.length === 0) {
+            void finish(
+              reject as (value: SpeechTranscribeRequest | Error) => void,
+              createVoiceError("voice_no_speech", "No speech detected.")
+            );
+            return;
+          }
+          void finish(
+            resolve as (value: SpeechTranscribeRequest | Error) => void,
+            buildCapturedAudioBlob(chunks, mimeType)
+          );
         };
 
         let recorder: MediaRecorder;
@@ -192,6 +238,13 @@ export function createBrowserVoiceRecorder(
           if (data && data.size > 0) {
             chunks.push(data);
           }
+          if (recorder.state === "inactive") {
+            if (postStopFinalizeTimeoutId !== null) {
+              clearTimeout(postStopFinalizeTimeoutId);
+              postStopFinalizeTimeoutId = null;
+            }
+            finishFromChunks();
+          }
         });
         recorder.addEventListener("error", () => {
           void finish(
@@ -200,18 +253,14 @@ export function createBrowserVoiceRecorder(
           );
         });
         recorder.addEventListener("stop", () => {
-          if (chunks.length === 0) {
-            void finish(
-              reject as (value: SpeechTranscribeRequest | Error) => void,
-              createVoiceError("voice_no_speech", "No speech detected.")
-            );
-            return;
-          }
-          void finish(resolve as (value: SpeechTranscribeRequest | Error) => void, new Blob(chunks, { type: mimeType }));
+          postStopFinalizeTimeoutId = setTimeout(() => {
+            postStopFinalizeTimeoutId = null;
+            finishFromChunks();
+          }, 0);
         });
 
         try {
-          recorder.start();
+          recorder.start(DEFAULT_CAPTURE_TIMESLICE_MS);
         } catch {
           cleanup();
           reject(createVoiceError("voice_not_understood", "Voice recording failed."));

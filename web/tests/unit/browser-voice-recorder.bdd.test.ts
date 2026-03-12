@@ -89,6 +89,11 @@ Feature: Browser voice recorder
     When the browser voice recorder captures audio
     Then the captured audio has content
     And the recorder start timeslice equals 250
+
+  Scenario: Browser voice recorder waits for delayed final audio after stop
+    Given the browser voice recorder delivers audio shortly after stop
+    When the browser voice recorder captures audio
+    Then the captured audio has content
   `,
   {
     createWorld: () => ({}),
@@ -288,6 +293,72 @@ Feature: Browser voice recorder
         },
       },
       {
+        pattern: /^Given the browser voice recorder delivers audio shortly after stop$/,
+        run: ({ world }) => {
+          world.getUserMediaCalls = [];
+          world.supportedMimeTypes = new Set(["audio/mp4"]);
+          world.tracks = [
+            {
+              stopped: false,
+              stop() {
+                this.stopped = true;
+              },
+            },
+          ];
+
+          class FakeMediaRecorder extends EventTarget {
+            static isTypeSupported(mimeType: string) {
+              return (
+                world.supportedMimeTypes?.has(String(mimeType || "").trim().toLowerCase()) || false
+              );
+            }
+
+            mimeType = "audio/mp4";
+            state = "inactive";
+
+            constructor(
+              _stream: MediaStream,
+              options?: MediaRecorderOptions
+            ) {
+              super();
+              world.recorderRequestedMimeType = String(options?.mimeType || "");
+            }
+
+            start(timeslice?: number) {
+              world.recorderStartTimesliceMs = Number(timeslice) || 0;
+              this.state = "recording";
+            }
+
+            requestData() {}
+
+            stop() {
+              this.state = "inactive";
+              this.dispatchEvent(new Event("stop"));
+              setTimeout(() => {
+                const event = new Event("dataavailable") as Event & { data?: Blob };
+                event.data = new Blob(["voice"], { type: "audio/mp4" });
+                this.dispatchEvent(event);
+              }, 40);
+            }
+          }
+
+          world.recorder = createBrowserVoiceRecorder({
+            MediaRecorderCtor: FakeMediaRecorder as unknown as typeof MediaRecorder,
+            captureDurationMs: 0,
+            mediaDevices: {
+              async getUserMedia(constraints) {
+                world.getUserMediaCalls?.push(constraints);
+                return {
+                  getTracks() {
+                    return (world.tracks || []) as unknown as MediaStreamTrack[];
+                  },
+                } as MediaStream;
+              },
+            },
+          });
+        },
+      },
+      {
         pattern: /^Given the browser voice recorder has denied microphone permission$/,
         run: ({ world }) => {
           class FakeMediaRecorder extends EventTarget {}
@@ -375,7 +446,7 @@ Feature: Browser voice recorder
               callback: () => void,
               delay: number
             ) {
-              world.autoStopDelayMs = delay;
+              world.autoStopDelayMs = Math.max(world.autoStopDelayMs || 0, delay);
               queueMicrotask(() => callback());
               return 1 as unknown as ReturnType<typeof setTimeout>;
             },

@@ -3,6 +3,7 @@ import { createVoiceError } from "@client/features/voice/voice-errors";
 
 const DEFAULT_CAPTURE_DURATION_MS = 4500;
 const DEFAULT_CAPTURE_TIMESLICE_MS = 250;
+const DEFAULT_POST_STOP_GRACE_MS = 250;
 const DEFAULT_FILE_NAME_ROOT = "voice-query";
 const DEFAULT_MIME_TYPE = "audio/webm";
 export const PREFERRED_VOICE_MICROPHONE_CONSTRAINTS: MediaStreamConstraints = {
@@ -163,12 +164,12 @@ export function createBrowserVoiceRecorder(
         const chunks: Blob[] = [];
         let settled = false;
         const mimeType = getSupportedMimeType(MediaRecorderCtor, preferredMimeTypes) || DEFAULT_MIME_TYPE;
-        let postStopFinalizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+        let postStopFinalizeTimeoutId: TimeoutHandle | null = null;
 
         const cleanup = () => {
           clearTimeoutImpl(stopTimeoutId);
           if (postStopFinalizeTimeoutId !== null) {
-            clearTimeout(postStopFinalizeTimeoutId);
+            clearTimeoutImpl(postStopFinalizeTimeoutId);
           }
           stopMediaStream(microphoneStream);
         };
@@ -240,7 +241,7 @@ export function createBrowserVoiceRecorder(
           }
           if (recorder.state === "inactive") {
             if (postStopFinalizeTimeoutId !== null) {
-              clearTimeout(postStopFinalizeTimeoutId);
+              clearTimeoutImpl(postStopFinalizeTimeoutId);
               postStopFinalizeTimeoutId = null;
             }
             finishFromChunks();
@@ -253,10 +254,10 @@ export function createBrowserVoiceRecorder(
           );
         });
         recorder.addEventListener("stop", () => {
-          postStopFinalizeTimeoutId = setTimeout(() => {
+          postStopFinalizeTimeoutId = setTimeoutImpl(() => {
             postStopFinalizeTimeoutId = null;
             finishFromChunks();
-          }, 0);
+          }, DEFAULT_POST_STOP_GRACE_MS);
         });
 
         try {

@@ -14,8 +14,11 @@ interface World {
   autoStopDelayMs?: number;
   captureError?: Error;
   getUserMediaCalls?: MediaStreamConstraints[];
+  recorderRequestedMimeType?: string;
+  recorderStartTimesliceMs?: number;
   recorder?: VoiceRecorder;
   result?: Awaited<ReturnType<VoiceRecorder["capture"]>>;
+  supportedMimeTypes?: Set<string>;
   tracks?: FakeTrack[];
 }
 
@@ -74,6 +77,23 @@ Feature: Browser voice recorder
     Given the browser voice recorder has no microphone available
     When the browser voice recorder capture fails
     Then the recorder error message is No microphone was found for voice location.
+
+  Scenario: Browser voice recorder keeps Safari-compatible recording metadata
+    Given the browser voice recorder has Safari-compatible recorder support
+    When the browser voice recorder captures audio
+    Then the captured audio mime type is audio/mp4
+    And the captured audio file name is voice-query.m4a
+
+  Scenario: Browser voice recorder keeps the final audio chunk after stop
+    Given the browser voice recorder delivers audio after stop
+    When the browser voice recorder captures audio
+    Then the captured audio has content
+    And the recorder start timeslice equals 250
+
+  Scenario: Browser voice recorder waits for delayed final audio after stop
+    Given the browser voice recorder delivers audio shortly after stop
+    When the browser voice recorder captures audio
+    Then the captured audio has content
   `,
   {
     createWorld: () => ({}),
@@ -82,6 +102,7 @@ Feature: Browser voice recorder
         pattern: /^Given the browser voice recorder has microphone and recorder support$/,
         run: ({ world }) => {
           world.getUserMediaCalls = [];
+          world.supportedMimeTypes = new Set();
           world.tracks = [
             {
               stopped: false,
@@ -92,12 +113,19 @@ Feature: Browser voice recorder
           ];
 
           class FakeMediaRecorder extends EventTarget {
-            static isTypeSupported() {
-              return true;
+            static isTypeSupported(mimeType: string) {
+              return (
+                world.supportedMimeTypes?.has(String(mimeType || "").trim().toLowerCase()) || false
+              );
             }
 
             mimeType = "audio/webm";
             state = "inactive";
+
+            constructor() {
+              super();
+              world.recorderRequestedMimeType = "audio/webm";
+            }
 
             start() {
               this.state = "recording";
@@ -113,6 +141,204 @@ Feature: Browser voice recorder
               this.requestData();
               this.state = "inactive";
               this.dispatchEvent(new Event("stop"));
+            }
+          }
+
+          world.recorder = createBrowserVoiceRecorder({
+            MediaRecorderCtor: FakeMediaRecorder as unknown as typeof MediaRecorder,
+            captureDurationMs: 0,
+            mediaDevices: {
+              async getUserMedia(constraints) {
+                world.getUserMediaCalls?.push(constraints);
+                return {
+                  getTracks() {
+                    return (world.tracks || []) as unknown as MediaStreamTrack[];
+                  },
+                } as MediaStream;
+              },
+            },
+          });
+        },
+      },
+      {
+        pattern: /^Given the browser voice recorder has Safari-compatible recorder support$/,
+        run: ({ world }) => {
+          world.getUserMediaCalls = [];
+          world.supportedMimeTypes = new Set(["audio/mp4"]);
+          world.tracks = [
+            {
+              stopped: false,
+              stop() {
+                this.stopped = true;
+              },
+            },
+          ];
+
+          class FakeMediaRecorder extends EventTarget {
+            static isTypeSupported(mimeType: string) {
+              return (
+                world.supportedMimeTypes?.has(String(mimeType || "").trim().toLowerCase()) || false
+              );
+            }
+
+            mimeType = "audio/mp4";
+            state = "inactive";
+
+            constructor(
+              _stream: MediaStream,
+              options?: MediaRecorderOptions
+            ) {
+              super();
+              world.recorderRequestedMimeType = String(options?.mimeType || "");
+            }
+
+            start(timeslice?: number) {
+              world.recorderStartTimesliceMs = Number(timeslice) || 0;
+              this.state = "recording";
+            }
+
+            requestData() {
+              const event = new Event("dataavailable") as Event & { data?: Blob };
+              event.data = new Blob(["voice"], { type: "audio/mp4" });
+              this.dispatchEvent(event);
+            }
+
+            stop() {
+              this.requestData();
+              this.state = "inactive";
+              this.dispatchEvent(new Event("stop"));
+            }
+          }
+
+          world.recorder = createBrowserVoiceRecorder({
+            MediaRecorderCtor: FakeMediaRecorder as unknown as typeof MediaRecorder,
+            captureDurationMs: 0,
+            mediaDevices: {
+              async getUserMedia(constraints) {
+                world.getUserMediaCalls?.push(constraints);
+                return {
+                  getTracks() {
+                    return (world.tracks || []) as unknown as MediaStreamTrack[];
+                  },
+                } as MediaStream;
+              },
+            },
+          });
+        },
+      },
+      {
+        pattern: /^Given the browser voice recorder delivers audio after stop$/,
+        run: ({ world }) => {
+          world.getUserMediaCalls = [];
+          world.supportedMimeTypes = new Set(["audio/webm"]);
+          world.tracks = [
+            {
+              stopped: false,
+              stop() {
+                this.stopped = true;
+              },
+            },
+          ];
+
+          class FakeMediaRecorder extends EventTarget {
+            static isTypeSupported(mimeType: string) {
+              return (
+                world.supportedMimeTypes?.has(String(mimeType || "").trim().toLowerCase()) || false
+              );
+            }
+
+            mimeType = "audio/webm";
+            state = "inactive";
+
+            constructor(
+              _stream: MediaStream,
+              options?: MediaRecorderOptions
+            ) {
+              super();
+              world.recorderRequestedMimeType = String(options?.mimeType || "");
+            }
+
+            start(timeslice?: number) {
+              world.recorderStartTimesliceMs = Number(timeslice) || 0;
+              this.state = "recording";
+            }
+
+            requestData() {}
+
+            stop() {
+              this.state = "inactive";
+              this.dispatchEvent(new Event("stop"));
+              queueMicrotask(() => {
+                const event = new Event("dataavailable") as Event & { data?: Blob };
+                event.data = new Blob(["voice"], { type: "audio/webm" });
+                this.dispatchEvent(event);
+              });
+            }
+          }
+
+          world.recorder = createBrowserVoiceRecorder({
+            MediaRecorderCtor: FakeMediaRecorder as unknown as typeof MediaRecorder,
+            captureDurationMs: 0,
+            mediaDevices: {
+              async getUserMedia(constraints) {
+                world.getUserMediaCalls?.push(constraints);
+                return {
+                  getTracks() {
+                    return (world.tracks || []) as unknown as MediaStreamTrack[];
+                  },
+                } as MediaStream;
+              },
+            },
+          });
+        },
+      },
+      {
+        pattern: /^Given the browser voice recorder delivers audio shortly after stop$/,
+        run: ({ world }) => {
+          world.getUserMediaCalls = [];
+          world.supportedMimeTypes = new Set(["audio/mp4"]);
+          world.tracks = [
+            {
+              stopped: false,
+              stop() {
+                this.stopped = true;
+              },
+            },
+          ];
+
+          class FakeMediaRecorder extends EventTarget {
+            static isTypeSupported(mimeType: string) {
+              return (
+                world.supportedMimeTypes?.has(String(mimeType || "").trim().toLowerCase()) || false
+              );
+            }
+
+            mimeType = "audio/mp4";
+            state = "inactive";
+
+            constructor(
+              _stream: MediaStream,
+              options?: MediaRecorderOptions
+            ) {
+              super();
+              world.recorderRequestedMimeType = String(options?.mimeType || "");
+            }
+
+            start(timeslice?: number) {
+              world.recorderStartTimesliceMs = Number(timeslice) || 0;
+              this.state = "recording";
+            }
+
+            requestData() {}
+
+            stop() {
+              this.state = "inactive";
+              this.dispatchEvent(new Event("stop"));
+              setTimeout(() => {
+                const event = new Event("dataavailable") as Event & { data?: Blob };
+                event.data = new Blob(["voice"], { type: "audio/mp4" });
+                this.dispatchEvent(event);
+              }, 40);
             }
           }
 
@@ -220,7 +446,7 @@ Feature: Browser voice recorder
               callback: () => void,
               delay: number
             ) {
-              world.autoStopDelayMs = delay;
+              world.autoStopDelayMs = Math.max(world.autoStopDelayMs || 0, delay);
               queueMicrotask(() => callback());
               return 1 as unknown as ReturnType<typeof setTimeout>;
             },
@@ -267,9 +493,27 @@ Feature: Browser voice recorder
         },
       },
       {
+        pattern: /^Then the captured audio mime type is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.result?.mimeType, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the captured audio file name is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.result?.fileName, args[0]);
+        },
+      },
+      {
         pattern: /^Then all microphone tracks are stopped$/,
         run: ({ assert, world }) => {
           assert.equal(world.tracks?.every((track) => track.stopped), true);
+        },
+      },
+      {
+        pattern: /^Then the recorder start timeslice equals (\d+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.recorderStartTimesliceMs, Number(args[0]));
         },
       },
       {

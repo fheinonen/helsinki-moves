@@ -91,6 +91,7 @@ func TestParseCheckRecognizesDeparturesAssertions(t *testing.T) {
 		"stdout is valid JSON",
 		"the departures API is called 2 times",
 		`the departures API request has query parameter "line" set to "57"`,
+		`the fourth departures API request has query parameter "stopId" set to "HSL:4404"`,
 		`the second departures API request has query parameter "stopId" set to "HSL:2202"`,
 	}
 
@@ -106,4 +107,21 @@ func TestParseCheckRecognizesDeparturesAssertions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunChecksWithEvidenceSupportsFourthDeparturesRequest(t *testing.T) {
+	evidence := Evidence{
+		Requests: []HTTPRequest{
+			{Path: "/api/v1/departures", Query: map[string]string{"stopId": "HSL:1101"}},
+			{Path: "/api/v1/departures", Query: map[string]string{"stopId": "HSL:2202"}},
+			{Path: "/api/v1/departures", Query: map[string]string{"stopId": "HSL:3303"}},
+			{Path: "/api/v1/departures", Query: map[string]string{"stopId": "HSL:4404"}},
+		},
+	}
+	check, ok := ParseCheck(`the fourth departures API request has query parameter "stopId" set to "HSL:4404"`)
+	if !ok {
+		t.Fatal("expected check to parse")
+	}
+
+	RunChecksWithEvidence(t, evidence, []Check{check})
 }

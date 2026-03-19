@@ -38,7 +38,8 @@ type Evidence struct {
 
 var departuresCallCountPattern = regexp.MustCompile(`^the departures API is called ([0-9]+) times?$`)
 var departuresRequestPattern = regexp.MustCompile(`^the departures API request has query parameter (.+) set to (.+)$`)
-var ordinalDeparturesRequestPattern = regexp.MustCompile(`^the (first|second|third) departures API request has query parameter (.+) set to (.+)$`)
+var ordinalDeparturesRequestPattern = regexp.MustCompile(`^the (.+) departures API request has query parameter (.+) set to (.+)$`)
+var numericOrdinalPattern = regexp.MustCompile(`^([0-9]+)(st|nd|rd|th)$`)
 
 func LoadScenarios(path string, parseGiven func(string, *Scenario) error) ([]Scenario, error) {
 	f, err := os.Open(path)
@@ -234,16 +235,19 @@ func unquote(text string) string {
 }
 
 func ordinalIndex(text string) (int, bool) {
-	switch text {
-	case "first":
-		return 0, true
-	case "second":
-		return 1, true
-	case "third":
-		return 2, true
-	default:
+	text = strings.TrimSpace(strings.ToLower(text))
+	if n, ok := ordinalWordValue(text); ok {
+		return n - 1, true
+	}
+	match := numericOrdinalPattern.FindStringSubmatch(text)
+	if len(match) != 3 {
 		return 0, false
 	}
+	n, err := strconv.Atoi(match[1])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n - 1, true
 }
 
 func departuresRequests(requests []HTTPRequest) []HTTPRequest {
@@ -254,4 +258,31 @@ func departuresRequests(requests []HTTPRequest) []HTTPRequest {
 		}
 	}
 	return filtered
+}
+
+func ordinalWordValue(text string) (int, bool) {
+	switch text {
+	case "first":
+		return 1, true
+	case "second":
+		return 2, true
+	case "third":
+		return 3, true
+	case "fourth":
+		return 4, true
+	case "fifth":
+		return 5, true
+	case "sixth":
+		return 6, true
+	case "seventh":
+		return 7, true
+	case "eighth":
+		return 8, true
+	case "ninth":
+		return 9, true
+	case "tenth":
+		return 10, true
+	default:
+		return 0, false
+	}
 }

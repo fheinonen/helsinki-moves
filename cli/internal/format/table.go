@@ -1,6 +1,9 @@
 package format
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 type Row struct {
 	Mode        string
@@ -49,12 +52,12 @@ func tableRows(rows []Row, includeMode bool) [][]string {
 func tableWidths(headers []string, rows [][]string) []int {
 	widths := make([]int, len(headers))
 	for i, header := range headers {
-		widths[i] = len(header)
+		widths[i] = displayWidth(header)
 	}
 	for _, row := range rows {
 		for i, cell := range row {
-			if len(cell) > widths[i] {
-				widths[i] = len(cell)
+			if width := displayWidth(cell); width > widths[i] {
+				widths[i] = width
 			}
 		}
 	}
@@ -73,8 +76,12 @@ func writeTableLine(b *strings.Builder, values []string, widths []int) {
 }
 
 func padRight(value string, width int) string {
-	if len(value) >= width {
+	if displayWidth(value) >= width {
 		return value
 	}
-	return value + strings.Repeat(" ", width-len(value))
+	return value + strings.Repeat(" ", width-displayWidth(value))
+}
+
+func displayWidth(value string) int {
+	return utf8.RuneCountInString(value)
 }

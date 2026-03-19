@@ -92,24 +92,14 @@ func (s Service) lookupDepartures(location api.GeocodeLocation, query Query) (ap
 func (s Service) lookupAllDepartures(location api.GeocodeLocation, query Query) ([]MergedDeparture, []string, error) {
 	merged := []MergedDeparture{}
 	warnings := []string{}
-	successes := 0
-	var firstErr error
 
 	for _, mode := range allModes {
 		resp, err := s.client.Departures(s.params(location, allModesQuery(query, mode), ""))
 		if err != nil {
 			warnings = append(warnings, mode)
-			if firstErr == nil {
-				firstErr = err
-			}
 			continue
 		}
-		successes++
 		merged = append(merged, taggedDepartures(mode, resp.DepartureList())...)
-	}
-
-	if successes == 0 && firstErr != nil {
-		return nil, nil, firstErr
 	}
 
 	sort.Slice(merged, func(i, j int) bool {

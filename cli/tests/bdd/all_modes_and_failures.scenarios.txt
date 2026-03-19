@@ -37,6 +37,21 @@ Feature: hm CLI all modes and failures
     Then stderr contains "No upcoming departures at Pasila, Helsinki."
     And exit code is 1
 
+  Scenario: all modes with every mode unavailable warns and exits one
+    Given the Helsinki Moves API all-modes fixture is "all modes unavailable"
+    When the user runs hm with arguments:
+      """
+      -l Pasila --all
+      """
+    Then the departures API is called 4 times
+    And stdout contains "Pasila, Helsinki — All departures"
+    And stderr contains "Warning: bus departures unavailable"
+    And stderr contains "Warning: tram departures unavailable"
+    And stderr contains "Warning: rail departures unavailable"
+    And stderr contains "Warning: metro departures unavailable"
+    And stderr contains "No upcoming departures at Pasila, Helsinki."
+    And exit code is 1
+
   Scenario: departures API failure exits two
     Given the Helsinki Moves API all-modes fixture is "departures API failure"
     When the user runs hm with arguments:

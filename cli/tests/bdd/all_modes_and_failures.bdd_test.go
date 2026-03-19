@@ -16,10 +16,11 @@ import (
 type allModesFixture string
 
 const (
-	fixtureMergedAllModes     allModesFixture = "merged departures"
-	fixturePartialAllFailure  allModesFixture = "partial failure"
-	fixtureNoAllModeResults   allModesFixture = "no departures"
-	fixtureDeparturesAPIFault allModesFixture = "departures API failure"
+	fixtureMergedAllModes      allModesFixture = "merged departures"
+	fixturePartialAllFailure   allModesFixture = "partial failure"
+	fixtureNoAllModeResults    allModesFixture = "no departures"
+	fixtureAllModesUnavailable allModesFixture = "all modes unavailable"
+	fixtureDeparturesAPIFault  allModesFixture = "departures API failure"
 )
 
 func TestAllModesAndFailuresScenarios(t *testing.T) {
@@ -87,6 +88,8 @@ func parseAllModesFixture(text string) (allModesFixture, error) {
 		return fixturePartialAllFailure, nil
 	case string(fixtureNoAllModeResults):
 		return fixtureNoAllModeResults, nil
+	case string(fixtureAllModesUnavailable):
+		return fixtureAllModesUnavailable, nil
 	case string(fixtureDeparturesAPIFault):
 		return fixtureDeparturesAPIFault, nil
 	default:
@@ -110,7 +113,7 @@ func allModesGeocodeResponse(query string) map[string]any {
 
 func writeAllModesDepartureResponse(w http.ResponseWriter, fixture allModesFixture, r *http.Request) bool {
 	mode := r.URL.Query().Get("mode")
-	if fixture == fixtureDeparturesAPIFault || fixture == fixturePartialAllFailure && mode == "TRAM" {
+	if fixture == fixtureDeparturesAPIFault || fixture == fixtureAllModesUnavailable || fixture == fixturePartialAllFailure && mode == "TRAM" {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return false
 	}

@@ -172,7 +172,7 @@ func TestLookupAllReturnsWarningsWhenSomeModesFail(t *testing.T) {
 	}
 }
 
-func TestLookupAllReturnsErrorWhenEveryModeFails(t *testing.T) {
+func TestLookupAllReturnsWarningsWhenEveryModeFails(t *testing.T) {
 	client := &stubClient{
 		geocode: api.GeocodeResponse{
 			Query: "Pasila",
@@ -190,12 +190,15 @@ func TestLookupAllReturnsErrorWhenEveryModeFails(t *testing.T) {
 		},
 	}
 
-	_, err := NewService(client).LookupAll(Query{Text: "Pasila"})
-	if err == nil {
-		t.Fatal("expected error")
+	result, err := NewService(client).LookupAll(Query{Text: "Pasila"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := err.Error(); got != "bus unavailable" {
-		t.Fatalf("error = %q, want %q", got, "bus unavailable")
+	if got := result.WarningModes; len(got) != 4 {
+		t.Fatalf("warnings = %#v, want 4 modes", got)
+	}
+	if len(result.Departures) != 0 {
+		t.Fatalf("merged departures = %d, want 0", len(result.Departures))
 	}
 }
 

@@ -34,6 +34,7 @@ type HTTPRequest struct {
 type Evidence struct {
 	Result   Result
 	Requests []HTTPRequest
+	Archives []string
 }
 
 var departuresCallCountPattern = regexp.MustCompile(`^the departures API is called ([0-9]+) times?$`)
@@ -42,6 +43,18 @@ var ordinalDeparturesRequestPattern = regexp.MustCompile(`^the (.+) departures A
 var numericOrdinalPattern = regexp.MustCompile(`^([0-9]+)(st|nd|rd|th)$`)
 
 func LoadScenarios(path string, parseGiven func(string, *Scenario) error) ([]Scenario, error) {
+	return LoadScenariosWithStepParser(path, func(line string, sc *Scenario) error {
+		if !strings.HasPrefix(line, "Given ") {
+			return fmt.Errorf("unrecognized step in scenario %q: %q", sc.Name, line)
+		}
+		if parseGiven == nil {
+			return fmt.Errorf("unexpected Given step in scenario %q: %q", sc.Name, line)
+		}
+		return parseGiven(line, sc)
+	})
+}
+
+func LoadScenariosWithStepParser(path string, parseStep func(string, *Scenario) error) ([]Scenario, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -98,15 +111,15 @@ func LoadScenarios(path string, parseGiven func(string, *Scenario) error) ([]Sce
 		}
 
 		switch {
-		case strings.HasPrefix(line, "Given "):
-			if parseGiven == nil {
-				return nil, fmt.Errorf("unexpected Given step in scenario %q: %q", current.Name, line)
-			}
-			if err := parseGiven(line, current); err != nil {
-				return nil, err
-			}
 		case strings.HasPrefix(line, "When the user runs hm with arguments:"):
 			awaitArgs = true
+		case strings.HasPrefix(line, "Given "), strings.HasPrefix(line, "When "):
+			if parseStep == nil {
+				return nil, fmt.Errorf("unexpected step in scenario %q: %q", current.Name, line)
+			}
+			if err := parseStep(line, current); err != nil {
+				return nil, err
+			}
 		case strings.HasPrefix(line, "Then "):
 			check, ok := ParseCheck(strings.TrimPrefix(line, "Then "))
 			if !ok {
@@ -147,6 +160,8 @@ func ParseCheck(line string) (Check, bool) {
 		return Check{Kind: "stderr", Want: unquote(strings.TrimPrefix(line, "stderr contains "))}, true
 	case strings.HasPrefix(line, "exit code is "):
 		return Check{Kind: "code", Want: strings.TrimSpace(strings.TrimPrefix(line, "exit code is "))}, true
+	case strings.HasPrefix(line, "the archive name is "):
+		return Check{Kind: "archive-name", Want: unquote(strings.TrimPrefix(line, "the archive name is "))}, true
 	case departuresCallCountPattern.MatchString(line):
 		match := departuresCallCountPattern.FindStringSubmatch(line)
 		count, err := strconv.Atoi(match[1])
@@ -206,6 +221,10 @@ func RunChecksWithEvidence(t *testing.T, evidence Evidence, checks []Check) {
 			}
 			if evidence.Result.Code != want {
 				t.Fatalf("exit code = %d, want %d", evidence.Result.Code, want)
+			}
+		case "archive-name":
+			if len(evidence.Archives) != 1 || evidence.Archives[0] != chk.Want {
+				t.Fatalf("archive names = %v, want [%s]", evidence.Archives, chk.Want)
 			}
 		case "departures-call-count":
 			requests := departuresRequests(evidence.Requests)

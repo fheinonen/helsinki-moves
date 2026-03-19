@@ -16,11 +16,12 @@ import (
 type allModesFixture string
 
 const (
-	fixtureMergedAllModes      allModesFixture = "merged departures"
-	fixturePartialAllFailure   allModesFixture = "partial failure"
-	fixtureNoAllModeResults    allModesFixture = "no departures"
-	fixtureAllModesUnavailable allModesFixture = "all modes unavailable"
-	fixtureDeparturesAPIFault  allModesFixture = "departures API failure"
+	fixtureBusAndTramAvailable      allModesFixture = "bus and tram available"
+	fixtureBusOnlyAvailable         allModesFixture = "bus only available"
+	fixtureTramUnavailable          allModesFixture = "tram unavailable"
+	fixtureNoAllModeResults         allModesFixture = "no departures available"
+	fixtureAllModesUnavailable      allModesFixture = "all modes unavailable"
+	fixtureSingleModeDeparturesFail allModesFixture = "single-mode departures fail"
 )
 
 func TestAllModesAndFailuresScenarios(t *testing.T) {
@@ -28,12 +29,26 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 
 	scenarios, err := testruntime.LoadScenarios(filepath.Join("all_modes_and_failures.scenarios.txt"), func(line string, sc *testruntime.Scenario) error {
 		switch {
-		case strings.HasPrefix(line, "Given the Helsinki Moves API all-modes fixture is "):
-			fixture, err := parseAllModesFixture(strings.TrimPrefix(line, "Given the Helsinki Moves API all-modes fixture is "))
-			if err != nil {
-				return fmt.Errorf("scenario %q: %w", sc.Name, err)
-			}
-			sc.Values["fixture"] = string(fixture)
+		case strings.HasPrefix(line, "Given geocoding finds "):
+			sc.Values["label"] = strings.TrimSpace(strings.Trim(strings.TrimPrefix(line, "Given geocoding finds "), `"`))
+			return nil
+		case line == "Given bus and tram departures are available across all modes":
+			sc.Values["fixture"] = string(fixtureBusAndTramAvailable)
+			return nil
+		case line == "Given bus departures are available across all modes":
+			sc.Values["fixture"] = string(fixtureBusOnlyAvailable)
+			return nil
+		case line == "Given bus departures are available while tram is unavailable across all modes":
+			sc.Values["fixture"] = string(fixtureTramUnavailable)
+			return nil
+		case line == "Given no departures are available across all modes":
+			sc.Values["fixture"] = string(fixtureNoAllModeResults)
+			return nil
+		case line == "Given every mode is unavailable across all modes":
+			sc.Values["fixture"] = string(fixtureAllModesUnavailable)
+			return nil
+		case line == "Given the departures API returns an internal server error for single-mode queries":
+			sc.Values["fixture"] = string(fixtureSingleModeDeparturesFail)
 			return nil
 		case line == "Given the Helsinki Moves API is unreachable":
 			sc.Values["baseURL"] = "http://127.0.0.1:1"
@@ -62,7 +77,7 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 				switch r.URL.Path {
 				case "/api/v1/geocode":
 					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(allModesGeocodeResponse(geocodeQuery(sc.Args)))
+					_ = json.NewEncoder(w).Encode(allModesGeocodeResponse(geocodeQuery(sc.Args), sc.Values["label"]))
 				case "/api/v1/departures":
 					if !writeAllModesDepartureResponse(w, allModesFixture(sc.Values["fixture"]), r) {
 						return
@@ -80,30 +95,16 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 	}
 }
 
-func parseAllModesFixture(text string) (allModesFixture, error) {
-	switch strings.TrimSpace(strings.Trim(text, `"`)) {
-	case string(fixtureMergedAllModes):
-		return fixtureMergedAllModes, nil
-	case string(fixturePartialAllFailure):
-		return fixturePartialAllFailure, nil
-	case string(fixtureNoAllModeResults):
-		return fixtureNoAllModeResults, nil
-	case string(fixtureAllModesUnavailable):
-		return fixtureAllModesUnavailable, nil
-	case string(fixtureDeparturesAPIFault):
-		return fixtureDeparturesAPIFault, nil
-	default:
-		return "", fmt.Errorf("unknown all-modes fixture %q", text)
+func allModesGeocodeResponse(query, label string) map[string]any {
+	if label == "" {
+		label = "Pasila, Helsinki"
 	}
-}
-
-func allModesGeocodeResponse(query string) map[string]any {
 	return map[string]any{
 		"ambiguous": false,
 		"choices":   []any{},
 		"location": map[string]any{
 			"confidence": 0.95,
-			"label":      "Pasila, Helsinki",
+			"label":      label,
 			"latitude":   60.2,
 			"longitude":  24.9,
 		},
@@ -113,7 +114,7 @@ func allModesGeocodeResponse(query string) map[string]any {
 
 func writeAllModesDepartureResponse(w http.ResponseWriter, fixture allModesFixture, r *http.Request) bool {
 	mode := r.URL.Query().Get("mode")
-	if fixture == fixtureDeparturesAPIFault || fixture == fixtureAllModesUnavailable || fixture == fixturePartialAllFailure && mode == "TRAM" {
+	if fixture == fixtureSingleModeDeparturesFail || fixture == fixtureAllModesUnavailable || fixture == fixtureTramUnavailable && mode == "TRAM" {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return false
 	}
@@ -125,7 +126,7 @@ func writeAllModesDepartureResponse(w http.ResponseWriter, fixture allModesFixtu
 
 func allModesDepartureResponse(fixture allModesFixture, mode string) map[string]any {
 	switch fixture {
-	case fixtureMergedAllModes:
+	case fixtureBusAndTramAvailable:
 		switch mode {
 		case "BUS":
 			return departurePayload("BUS", []map[string]any{
@@ -138,7 +139,7 @@ func allModesDepartureResponse(fixture allModesFixture, mode string) map[string]
 		default:
 			return departurePayload(mode, []map[string]any{})
 		}
-	case fixturePartialAllFailure:
+	case fixtureBusOnlyAvailable, fixtureTramUnavailable:
 		if mode == "BUS" {
 			return departurePayload("BUS", []map[string]any{
 				departureJSON("2026-03-19T13:03:00Z", "57", "Munkkiniemi", "Pa0001", "HSL:9001", "Pasilan asema", nil),

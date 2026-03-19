@@ -47,10 +47,6 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 	if mode == "" {
 		mode = "bus"
 	}
-	if !args.IsValidMode(mode) {
-		fmt.Fprintf(stderr, "Invalid mode %q. Valid: bus, tram, rail, metro\n", mode)
-		return exitInvalid
-	}
 
 	baseURL, err := resolveBaseURL(opts.BaseURL)
 	if err != nil {
@@ -62,6 +58,10 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 	service := departures.NewService(client)
 	if cfg.All {
 		return runAllModes(opts, service, cfg, stdout, stderr)
+	}
+	if !args.IsValidMode(mode) {
+		fmt.Fprintf(stderr, "Invalid mode %q. Valid: bus, tram, rail, metro\n", mode)
+		return exitInvalid
 	}
 	return runSingleMode(opts, service, cfg, mode, stdout, stderr)
 }

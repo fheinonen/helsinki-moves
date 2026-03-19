@@ -125,8 +125,8 @@ func TestLookupAllSortsMergedDeparturesByDepartureISO(t *testing.T) {
 		t.Fatalf("departures calls = %d, want 4", len(client.departuresCalls))
 	}
 	for i, wantMode := range []string{"bus", "tram", "rail", "metro"} {
-		if got := client.departuresCalls[i]; got.Mode != wantMode || got.StopID != "" {
-			t.Fatalf("departures call %d = %#v, want mode %q with empty stopId", i+1, got, wantMode)
+		if got := client.departuresCalls[i]; got.Mode != wantMode || got.StopID != "" || got.Line != "57" || got.Results != "2" {
+			t.Fatalf("departures call %d = %#v, want mode %q with empty stopId, line 57, results 2", i+1, got, wantMode)
 		}
 	}
 	if len(result.Departures) != 2 {

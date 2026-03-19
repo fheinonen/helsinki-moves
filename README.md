@@ -44,25 +44,40 @@ with `type: "metric"` and `context.metricName`.
 
 ## CLI
 
-`bin/hm.mjs` is a zero-dependency Node 24 CLI for querying departures from the terminal.
+The terminal CLI now lives in `cli/` and is implemented in Go.
+
+From `cli/`:
 
 ```bash
-hm -l "Vihdintie 17"              # bus departures near an address
-hm -l "Vihdintie 17" --line 57    # filter to line 57
-hm --stop Talontie                # precise single-stop lookup
-hm -l Kamppi -m tram              # tram departures
-hm -l Pasila --all                # all transit modes
-hm -l Pasila -m rail --json       # JSON output
+go test ./...
+go run ./cmd/hm --help
+
+go run ./cmd/hm -l "Vihdintie 17"              # bus departures near an address
+go run ./cmd/hm -l "Vihdintie 17" --line 57    # filter to line 57
+go run ./cmd/hm --stop Talontie                # precise single-stop lookup
+go run ./cmd/hm -l Kamppi -m tram              # tram departures
+go run ./cmd/hm -l Pasila --all                # all transit modes
+go run ./cmd/hm -l Pasila -m rail --json | jq '.[]'
 ```
 
 Set `HM_API_URL` to override the default API endpoint (e.g. for local dev).
 
-Run tests: `node --test bin/hm.test.mjs`
+Standalone release archives are built from `cli/` and packaged under `cli/dist/`.
+
+```bash
+VERSION=2026.3.19 ./scripts/build-release.sh linux amd64
+VERSION=2026.3.19 ./scripts/archive-release.sh linux amd64
+
+./dist/hm_2026.3.19_linux_amd64/hm --help
+tar -tzf ./dist/hm_2026.3.19_linux_amd64.tar.gz
+```
+
+Release archives follow `hm_<version>_<goos>_<goarch>.tar.gz` on Unix targets and `.zip` on Windows.
 
 ## Project structure
 
-- `bin/hm.mjs` CLI for terminal departure queries
-- `bin/hm.test.mjs` CLI BDD tests
+- `cli/cmd/hm/main.go` Go CLI entrypoint
+- `cli/tests/bdd/*.scenarios.txt` CLI behavior and contract scenarios
 - `web/index.html` app shell
 - `web/scripts/app/*.js` frontend runtime modules (ordered via `web/scripts/app/entry.js`)
 - `web/scripts/README.md` module boundaries/load order (`window.HMApp` contract)

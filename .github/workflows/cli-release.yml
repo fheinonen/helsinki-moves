@@ -10,26 +10,36 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - goos: darwin
             goarch: arm64
+            runner: macos-14
             archive_ext: .tar.gz
+            binary_ext: ""
           - goos: darwin
             goarch: amd64
+            runner: macos-15-intel
             archive_ext: .tar.gz
+            binary_ext: ""
           - goos: linux
             goarch: amd64
+            runner: ubuntu-latest
             archive_ext: .tar.gz
+            binary_ext: ""
           - goos: linux
             goarch: arm64
+            runner: ubuntu-24.04-arm
             archive_ext: .tar.gz
+            binary_ext: ""
           - goos: windows
             goarch: amd64
+            runner: windows-latest
             archive_ext: .zip
+            binary_ext: .exe
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,6 +65,12 @@ jobs:
         run: ./cli/scripts/build-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
         env:
           VERSION: ${{ env.VERSION }}
+      - name: Smoke test CLI binary
+        shell: bash
+        run: |
+          binary="cli/dist/hm_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}/hm${{ matrix.binary_ext }}"
+          help_output="$("$binary" --help)"
+          printf '%s\n' "$help_output" | grep -F "Usage: hm [OPTIONS]" >/dev/null
       - name: Archive CLI binary
         run: ./cli/scripts/archive-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
         env:

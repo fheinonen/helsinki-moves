@@ -48,14 +48,26 @@ archive_path="$dist_dir/$stem$archive_ext"
 rm -f "$archive_path"
 
 if [ "$goos" = "windows" ]; then
-	if ! command -v zip >/dev/null 2>&1; then
-		printf '%s\n' "zip is required to package Windows releases" >&2
-		exit 1
+	if command -v zip >/dev/null 2>&1; then
+		(
+			cd "$dist_dir"
+			zip -qr "$archive_path" "$stem"
+		)
+	else
+		ps_cmd=
+		if command -v pwsh >/dev/null 2>&1; then
+			ps_cmd=pwsh
+		elif command -v powershell >/dev/null 2>&1; then
+			ps_cmd=powershell
+		else
+			printf '%s\n' "zip or PowerShell is required to package Windows releases" >&2
+			exit 1
+		fi
+		(
+			cd "$dist_dir"
+			"$ps_cmd" -NoLogo -NoProfile -Command "Compress-Archive -LiteralPath '$stem' -DestinationPath '$stem.zip' -Force"
+		)
 	fi
-	(
-		cd "$dist_dir"
-		zip -qr "$archive_path" "$stem"
-	)
 else
 	tar -C "$dist_dir" -czf "$archive_path" "$stem"
 fi

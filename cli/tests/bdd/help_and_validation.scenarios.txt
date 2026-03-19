@@ -1,0 +1,21 @@
+Feature: hm CLI help and validation
+
+  Scenario: help output
+    Given the user runs `hm --help`
+    When the CLI starts
+    Then stdout contains `hm — Helsinki Moves CLI`
+    And stdout contains `Usage: hm [OPTIONS]`
+    And exit code is `0`
+
+  Scenario: missing input
+    Given the user runs `hm`
+    When the CLI starts
+    Then stderr contains `Missing --location or --stop`
+    And exit code is `2`
+
+  Scenario: invalid mode
+    Given the user runs `hm -l Kamppi -m ferry`
+    When the CLI starts
+    Then stderr contains `Invalid mode "ferry"`
+    And stderr contains `bus, tram, rail, metro`
+    And exit code is `2`

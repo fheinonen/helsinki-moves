@@ -24,5 +24,5 @@ func DepartureTime(iso string, now time.Time, loc *time.Location) (string, error
 	if loc == nil {
 		loc = time.Local
 	}
-	return departure.In(loc).Format("15:04"), nil
+	return departure.In(loc).Format("15.04"), nil
 }

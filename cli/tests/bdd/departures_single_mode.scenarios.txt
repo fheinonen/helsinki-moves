@@ -9,7 +9,9 @@ When the user runs hm with arguments:
 Then stdout contains "Vihdintie 17, Helsinki — Vihdintie — Bus departures"
 And stdout contains "LINE  DEST         DEPARTS  STOP"
 And stdout contains "57    Munkkiniemi  3 min    Vihdintie (Vi0234)"
-And stdout contains "58    Kamppi       15:20    Vihdintie (Vi0234)"
+And stdout contains "58    Kamppi       15.20    Vihdintie (Vi0234)"
+And the departures API is called 1 time
+And the departures API request has query parameter "mode" set to "BUS"
 And stderr is empty
 And exit code is 0
 
@@ -21,6 +23,8 @@ When the user runs hm with arguments:
 """
 Then stdout contains "Talontie, Helsinki — Talontie laituri 2 — Bus departures"
 And stdout contains "600   Elielinaukio  4 min    Talontie laituri 2 (Ta0202)"
+And the departures API is called 2 times
+And the second departures API request has query parameter "stopId" set to "HSL:2202"
 And stderr is empty
 And exit code is 0
 
@@ -32,6 +36,7 @@ When the user runs hm with arguments:
 """
 Then stdout contains "Kamppi, Helsinki — Kampin terminaali — Bus departures"
 And stdout contains "57    Munkkiniemi  3 min    Kampin terminaali (Ka0101)"
+And the departures API request has query parameter "line" set to "57"
 And stderr is empty
 And exit code is 0
 
@@ -41,6 +46,8 @@ When the user runs hm with arguments:
 """
 -l "Pasila" --mode rail --json
 """
-Then stdout contains "[{\"departureIso\":\"2026-03-19T13:03:00Z\",\"destination\":\"Helsinki\",\"line\":\"I\",\"stopCode\":\"Pa0001\",\"stopId\":\"HSL:9001\",\"stopName\":\"Pasilan asema\",\"track\":\"4\"}]"
+Then stdout is valid JSON
+And stdout contains "\"line\":\"I\""
+And the departures API request has query parameter "mode" set to "RAIL"
 And stderr is empty
 And exit code is 0

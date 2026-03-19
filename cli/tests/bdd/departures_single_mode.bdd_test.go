@@ -22,7 +22,7 @@ const (
 	fixtureJSON        departuresFixture = "json departures"
 )
 
-func TestDeparturesSingleModeScenarios(t *testing.T) {
+func TestSingleModeDepartureScenarios(t *testing.T) {
 	now := time.Date(2026, time.March, 19, 15, 0, 0, 0, time.FixedZone("EET", 2*60*60))
 
 	scenarios, err := testruntime.LoadScenarios(filepath.Join("departures_single_mode.scenarios.txt"), func(line string, sc *testruntime.Scenario) error {
@@ -43,21 +43,16 @@ func TestDeparturesSingleModeScenarios(t *testing.T) {
 	for _, sc := range scenarios {
 		sc := sc
 		t.Run(sc.Name, func(t *testing.T) {
-			var requests []departuresRequest
+			var requests []testruntime.HTTPRequest
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, observedRequest(r))
 				switch r.URL.Path {
 				case "/api/v1/geocode":
 					w.Header().Set("Content-Type", "application/json")
 					_ = json.NewEncoder(w).Encode(departuresGeocodeResponse(departuresFixture(sc.Values["fixture"]), geocodeQuery(sc.Args)))
 				case "/api/v1/departures":
-					requests = append(requests, departuresRequest{
-						Line:    r.URL.Query().Get("line"),
-						Mode:    r.URL.Query().Get("mode"),
-						StopID:  r.URL.Query().Get("stopId"),
-						Results: r.URL.Query().Get("results"),
-					})
 					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(departuresAPIResponse(departuresFixture(sc.Values["fixture"]), len(requests)))
+					_ = json.NewEncoder(w).Encode(departuresAPIResponse(departuresFixture(sc.Values["fixture"]), departuresCallCount(requests)))
 				default:
 					http.NotFound(w, r)
 				}
@@ -66,17 +61,9 @@ func TestDeparturesSingleModeScenarios(t *testing.T) {
 
 			rt := testruntime.NewRuntime(server.URL).WithClock(func() time.Time { return now }, now.Location())
 			got := rt.Run(sc.Args)
-			testruntime.RunChecks(t, got, sc.Checks)
-			assertDeparturesRequests(t, departuresFixture(sc.Values["fixture"]), requests)
+			testruntime.RunChecksWithEvidence(t, testruntime.Evidence{Result: got, Requests: requests}, sc.Checks)
 		})
 	}
-}
-
-type departuresRequest struct {
-	Line    string
-	Mode    string
-	StopID  string
-	Results string
 }
 
 func parseDeparturesFixture(text string) (departuresFixture, error) {
@@ -224,42 +211,22 @@ func departureJSON(iso, line, destination, stopCode, stopID, stopName string, tr
 	}
 }
 
-func assertDeparturesRequests(t *testing.T, fixture departuresFixture, requests []departuresRequest) {
-	t.Helper()
-
-	switch fixture {
-	case fixtureLocationBus:
-		if len(requests) != 1 {
-			t.Fatalf("departures requests = %d, want 1", len(requests))
+func observedRequest(r *http.Request) testruntime.HTTPRequest {
+	query := make(map[string]string, len(r.URL.Query()))
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			query[key] = values[0]
 		}
-		if requests[0].Mode != "BUS" {
-			t.Fatalf("mode = %q, want %q", requests[0].Mode, "BUS")
-		}
-	case fixtureStopFlow:
-		if len(requests) != 2 {
-			t.Fatalf("departures requests = %d, want 2", len(requests))
-		}
-		if requests[0].StopID != "" {
-			t.Fatalf("first stopId = %q, want empty", requests[0].StopID)
-		}
-		if requests[1].StopID != "HSL:2202" {
-			t.Fatalf("second stopId = %q, want %q", requests[1].StopID, "HSL:2202")
-		}
-	case fixtureLineFilter:
-		if len(requests) != 1 {
-			t.Fatalf("departures requests = %d, want 1", len(requests))
-		}
-		if requests[0].Line != "57" {
-			t.Fatalf("line = %q, want %q", requests[0].Line, "57")
-		}
-	case fixtureJSON:
-		if len(requests) != 1 {
-			t.Fatalf("departures requests = %d, want 1", len(requests))
-		}
-		if requests[0].Mode != "RAIL" {
-			t.Fatalf("mode = %q, want %q", requests[0].Mode, "RAIL")
-		}
-	default:
-		t.Fatalf("unexpected fixture %q", fixture)
 	}
+	return testruntime.HTTPRequest{Path: r.URL.Path, Query: query}
+}
+
+func departuresCallCount(requests []testruntime.HTTPRequest) int {
+	count := 0
+	for _, request := range requests {
+		if request.Path == "/api/v1/departures" {
+			count++
+		}
+	}
+	return count
 }

@@ -15,7 +15,7 @@ func TestFormatDepartureTime(t *testing.T) {
 	}{
 		{name: "past departures show now", iso: "2026-03-19T12:59:00Z", want: "now"},
 		{name: "departures under fifteen minutes stay relative", iso: "2026-03-19T13:03:00Z", want: "3 min"},
-		{name: "fifteen minute departures switch to wall clock time", iso: "2026-03-19T13:15:00Z", want: "15:15"},
+		{name: "fifteen minute departures switch to wall clock time", iso: "2026-03-19T13:15:00Z", want: "15.15"},
 	}
 
 	for _, tt := range tests {

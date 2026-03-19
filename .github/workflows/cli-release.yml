@@ -62,6 +62,7 @@ jobs:
           esac
           printf 'VERSION=%s\n' "${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
       - name: Build CLI binary
+        shell: bash
         run: ./cli/scripts/build-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
         env:
           VERSION: ${{ env.VERSION }}
@@ -72,6 +73,7 @@ jobs:
           help_output="$("$binary" --help)"
           printf '%s\n' "$help_output" | grep -F "Usage: hm [OPTIONS]" >/dev/null
       - name: Archive CLI binary
+        shell: bash
         run: ./cli/scripts/archive-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
         env:
           VERSION: ${{ env.VERSION }}

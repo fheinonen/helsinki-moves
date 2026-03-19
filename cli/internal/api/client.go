@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 )
 
 type Client struct {
@@ -37,12 +39,9 @@ func (c Client) Geocode(query string) (GeocodeResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var body struct {
-			Message string `json:"message"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&body)
-		if body.Message != "" {
-			return GeocodeResponse{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, body.Message)
+		body, _ := io.ReadAll(resp.Body)
+		if message := normalizeAPIErrorBody(body); message != "" {
+			return GeocodeResponse{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, message)
 		}
 		return GeocodeResponse{}, fmt.Errorf("API error (%d)", resp.StatusCode)
 	}
@@ -52,4 +51,19 @@ func (c Client) Geocode(query string) (GeocodeResponse, error) {
 		return GeocodeResponse{}, err
 	}
 	return out, nil
+}
+
+func normalizeAPIErrorBody(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return ""
+	}
+
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil && payload.Message != "" {
+		return payload.Message
+	}
+	return text
 }

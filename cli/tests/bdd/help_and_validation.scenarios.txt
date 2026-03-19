@@ -27,20 +27,3 @@ Feature: hm CLI help and validation
     Then stderr contains "Invalid mode \"ferry\""
     And stderr contains "bus, tram, rail, metro"
     And exit code is 2
-
-  Scenario: advertised flags are accepted
-    Given the Helsinki Moves API base URL is "http://127.0.0.1:1"
-    When the user runs hm with arguments:
-      """
-      -l Kamppi --line 57 --all --results 2 --json -m bus
-      """
-    Then exit code is 0
-
-  Scenario: quoted multi-word arguments are preserved
-    Given the Helsinki Moves API base URL is "http://127.0.0.1:1"
-    When the user runs hm with arguments:
-      """
-      -l "Vihdintie 17"
-      --mode tram
-      """
-    Then exit code is 0

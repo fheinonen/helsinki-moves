@@ -2,10 +2,7 @@ package bdd_test
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -144,17 +141,7 @@ func parseCheck(line string) (check, bool) {
 func runScenario(t *testing.T, sc scenario) {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/geocode" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(geocodeResponse(fixtureKnownAddress, geocodeQuery(sc.argv)))
-	}))
-	t.Cleanup(server.Close)
-
-	rt := testruntime.NewRuntime(server.URL)
+	rt := testruntime.NewRuntime(sc.baseURL)
 	got := rt.Run(sc.argv)
 
 	for _, chk := range sc.checks {

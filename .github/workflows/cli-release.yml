@@ -48,6 +48,7 @@ jobs:
         with:
           go-version-file: "cli/go.mod"
       - name: Validate version tag
+        shell: bash
         run: |
           case "${GITHUB_REF_NAME}" in
             [0-9][0-9][0-9][0-9].[0-9].[0-9]|\

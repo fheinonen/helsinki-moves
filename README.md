@@ -42,8 +42,27 @@ with `type: "metric"` and `context.metricName`.
 - `first_manual_stop_context_change`
   - `context` keys: `sessionElapsedMs`, `mode`, `changeType`, `lineFilterCount`, `destinationFilterCount`
 
+## CLI
+
+`bin/hm.mjs` is a zero-dependency Node 24 CLI for querying departures from the terminal.
+
+```bash
+hm -l "Vihdintie 17"              # bus departures near an address
+hm -l "Vihdintie 17" --line 57    # filter to line 57
+hm --stop Talontie                # precise single-stop lookup
+hm -l Kamppi -m tram              # tram departures
+hm -l Pasila --all                # all transit modes
+hm -l Pasila -m rail --json       # JSON output
+```
+
+Set `HM_API_URL` to override the default API endpoint (e.g. for local dev).
+
+Run tests: `node --test bin/hm.test.mjs`
+
 ## Project structure
 
+- `bin/hm.mjs` CLI for terminal departure queries
+- `bin/hm.test.mjs` CLI BDD tests
 - `web/index.html` app shell
 - `web/scripts/app/*.js` frontend runtime modules (ordered via `web/scripts/app/entry.js`)
 - `web/scripts/README.md` module boundaries/load order (`window.HMApp` contract)

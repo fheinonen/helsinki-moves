@@ -8,7 +8,7 @@ import (
 
 func TestRunRejectsInvalidBaseURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := Run(Options{BaseURL: ":"}, []string{"--help"}, &stdout, &stderr)
+	code := Run(Options{BaseURL: ":"}, []string{"-l", "Kamppi", "-m", "bus"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("code = %d, want 2", code)
 	}
@@ -17,9 +17,9 @@ func TestRunRejectsInvalidBaseURL(t *testing.T) {
 	}
 }
 
-func TestRunHelpUsesOptionsBaseURL(t *testing.T) {
+func TestRunHelpIgnoresInvalidBaseURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := Run(Options{BaseURL: "http://example.invalid"}, []string{"--help"}, &stdout, &stderr)
+	code := Run(Options{BaseURL: ":"}, []string{"--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}

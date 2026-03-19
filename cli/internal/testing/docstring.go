@@ -1,4 +1,4 @@
-package args
+package testruntime
 
 import (
 	"fmt"

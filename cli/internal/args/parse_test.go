@@ -44,19 +44,3 @@ func TestParseReportsUnexpectedArgument(t *testing.T) {
 		t.Fatalf("err = %q", err.Error())
 	}
 }
-
-func TestParsePreservesQuotedValuesPerArg(t *testing.T) {
-	argv, err := ParseDocstringArgs([]string{`-l "Vihdintie 17"`, `--mode tram`})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"-l", "Vihdintie 17", "--mode", "tram"}
-	if len(argv) != len(want) {
-		t.Fatalf("len(argv) = %d, want %d: %#v", len(argv), len(want), argv)
-	}
-	for i := range want {
-		if argv[i] != want[i] {
-			t.Fatalf("argv[%d] = %q, want %q", i, argv[i], want[i])
-		}
-	}
-}

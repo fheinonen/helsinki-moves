@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"hm/internal/args"
 	testruntime "hm/internal/testing"
 )
 
@@ -73,7 +72,7 @@ func loadScenarios(path string) ([]scenario, error) {
 
 		if inArgs {
 			if line == `"""` {
-				argv, err := args.ParseDocstringArgs(argsLines)
+				argv, err := testruntime.ParseDocstringArgs(argsLines)
 				if err != nil {
 					return nil, err
 				}

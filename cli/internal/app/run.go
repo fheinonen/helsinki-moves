@@ -18,11 +18,6 @@ const (
 )
 
 func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
-	if _, err := resolveBaseURL(opts.BaseURL); err != nil {
-		fmt.Fprintln(stderr, err.Error())
-		return exitInvalid
-	}
-
 	cfg, err := args.Parse(argv)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -45,6 +40,11 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 	}
 	if !args.IsValidMode(mode) {
 		fmt.Fprintf(stderr, "Invalid mode %q. Valid: bus, tram, rail, metro\n", mode)
+		return exitInvalid
+	}
+
+	if _, err := resolveBaseURL(opts.BaseURL); err != nil {
+		fmt.Fprintln(stderr, err.Error())
 		return exitInvalid
 	}
 

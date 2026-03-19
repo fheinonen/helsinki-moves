@@ -1,17 +1,23 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"hm/internal/api"
 	"hm/internal/args"
+	"hm/internal/departures"
+	"hm/internal/format"
 )
 
 type Options struct {
-	BaseURL string
+	BaseURL  string
+	Now      func() time.Time
+	Location *time.Location
 }
 
 const (
@@ -44,6 +50,10 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Invalid mode %q. Valid: bus, tram, rail, metro\n", mode)
 		return exitInvalid
 	}
+	if cfg.All {
+		fmt.Fprintln(stderr, "--all is not implemented yet in the Go CLI rewrite.")
+		return exitInvalid
+	}
 
 	baseURL, err := resolveBaseURL(opts.BaseURL)
 	if err != nil {
@@ -51,13 +61,9 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 		return exitInvalid
 	}
 
-	query := cfg.Location
-	if query == "" {
-		query = cfg.Stop
-	}
-
 	client := api.NewClient(baseURL)
-	return runGeocode(client, query, mode, stdout, stderr)
+	service := departures.NewService(client)
+	return runSingleMode(opts, service, cfg, mode, stdout, stderr)
 }
 
 func resolveBaseURL(raw string) (string, error) {
@@ -70,22 +76,96 @@ func resolveBaseURL(raw string) (string, error) {
 	return raw, nil
 }
 
-func runGeocode(client api.Client, query, mode string, stdout, stderr io.Writer) int {
-	result, err := client.Geocode(query)
+func runSingleMode(opts Options, service departures.Service, cfg args.Config, mode string, stdout, stderr io.Writer) int {
+	result, err := service.Lookup(departures.Query{
+		Text:             queryText(cfg),
+		Mode:             mode,
+		Line:             cfg.Line,
+		Results:          cfg.Results,
+		UseStopPrecision: cfg.Stop != "",
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "Could not reach Helsinki Moves API. %v\n", err)
 		return exitInvalid
 	}
 
 	switch {
-	case result.Ambiguous:
-		return writeAmbiguousGeocode(query, result.Choices, stderr)
-	case result.Location == nil:
-		return writeNoMatchGeocode(query, stderr)
+	case result.Geocode.Ambiguous:
+		return writeAmbiguousGeocode(result.Geocode.Query, result.Geocode.Choices, stderr)
+	case result.Geocode.Location == nil:
+		return writeNoMatchGeocode(result.Geocode.Query, stderr)
 	default:
-		writeGeocodeHeading(result.Location.Label, mode, stdout)
+		return writeDepartures(opts, result, mode, cfg.JSON, stdout, stderr)
+	}
+}
+
+func queryText(cfg args.Config) string {
+	if cfg.Location != "" {
+		return cfg.Location
+	}
+	return cfg.Stop
+}
+
+func writeDepartures(opts Options, result departures.Result, mode string, asJSON bool, stdout, stderr io.Writer) int {
+	items := result.Departures.DepartureList()
+	if asJSON {
+		return writeDeparturesJSON(items, stdout)
+	}
+	rows, err := departureRows(items, opts.now(), opts.location())
+	if err != nil {
+		fmt.Fprintf(stderr, "Could not format departures. %v\n", err)
+		return exitInvalid
+	}
+	fmt.Fprintln(stdout, departuresHeading(result.Geocode.Location.Label, result.Departures.StationStopName(), mode))
+	if len(rows) > 0 {
+		fmt.Fprint(stdout, format.Table(rows, false))
 		return exitOK
 	}
+	fmt.Fprintf(stderr, "No upcoming departures at %s (%s).\n", result.Geocode.Location.Label, mode)
+	return 1
+}
+
+func writeDeparturesJSON(items []api.Departure, stdout io.Writer) int {
+	data, err := json.Marshal(items)
+	if err != nil {
+		return exitInvalid
+	}
+	fmt.Fprintln(stdout, string(data))
+	if len(items) == 0 {
+		return 1
+	}
+	return exitOK
+}
+
+func departureRows(items []api.Departure, now time.Time, loc *time.Location) ([]format.Row, error) {
+	rows := make([]format.Row, 0, len(items))
+	for _, item := range items {
+		departs, err := format.DepartureTime(item.DepartureISO, now, loc)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, format.Row{
+			Line:        item.Line,
+			Destination: item.Destination,
+			Departs:     departs,
+			Stop:        stopLabel(item),
+		})
+	}
+	return rows, nil
+}
+
+func stopLabel(item api.Departure) string {
+	if item.StopCode == "" {
+		return item.StopName
+	}
+	return fmt.Sprintf("%s (%s)", item.StopName, item.StopCode)
+}
+
+func departuresHeading(label, stopName, mode string) string {
+	if stopName == "" {
+		return geocodeHeading(label, mode)
+	}
+	return fmt.Sprintf("%s — %s — %s departures", label, stopName, title(mode))
 }
 
 func writeAmbiguousGeocode(query string, choices []api.GeocodeLocation, stderr io.Writer) int {
@@ -113,9 +193,27 @@ func writeGeocodeHeading(label, mode string, stdout io.Writer) {
 }
 
 func geocodeHeading(label, mode string) string {
+	return fmt.Sprintf("%s — %s departures", label, title(mode))
+}
+
+func title(mode string) string {
 	if mode == "" {
 		mode = "bus"
 	}
 	mode = strings.ToUpper(mode[:1]) + mode[1:]
-	return fmt.Sprintf("%s — %s departures", label, mode)
+	return mode
+}
+
+func (o Options) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+	return time.Now()
+}
+
+func (o Options) location() *time.Location {
+	if o.Location != nil {
+		return o.Location
+	}
+	return time.Local
 }

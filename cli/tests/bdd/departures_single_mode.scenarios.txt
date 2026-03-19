@@ -1,0 +1,46 @@
+Feature: Single-mode departures
+
+Scenario: location query prints a single-mode departures table
+Given the Helsinki Moves API departures fixture is "location bus departures"
+When the user runs hm with arguments:
+"""
+-l "Vihdintie 17"
+"""
+Then stdout contains "Vihdintie 17, Helsinki — Vihdintie — Bus departures"
+And stdout contains "LINE  DEST         DEPARTS  STOP"
+And stdout contains "57    Munkkiniemi  3 min    Vihdintie (Vi0234)"
+And stdout contains "58    Kamppi       15:20    Vihdintie (Vi0234)"
+And stderr is empty
+And exit code is 0
+
+Scenario: stop query refines departures to the nearest stop
+Given the Helsinki Moves API departures fixture is "stop precision departures"
+When the user runs hm with arguments:
+"""
+--stop Talontie
+"""
+Then stdout contains "Talontie, Helsinki — Talontie laituri 2 — Bus departures"
+And stdout contains "600   Elielinaukio  4 min    Talontie laituri 2 (Ta0202)"
+And stderr is empty
+And exit code is 0
+
+Scenario: line filter is passed to the departures API
+Given the Helsinki Moves API departures fixture is "line filtered departures"
+When the user runs hm with arguments:
+"""
+-l "Kamppi" --line 57
+"""
+Then stdout contains "Kamppi, Helsinki — Kampin terminaali — Bus departures"
+And stdout contains "57    Munkkiniemi  3 min    Kampin terminaali (Ka0101)"
+And stderr is empty
+And exit code is 0
+
+Scenario: json departures output prints the departures payload
+Given the Helsinki Moves API departures fixture is "json departures"
+When the user runs hm with arguments:
+"""
+-l "Pasila" --mode rail --json
+"""
+Then stdout contains "[{\"departureIso\":\"2026-03-19T13:03:00Z\",\"destination\":\"Helsinki\",\"line\":\"I\",\"stopCode\":\"Pa0001\",\"stopId\":\"HSL:9001\",\"stopName\":\"Pasilan asema\",\"track\":\"4\"}]"
+And stderr is empty
+And exit code is 0

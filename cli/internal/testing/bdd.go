@@ -115,6 +115,10 @@ func LoadScenarios(path string, parseGiven func(string, *Scenario) error) ([]Sce
 
 func ParseCheck(line string) (Check, bool) {
 	switch {
+	case line == "stdout is empty":
+		return Check{Kind: "stdout-empty"}, true
+	case line == "stderr is empty":
+		return Check{Kind: "stderr-empty"}, true
 	case strings.HasPrefix(line, "stdout contains "):
 		return Check{Kind: "stdout", Want: unquote(strings.TrimPrefix(line, "stdout contains "))}, true
 	case strings.HasPrefix(line, "stderr contains "):
@@ -131,6 +135,14 @@ func RunChecks(t *testing.T, got Result, checks []Check) {
 
 	for _, chk := range checks {
 		switch chk.Kind {
+		case "stdout-empty":
+			if got.Stdout != "" {
+				t.Fatalf("stdout = %q, want empty", got.Stdout)
+			}
+		case "stderr-empty":
+			if got.Stderr != "" {
+				t.Fatalf("stderr = %q, want empty", got.Stderr)
+			}
 		case "stdout":
 			if !strings.Contains(got.Stdout, chk.Want) {
 				t.Fatalf("stdout missing %q\nstdout: %q", chk.Want, got.Stdout)

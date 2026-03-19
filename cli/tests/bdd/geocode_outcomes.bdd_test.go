@@ -40,16 +40,48 @@ func TestGeocodeOutcomesScenarios(t *testing.T) {
 		sc := sc
 		t.Run(sc.Name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/v1/geocode" {
+				switch r.URL.Path {
+				case "/api/v1/geocode":
+					if got, want := r.URL.Query().Get("q"), geocodeQuery(sc.Args); got != want {
+						http.Error(w, fmt.Sprintf("unexpected query %q, want %q", got, want), http.StatusBadRequest)
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(geocodeResponse(geocodeFixture(sc.Values["fixture"]), geocodeQuery(sc.Args)))
+				case "/api/v1/departures":
+					if geocodeFixture(sc.Values["fixture"]) != fixtureKnownAddress {
+						http.Error(w, "unexpected departures request", http.StatusBadRequest)
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"mode":           "BUS",
+						"selectedStopId": nil,
+						"station": map[string]any{
+							"departures": []any{
+								map[string]any{
+									"departureIso": "2026-03-19T13:03:00Z",
+									"destination":  "Munkkiniemi",
+									"line":         "57",
+									"stopCode":     "Vi0234",
+									"stopId":       "HSL:1234",
+									"stopName":     "Vihdintie",
+									"track":        nil,
+								},
+							},
+							"distanceMeters": 50,
+							"stopCode":       "Vi0234",
+							"stopCodes":      []any{"Vi0234"},
+							"stopName":       "Vihdintie",
+							"type":           "stop",
+						},
+						"stops": []any{
+							map[string]any{"code": "Vi0234", "distanceMeters": 50, "id": "HSL:1234", "memberStopIds": []any{}, "name": "Vihdintie", "stopCodes": []any{"Vi0234"}},
+						},
+					})
+				default:
 					http.NotFound(w, r)
-					return
 				}
-				if got, want := r.URL.Query().Get("q"), geocodeQuery(sc.Args); got != want {
-					http.Error(w, fmt.Sprintf("unexpected query %q, want %q", got, want), http.StatusBadRequest)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(geocodeResponse(geocodeFixture(sc.Values["fixture"]), geocodeQuery(sc.Args)))
 			}))
 			t.Cleanup(server.Close)
 

@@ -6,7 +6,7 @@ Feature: hm CLI geocode outcomes
       """
       -l "Vihdintie 17"
       """
-    Then stdout contains "Vihdintie 17, Helsinki — Bus departures"
+    Then stdout contains "Vihdintie 17, Helsinki — Vihdintie — Bus departures"
     And exit code is 0
 
   Scenario: ambiguous geocode prints choices

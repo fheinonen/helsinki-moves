@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 
+	"hm/internal/api"
 	"hm/internal/args"
 )
 
@@ -43,10 +44,45 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 		return exitInvalid
 	}
 
-	if _, err := resolveBaseURL(opts.BaseURL); err != nil {
+	baseURL, err := resolveBaseURL(opts.BaseURL)
+	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return exitInvalid
 	}
+
+	query := cfg.Location
+	if query == "" {
+		query = cfg.Stop
+	}
+
+	client := api.NewClient(baseURL)
+	result, err := client.Geocode(query)
+	if err != nil {
+		fmt.Fprintf(stderr, "Could not reach Helsinki Moves API. %v\n", err)
+		return exitInvalid
+	}
+
+	if result.Ambiguous {
+		fmt.Fprintf(stderr, "Multiple matches for %q:\n", query)
+		for i, choice := range result.Choices {
+			conf := ""
+			if choice.Confidence != nil {
+				conf = fmt.Sprintf(" (%.2f)", *choice.Confidence)
+			}
+			fmt.Fprintf(stderr, "  %d. %s%s\n", i+1, choice.Label, conf)
+		}
+		if len(result.Choices) > 0 {
+			fmt.Fprintf(stderr, "\nUse a more specific query: hm -l %q\n", result.Choices[0].Label)
+		}
+		return 1
+	}
+
+	if result.Location == nil {
+		fmt.Fprintf(stderr, "No location found for %q. Try a more specific address.\n", query)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, result.Location.Label)
 
 	return exitOK
 }

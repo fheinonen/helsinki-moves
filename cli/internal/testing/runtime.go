@@ -6,6 +6,8 @@ import (
 	"hm/internal/app"
 )
 
+const defaultBaseURL = "https://helsinkimoves.fheinonen.eu"
+
 type Result struct {
 	Stdout string
 	Stderr string
@@ -24,11 +26,18 @@ func NewRuntime(baseURL ...string) *Runtime {
 	return rt
 }
 
+func (r *Runtime) BaseURL() string {
+	if r == nil || r.baseURL == "" {
+		return defaultBaseURL
+	}
+	return r.baseURL
+}
+
 func (r *Runtime) Run(argv []string) Result {
 	if r == nil {
 		r = NewRuntime()
 	}
 	var stdout, stderr bytes.Buffer
-	code := app.Run(app.Options{BaseURL: r.baseURL}, argv, &stdout, &stderr)
+	code := app.Run(app.Options{BaseURL: r.BaseURL()}, argv, &stdout, &stderr)
 	return Result{Stdout: stdout.String(), Stderr: stderr.String(), Code: code}
 }

@@ -15,20 +15,23 @@ import (
 	testruntime "hm/internal/testing"
 )
 
-type scenario struct {
+type geocodeScenario struct {
 	name    string
-	baseURL string
+	fixture geocodeFixture
 	argv    []string
 	checks  []check
 }
 
-type check struct {
-	kind string
-	want string
-}
+type geocodeFixture string
 
-func TestHelpAndValidationScenarios(t *testing.T) {
-	scenarios, err := loadScenarios(filepath.Join("help_and_validation.scenarios.txt"))
+const (
+	fixtureKnownAddress geocodeFixture = "a known address"
+	fixtureAmbiguous    geocodeFixture = "ambiguous"
+	fixtureNoMatch      geocodeFixture = "no match"
+)
+
+func TestGeocodeOutcomesScenarios(t *testing.T) {
+	scenarios, err := loadGeocodeScenarios(filepath.Join("geocode_outcomes.scenarios.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +39,12 @@ func TestHelpAndValidationScenarios(t *testing.T) {
 	for _, sc := range scenarios {
 		sc := sc
 		t.Run(sc.name, func(t *testing.T) {
-			runScenario(t, sc)
+			runGeocodeScenario(t, sc)
 		})
 	}
 }
 
-func loadScenarios(path string) ([]scenario, error) {
+func loadGeocodeScenarios(path string) ([]geocodeScenario, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -49,8 +52,8 @@ func loadScenarios(path string) ([]scenario, error) {
 	defer f.Close()
 
 	var (
-		out       []scenario
-		current   *scenario
+		out       []geocodeScenario
+		current   *geocodeScenario
 		inArgs    bool
 		awaitArgs bool
 		argsLines []string
@@ -63,7 +66,7 @@ func loadScenarios(path string) ([]scenario, error) {
 		case line == "", strings.HasPrefix(line, "Feature:"):
 			continue
 		case strings.HasPrefix(line, "Scenario:"):
-			out = append(out, scenario{name: strings.TrimSpace(strings.TrimPrefix(line, "Scenario:"))})
+			out = append(out, geocodeScenario{name: strings.TrimSpace(strings.TrimPrefix(line, "Scenario:"))})
 			current = &out[len(out)-1]
 			inArgs = false
 			awaitArgs = false
@@ -98,8 +101,12 @@ func loadScenarios(path string) ([]scenario, error) {
 		}
 
 		switch {
-		case strings.HasPrefix(line, "Given the Helsinki Moves API base URL is "):
-			current.baseURL = unquote(strings.TrimPrefix(line, "Given the Helsinki Moves API base URL is "))
+		case strings.HasPrefix(line, "Given the Helsinki Moves API geocode response is "):
+			fixture, err := parseFixture(strings.TrimPrefix(line, "Given the Helsinki Moves API geocode response is "))
+			if err != nil {
+				return nil, fmt.Errorf("scenario %q: %w", current.name, err)
+			}
+			current.fixture = fixture
 		case strings.HasPrefix(line, "When the user runs hm with arguments:"):
 			awaitArgs = true
 		case strings.HasPrefix(line, "Then "):
@@ -128,20 +135,20 @@ func loadScenarios(path string) ([]scenario, error) {
 	return out, nil
 }
 
-func parseCheck(line string) (check, bool) {
-	switch {
-	case strings.HasPrefix(line, "stdout contains "):
-		return check{kind: "stdout", want: unquote(strings.TrimPrefix(line, "stdout contains "))}, true
-	case strings.HasPrefix(line, "stderr contains "):
-		return check{kind: "stderr", want: unquote(strings.TrimPrefix(line, "stderr contains "))}, true
-	case strings.HasPrefix(line, "exit code is "):
-		return check{kind: "code", want: strings.TrimSpace(strings.TrimPrefix(line, "exit code is "))}, true
+func parseFixture(text string) (geocodeFixture, error) {
+	switch strings.TrimSpace(text) {
+	case string(fixtureKnownAddress):
+		return fixtureKnownAddress, nil
+	case string(fixtureAmbiguous):
+		return fixtureAmbiguous, nil
+	case string(fixtureNoMatch):
+		return fixtureNoMatch, nil
 	default:
-		return check{}, false
+		return "", fmt.Errorf("unknown geocode fixture %q", text)
 	}
 }
 
-func runScenario(t *testing.T, sc scenario) {
+func runGeocodeScenario(t *testing.T, sc geocodeScenario) {
 	t.Helper()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -149,8 +156,12 @@ func runScenario(t *testing.T, sc scenario) {
 			http.NotFound(w, r)
 			return
 		}
+		if got, want := r.URL.Query().Get("q"), geocodeQuery(sc.argv); got != want {
+			http.Error(w, fmt.Sprintf("unexpected query %q, want %q", got, want), http.StatusBadRequest)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(geocodeResponse(fixtureKnownAddress, geocodeQuery(sc.argv)))
+		_ = json.NewEncoder(w).Encode(geocodeResponse(sc.fixture, geocodeQuery(sc.argv)))
 	}))
 	t.Cleanup(server.Close)
 
@@ -181,10 +192,55 @@ func runScenario(t *testing.T, sc scenario) {
 	}
 }
 
-func unquote(text string) string {
-	text = strings.TrimSpace(text)
-	if s, err := strconv.Unquote(text); err == nil {
-		return s
+func geocodeQuery(argv []string) string {
+	for i := 0; i < len(argv); i++ {
+		switch argv[i] {
+		case "-l", "--location", "-s", "--stop":
+			if i+1 < len(argv) {
+				return argv[i+1]
+			}
+		}
 	}
-	return strings.Trim(text, `"`)
+	return ""
+}
+
+func geocodeResponse(fixture geocodeFixture, query string) map[string]any {
+	switch fixture {
+	case fixtureKnownAddress:
+		return map[string]any{
+			"ambiguous": false,
+			"choices": []any{},
+			"location": map[string]any{
+				"confidence": 0.95,
+				"label":      "Vihdintie 17, Helsinki",
+				"latitude":    60.2,
+				"longitude":   24.9,
+			},
+			"query": query,
+		}
+	case fixtureAmbiguous:
+		return map[string]any{
+			"ambiguous": true,
+			"choices": []any{
+				map[string]any{"confidence": 0.92, "label": "Vihdintie 17, Helsinki", "latitude": 60.2, "longitude": 24.9},
+				map[string]any{"confidence": 0.78, "label": "Vihdintie, Espoo", "latitude": 60.21, "longitude": 24.8},
+			},
+			"location": nil,
+			"query":    query,
+		}
+	case fixtureNoMatch:
+		return map[string]any{
+			"ambiguous": false,
+			"choices":   []any{},
+			"location":  nil,
+			"query":     query,
+		}
+	default:
+		return map[string]any{
+			"ambiguous": false,
+			"choices":   []any{},
+			"location":  nil,
+			"query":     query,
+		}
+	}
 }

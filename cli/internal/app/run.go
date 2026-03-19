@@ -7,12 +7,16 @@ import (
 	"hm/internal/args"
 )
 
+type Options struct {
+	BaseURL string
+}
+
 const (
 	exitOK      = 0
 	exitInvalid = 2
 )
 
-func Run(argv []string, stdout, stderr io.Writer) int {
+func Run(_ Options, argv []string, stdout, stderr io.Writer) int {
 	cfg, err := args.Parse(argv)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())

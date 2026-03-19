@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const DefaultBaseURL = "https://helsinkimoves.fheinonen.eu"
+
 type Client struct {
 	baseURL string
 	http    *http.Client

@@ -57,45 +57,59 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 	}
 
 	client := api.NewClient(baseURL)
+	return runGeocode(client, query, mode, stdout, stderr)
+}
+
+func resolveBaseURL(raw string) (string, error) {
+	if raw == "" {
+		return api.DefaultBaseURL, nil
+	}
+	if _, err := url.ParseRequestURI(raw); err != nil {
+		return "", fmt.Errorf("invalid base URL %q", raw)
+	}
+	return raw, nil
+}
+
+func runGeocode(client api.Client, query, mode string, stdout, stderr io.Writer) int {
 	result, err := client.Geocode(query)
 	if err != nil {
 		fmt.Fprintf(stderr, "Could not reach Helsinki Moves API. %v\n", err)
 		return exitInvalid
 	}
 
-	if result.Ambiguous {
-		fmt.Fprintf(stderr, "Multiple matches for %q:\n", query)
-		for i, choice := range result.Choices {
-			conf := ""
-			if choice.Confidence != nil {
-				conf = fmt.Sprintf(" (%.2f)", *choice.Confidence)
-			}
-			fmt.Fprintf(stderr, "  %d. %s%s\n", i+1, choice.Label, conf)
-		}
-		if len(result.Choices) > 0 {
-			fmt.Fprintf(stderr, "\nUse a more specific query: hm -l %q\n", result.Choices[0].Label)
-		}
-		return 1
+	switch {
+	case result.Ambiguous:
+		return writeAmbiguousGeocode(query, result.Choices, stderr)
+	case result.Location == nil:
+		return writeNoMatchGeocode(query, stderr)
+	default:
+		writeGeocodeHeading(result.Location.Label, mode, stdout)
+		return exitOK
 	}
-
-	if result.Location == nil {
-		fmt.Fprintf(stderr, "No location found for %q. Try a more specific address.\n", query)
-		return 1
-	}
-
-	fmt.Fprintln(stdout, geocodeHeading(result.Location.Label, mode))
-
-	return exitOK
 }
 
-func resolveBaseURL(raw string) (string, error) {
-	if raw == "" {
-		return "https://helsinkimoves.fheinonen.eu", nil
+func writeAmbiguousGeocode(query string, choices []api.GeocodeLocation, stderr io.Writer) int {
+	fmt.Fprintf(stderr, "Multiple matches for %q:\n", query)
+	for i, choice := range choices {
+		conf := ""
+		if choice.Confidence != nil {
+			conf = fmt.Sprintf(" (%.2f)", *choice.Confidence)
+		}
+		fmt.Fprintf(stderr, "  %d. %s%s\n", i+1, choice.Label, conf)
 	}
-	if _, err := url.ParseRequestURI(raw); err != nil {
-		return "", fmt.Errorf("invalid base URL %q", raw)
+	if len(choices) > 0 {
+		fmt.Fprintf(stderr, "\nUse a more specific query: hm -l %q\n", choices[0].Label)
 	}
-	return raw, nil
+	return 1
+}
+
+func writeNoMatchGeocode(query string, stderr io.Writer) int {
+	fmt.Fprintf(stderr, "No location found for %q. Try a more specific address.\n", query)
+	return 1
+}
+
+func writeGeocodeHeading(label, mode string, stdout io.Writer) {
+	fmt.Fprintln(stdout, geocodeHeading(label, mode))
 }
 
 func geocodeHeading(label, mode string) string {

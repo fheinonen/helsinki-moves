@@ -3,10 +3,9 @@ package testruntime
 import (
 	"bytes"
 
+	"hm/internal/api"
 	"hm/internal/app"
 )
-
-const defaultBaseURL = "https://helsinkimoves.fheinonen.eu"
 
 type Result struct {
 	Stdout string
@@ -28,7 +27,7 @@ func NewRuntime(baseURL ...string) *Runtime {
 
 func (r *Runtime) BaseURL() string {
 	if r == nil || r.baseURL == "" {
-		return defaultBaseURL
+		return api.DefaultBaseURL
 	}
 	return r.baseURL
 }

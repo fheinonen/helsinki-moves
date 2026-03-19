@@ -43,3 +43,21 @@ func TestGeocodeIncludesPlainBodyInAPIError(t *testing.T) {
 		t.Fatalf("error = %q, want %q", got, "API error (500): Internal Server Error")
 	}
 }
+
+func TestGeocodeIncludesJSONMessageInAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, `{"message":"No route found"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := Client{baseURL: server.URL, http: server.Client()}
+	_, err := client.Geocode("Kamppi")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := err.Error(); got != "API error (502): No route found" {
+		t.Fatalf("error = %q, want %q", got, "API error (502): No route found")
+	}
+}

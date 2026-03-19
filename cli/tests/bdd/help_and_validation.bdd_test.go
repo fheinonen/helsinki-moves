@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"hm/internal/args"
 	testruntime "hm/internal/testing"
 )
 
@@ -72,7 +73,11 @@ func loadScenarios(path string) ([]scenario, error) {
 
 		if inArgs {
 			if line == `"""` {
-				current.argv = splitArgs(argsLines)
+				argv, err := args.ParseDocstringArgs(argsLines)
+				if err != nil {
+					return nil, err
+				}
+				current.argv = argv
 				inArgs = false
 				argsLines = nil
 				continue
@@ -119,13 +124,6 @@ func loadScenarios(path string) ([]scenario, error) {
 		return nil, fmt.Errorf("scenario %q has an unterminated arguments docstring", current.name)
 	}
 	return out, nil
-}
-
-func splitArgs(lines []string) []string {
-	if len(lines) == 0 {
-		return nil
-	}
-	return strings.Fields(strings.Join(lines, " "))
 }
 
 func parseCheck(line string) (check, bool) {

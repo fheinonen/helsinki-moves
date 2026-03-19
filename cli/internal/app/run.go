@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"net/url"
 
 	"hm/internal/args"
 )
@@ -16,7 +17,12 @@ const (
 	exitInvalid = 2
 )
 
-func Run(_ Options, argv []string, stdout, stderr io.Writer) int {
+func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
+	if _, err := resolveBaseURL(opts.BaseURL); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return exitInvalid
+	}
+
 	cfg, err := args.Parse(argv)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -43,4 +49,14 @@ func Run(_ Options, argv []string, stdout, stderr io.Writer) int {
 	}
 
 	return exitOK
+}
+
+func resolveBaseURL(raw string) (string, error) {
+	if raw == "" {
+		return "https://helsinkimoves.fheinonen.eu", nil
+	}
+	if _, err := url.ParseRequestURI(raw); err != nil {
+		return "", fmt.Errorf("invalid base URL %q", raw)
+	}
+	return raw, nil
 }

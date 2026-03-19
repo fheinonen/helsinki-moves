@@ -1,0 +1,11 @@
+Feature: hm CLI release archives
+
+  Scenario: Unix release archives use the tagged tarball name
+    Given the release version is "2026.3.19"
+    When the release matrix builds darwin arm64
+    Then the archive name is "hm_2026.3.19_darwin_arm64.tar.gz"
+
+  Scenario: Windows release archives use the tagged zip name
+    Given the release version is "2026.3.19"
+    When the release matrix builds windows amd64
+    Then the archive name is "hm_2026.3.19_windows_amd64.zip"

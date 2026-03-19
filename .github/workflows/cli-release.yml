@@ -1,0 +1,82 @@
+name: cli-release
+
+on:
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9].[0-9].[0-9]"
+      - "[0-9][0-9][0-9][0-9].[0-9].[0-9][0-9]"
+      - "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9]"
+      - "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            archive_ext: .tar.gz
+          - goos: darwin
+            goarch: amd64
+            archive_ext: .tar.gz
+          - goos: linux
+            goarch: amd64
+            archive_ext: .tar.gz
+          - goos: linux
+            goarch: arm64
+            archive_ext: .tar.gz
+          - goos: windows
+            goarch: amd64
+            archive_ext: .zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "cli/go.mod"
+      - name: Validate version tag
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            [0-9][0-9][0-9][0-9].[0-9].[0-9]|\
+            [0-9][0-9][0-9][0-9].[0-9].[0-9][0-9]|\
+            [0-9][0-9][0-9][0-9].[0-9][0-9].[0-9]|\
+            [0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9])
+              ;;
+            *)
+              printf '%s\n' "expected yyyy.m.d tag, got ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+          printf 'VERSION=%s\n' "${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+      - name: Build CLI binary
+        run: ./cli/scripts/build-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
+        env:
+          VERSION: ${{ env.VERSION }}
+      - name: Archive CLI binary
+        run: ./cli/scripts/archive-release.sh "${{ matrix.goos }}" "${{ matrix.goarch }}"
+        env:
+          VERSION: ${{ env.VERSION }}
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: hm-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: cli/dist/hm_${{ env.VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/**/hm_*

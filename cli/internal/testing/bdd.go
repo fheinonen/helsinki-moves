@@ -154,6 +154,8 @@ func ParseCheck(line string) (Check, bool) {
 		return Check{Kind: "stderr-empty"}, true
 	case line == "stdout is valid JSON":
 		return Check{Kind: "stdout-json"}, true
+	case strings.HasPrefix(line, "stdout does not contain "):
+		return Check{Kind: "stdout-not", Want: unquote(strings.TrimPrefix(line, "stdout does not contain "))}, true
 	case strings.HasPrefix(line, "stdout contains "):
 		return Check{Kind: "stdout", Want: unquote(strings.TrimPrefix(line, "stdout contains "))}, true
 	case strings.HasPrefix(line, "stderr contains "):
@@ -209,6 +211,10 @@ func RunChecksWithEvidence(t *testing.T, evidence Evidence, checks []Check) {
 		case "stdout":
 			if !strings.Contains(evidence.Result.Stdout, chk.Want) {
 				t.Fatalf("stdout missing %q\nstdout: %q", chk.Want, evidence.Result.Stdout)
+			}
+		case "stdout-not":
+			if strings.Contains(evidence.Result.Stdout, chk.Want) {
+				t.Fatalf("stdout unexpectedly contains %q\nstdout: %q", chk.Want, evidence.Result.Stdout)
 			}
 		case "stderr":
 			if !strings.Contains(evidence.Result.Stderr, chk.Want) {

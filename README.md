@@ -62,7 +62,17 @@ go run ./cmd/hm -l Pasila -m rail --json | jq '.[]'
 
 Set `HM_API_URL` to override the default API endpoint (e.g. for local dev).
 
-Standalone release archives are built from `cli/` and packaged under `cli/dist/`.
+Tagged releases also publish prebuilt archives on `GitHub Releases`.
+
+```text
+hm_2026.3.19_darwin_arm64.tar.gz
+hm_2026.3.19_darwin_amd64.tar.gz
+hm_2026.3.19_linux_amd64.tar.gz
+hm_2026.3.19_linux_arm64.tar.gz
+hm_2026.3.19_windows_amd64.zip
+```
+
+Those tagged artifacts are produced from `cli/` and packaged under `cli/dist/` during release builds.
 
 ```bash
 VERSION=2026.3.19 ./scripts/build-release.sh linux amd64

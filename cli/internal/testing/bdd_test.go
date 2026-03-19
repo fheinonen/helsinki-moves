@@ -89,6 +89,7 @@ func TestLoadScenariosParsesDeparturesChecks(t *testing.T) {
 func TestParseCheckRecognizesDeparturesAssertions(t *testing.T) {
 	lines := []string{
 		"stdout is valid JSON",
+		`stdout does not contain "bin/hm.mjs"`,
 		"the departures API is called 2 times",
 		`the departures API request has query parameter "line" set to "57"`,
 		`the fourth departures API request has query parameter "stopId" set to "HSL:4404"`,

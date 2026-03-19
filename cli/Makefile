@@ -3,7 +3,7 @@ SHELL := /bin/sh
 GO ?= go
 GOFILES := $(shell find . -type f -name '*.go' | sort)
 
-.PHONY: ci fmt-check vet test build
+.PHONY: ci fmt-check vet test build contract-test
 
 ci: fmt-check vet test build
 
@@ -34,4 +34,16 @@ build:
 	status=0; \
 	$(GO) build -o "$$tmpdir/hm" ./cmd/hm || status=$$?; \
 	rm -rf "$$tmpdir"; \
+	exit $$status
+
+contract-test:
+	@tmp="$$(mktemp)"; \
+	status=0; \
+	if $(GO) test -tags ci_contract -count=1 ./tests/bdd -run TestCIContractScenarios >"$$tmp" 2>&1; then \
+		grep -Ev '^(ok|\?|PASS|=== RUN|--- PASS|--- SKIP|coverage:)' "$$tmp" || true; \
+	else \
+		status=$$?; \
+		grep -Ev '^(ok|\?|PASS|=== RUN|--- PASS|--- SKIP|coverage:)' "$$tmp" || true; \
+	fi; \
+	rm -f "$$tmp"; \
 	exit $$status

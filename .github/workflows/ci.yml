@@ -15,15 +15,7 @@ jobs:
         with:
           go-version-file: "cli/go.mod"
       - name: Run CI contract test
-        run: |
-          tmp="$(mktemp)"
-          status=0
-          go test -tags ci_contract ./tests/bdd -run TestCIContractScenarios >"$tmp" 2>&1 || status=$?
-          if [ "$status" -ne 0 ]; then
-            rg -v '^(ok|\?|PASS|=== RUN|--- PASS|--- SKIP|coverage:)' "$tmp" || true
-          fi
-          rm -f "$tmp"
-          exit "$status"
+        run: make contract-test
         working-directory: cli
       - name: Run CLI validation
         run: ./cli/scripts/test-ci.sh

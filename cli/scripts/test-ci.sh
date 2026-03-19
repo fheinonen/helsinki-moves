@@ -3,4 +3,4 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$script_dir/.."
-exec make ci
+exec make --no-print-directory ci

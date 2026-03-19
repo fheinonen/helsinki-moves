@@ -3,6 +3,8 @@
 package bdd_test
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -28,15 +30,8 @@ func TestCIContractScenarios(t *testing.T) {
 		sc := sc
 		t.Run(sc.Name, func(t *testing.T) {
 			repoRoot := repoRootDir(t)
-			cmd := exec.Command(sc.Args[0], sc.Args[1:]...)
-			cmd.Dir = repoRoot
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("wrapper failed: %v\noutput:\n%s", err, out)
-			}
-			if len(out) != 0 {
-				t.Fatalf("output = %q, want empty", out)
-			}
+			evidence := runCommand(t, repoRoot, sc.Args)
+			testruntime.RunChecksWithEvidence(t, evidence, sc.Checks)
 		})
 	}
 }
@@ -49,4 +44,28 @@ func repoRootDir(t *testing.T) string {
 		t.Fatal("runtime.Caller failed")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+}
+
+func runCommand(t *testing.T, dir string, argv []string) testruntime.Evidence {
+	t.Helper()
+
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Dir = dir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			t.Fatalf("wrapper failed: %v", err)
+		}
+	}
+
+	return testruntime.Evidence{Result: testruntime.Result{Stdout: stdout.String(), Stderr: stderr.String(), Code: code}}
 }

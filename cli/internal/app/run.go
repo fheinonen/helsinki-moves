@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 
 	"hm/internal/api"
 	"hm/internal/args"
@@ -82,7 +83,7 @@ func Run(opts Options, argv []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintln(stdout, result.Location.Label)
+	fmt.Fprintln(stdout, geocodeHeading(result.Location.Label, mode))
 
 	return exitOK
 }
@@ -95,4 +96,12 @@ func resolveBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid base URL %q", raw)
 	}
 	return raw, nil
+}
+
+func geocodeHeading(label, mode string) string {
+	if mode == "" {
+		mode = "bus"
+	}
+	mode = strings.ToUpper(mode[:1]) + mode[1:]
+	return fmt.Sprintf("%s — %s departures", label, mode)
 }

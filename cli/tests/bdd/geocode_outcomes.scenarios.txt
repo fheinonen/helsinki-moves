@@ -1,0 +1,30 @@
+Feature: hm CLI geocode outcomes
+
+  Scenario: known address prints heading
+    Given the Helsinki Moves API geocode response is a known address
+    When the user runs hm with arguments:
+      """
+      -l "Vihdintie 17"
+      """
+    Then stdout contains "Vihdintie 17, Helsinki — Vihdintie — Bus departures"
+    And exit code is 0
+
+  Scenario: ambiguous geocode prints choices
+    Given the Helsinki Moves API geocode response is ambiguous
+    When the user runs hm with arguments:
+      """
+      -l Vihdintie
+      """
+    Then stderr contains "Multiple matches for \"Vihdintie\":"
+    And stderr contains "1. Vihdintie 17, Helsinki"
+    And stderr contains "2. Vihdintie, Espoo"
+    And exit code is 1
+
+  Scenario: no-match geocode prints no location found
+    Given the Helsinki Moves API geocode response is no match
+    When the user runs hm with arguments:
+      """
+      -l asdfghjkl
+      """
+    Then stderr contains "No location found"
+    And exit code is 1

@@ -1,0 +1,29 @@
+Feature: hm CLI help and validation
+
+  Scenario: help output
+    Given the Helsinki Moves API base URL is "http://127.0.0.1:1"
+    When the user runs hm with arguments:
+      """
+      --help
+      """
+    Then stdout contains "hm — Helsinki Moves CLI"
+    And stdout contains "Usage: hm [OPTIONS]"
+    And exit code is 0
+
+  Scenario: missing input
+    Given the Helsinki Moves API base URL is "http://127.0.0.1:1"
+    When the user runs hm with arguments:
+      """
+      """
+    Then stderr contains "Missing --location or --stop"
+    And exit code is 2
+
+  Scenario: invalid mode
+    Given the Helsinki Moves API base URL is "http://127.0.0.1:1"
+    When the user runs hm with arguments:
+      """
+      -l Kamppi -m ferry
+      """
+    Then stderr contains "Invalid mode \"ferry\""
+    And stderr contains "bus, tram, rail, metro"
+    And exit code is 2

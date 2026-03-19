@@ -1,0 +1,11 @@
+Feature: hm CLI CI contract
+
+  Scenario: repository-root validation wrapper
+    Given the repository root is the current working tree root
+    When the user runs hm with arguments:
+      """
+      ./cli/scripts/test-ci.sh
+      """
+    Then stdout is empty
+    And stderr is empty
+    And exit code is 0

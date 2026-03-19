@@ -4,9 +4,13 @@ import "fmt"
 
 type Config struct {
 	Help     bool
+	All      bool
+	JSON     bool
+	Line     string
 	Location string
-	Stop     string
 	Mode     string
+	Results  string
+	Stop     string
 }
 
 func Parse(argv []string) (Config, error) {
@@ -15,12 +19,20 @@ func Parse(argv []string) (Config, error) {
 		switch argv[i] {
 		case "-h", "--help":
 			cfg.Help = true
+		case "-a", "--all":
+			cfg.All = true
 		case "-l", "--location":
 			v, ok := nextValue(argv, &i)
 			if !ok {
 				return Config{}, fmt.Errorf("missing value for %s", argv[i])
 			}
 			cfg.Location = v
+		case "-n", "--line":
+			v, ok := nextValue(argv, &i)
+			if !ok {
+				return Config{}, fmt.Errorf("missing value for %s", argv[i])
+			}
+			cfg.Line = v
 		case "-s", "--stop":
 			v, ok := nextValue(argv, &i)
 			if !ok {
@@ -33,6 +45,14 @@ func Parse(argv []string) (Config, error) {
 				return Config{}, fmt.Errorf("missing value for %s", argv[i])
 			}
 			cfg.Mode = v
+		case "-r", "--results":
+			v, ok := nextValue(argv, &i)
+			if !ok {
+				return Config{}, fmt.Errorf("missing value for %s", argv[i])
+			}
+			cfg.Results = v
+		case "--json":
+			cfg.JSON = true
 		default:
 			return Config{}, fmt.Errorf("unexpected argument: %q", argv[i])
 		}

@@ -2,8 +2,10 @@ package bdd_test
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -11,13 +13,15 @@ import (
 )
 
 type scenario struct {
-	name  string
-	steps []step
+	name    string
+	baseURL string
+	argv    []string
+	checks  []check
 }
 
-type step struct {
+type check struct {
 	kind string
-	text string
+	want string
 }
 
 func TestHelpAndValidationScenarios(t *testing.T) {
@@ -26,10 +30,10 @@ func TestHelpAndValidationScenarios(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rt := testruntime.NewRuntime()
 	for _, sc := range scenarios {
+		sc := sc
 		t.Run(sc.name, func(t *testing.T) {
-			runScenario(t, rt, sc)
+			runScenario(t, sc)
 		})
 	}
 }
@@ -41,127 +45,136 @@ func loadScenarios(path string) ([]scenario, error) {
 	}
 	defer f.Close()
 
-	var out []scenario
-	var current *scenario
+	var (
+		out       []scenario
+		current   *scenario
+		inArgs    bool
+		awaitArgs bool
+		argsLines []string
+	)
+
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
-		if line == "" || strings.HasPrefix(line, "Feature:") {
+		switch {
+		case line == "", strings.HasPrefix(line, "Feature:"):
 			continue
-		}
-		if strings.HasPrefix(line, "Scenario:") {
+		case strings.HasPrefix(line, "Scenario:"):
 			out = append(out, scenario{name: strings.TrimSpace(strings.TrimPrefix(line, "Scenario:"))})
 			current = &out[len(out)-1]
+			inArgs = false
+			awaitArgs = false
+			argsLines = nil
+			continue
+		case current == nil:
 			continue
 		}
-		if current == nil {
+
+		if inArgs {
+			if line == `"""` {
+				current.argv = splitArgs(argsLines)
+				inArgs = false
+				argsLines = nil
+				continue
+			}
+			argsLines = append(argsLines, line)
 			continue
 		}
-		kind, text, ok := splitStep(line)
-		if !ok {
+
+		if line == `"""` {
+			if !awaitArgs {
+				return nil, fmt.Errorf("unexpected docstring delimiter in scenario %q", current.name)
+			}
+			inArgs = true
+			awaitArgs = false
 			continue
 		}
-		current.steps = append(current.steps, step{kind: kind, text: text})
+
+		switch {
+		case strings.HasPrefix(line, "Given the Helsinki Moves API base URL is "):
+			current.baseURL = unquote(strings.TrimPrefix(line, "Given the Helsinki Moves API base URL is "))
+		case strings.HasPrefix(line, "When the user runs hm with arguments:"):
+			awaitArgs = true
+		case strings.HasPrefix(line, "Then "):
+			check, ok := parseCheck(strings.TrimPrefix(line, "Then "))
+			if !ok {
+				return nil, fmt.Errorf("unknown Then step in scenario %q: %q", current.name, line)
+			}
+			current.checks = append(current.checks, check)
+		case strings.HasPrefix(line, "And "):
+			check, ok := parseCheck(strings.TrimPrefix(line, "And "))
+			if !ok {
+				return nil, fmt.Errorf("unknown And step in scenario %q: %q", current.name, line)
+			}
+			current.checks = append(current.checks, check)
+		default:
+			return nil, fmt.Errorf("unrecognized step in scenario %q: %q", current.name, line)
+		}
 	}
+
 	if err := s.Err(); err != nil {
 		return nil, err
+	}
+	if inArgs || awaitArgs {
+		return nil, fmt.Errorf("scenario %q has an unterminated arguments docstring", current.name)
 	}
 	return out, nil
 }
 
-func splitStep(line string) (kind, text string, ok bool) {
-	for _, prefix := range []string{"Given ", "When ", "Then ", "And "} {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSuffix(prefix, " "), strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
-		}
+func splitArgs(lines []string) []string {
+	if len(lines) == 0 {
+		return nil
 	}
-	return "", "", false
+	return strings.Fields(strings.Join(lines, " "))
 }
 
-func runScenario(t *testing.T, rt *testruntime.Runtime, sc scenario) {
-	t.Helper()
-
-	args := parseArgs(t, sc)
-	var got testruntime.Result
-	hasRun := false
-
-	for _, st := range sc.steps {
-		switch st.kind {
-		case "When":
-			if hasRun {
-				t.Fatalf("scenario %q runs the CLI more than once", sc.name)
-			}
-			got = rt.Run(args)
-			hasRun = true
-		case "Then", "And":
-			if !hasRun {
-				t.Fatalf("scenario %q asserts before the CLI runs", sc.name)
-			}
-			assertStep(t, got, st)
-		}
-	}
-	if !hasRun {
-		t.Fatalf("scenario %q never runs the CLI", sc.name)
-	}
-}
-
-func parseArgs(t *testing.T, sc scenario) []string {
-	t.Helper()
-	for _, st := range sc.steps {
-		if st.kind == "Given" {
-			return extractArgs(t, st.text)
-		}
-	}
-	t.Fatalf("scenario %q is missing a Given step", sc.name)
-	return nil
-}
-
-func extractArgs(t *testing.T, text string) []string {
-	t.Helper()
-	start := strings.Index(text, "`")
-	end := strings.LastIndex(text, "`")
-	if start == -1 || end <= start {
-		t.Fatalf("invalid command step: %q", text)
-	}
-	command := strings.TrimSpace(text[start+1 : end])
-	return strings.Fields(command)[1:]
-}
-
-func assertStep(t *testing.T, got testruntime.Result, st step) {
-	t.Helper()
+func parseCheck(line string) (check, bool) {
 	switch {
-	case strings.HasPrefix(st.text, "stdout contains "):
-		want := unquote(st.text, "stdout contains ")
-		if !strings.Contains(got.Stdout, want) {
-			t.Fatalf("stdout missing %q\nstdout: %q", want, got.Stdout)
-		}
-	case strings.HasPrefix(st.text, "stderr contains "):
-		want := unquote(st.text, "stderr contains ")
-		if !strings.Contains(got.Stderr, want) {
-			t.Fatalf("stderr missing %q\nstderr: %q", want, got.Stderr)
-		}
-	case strings.HasPrefix(st.text, "exit code is "):
-		want := unquote(st.text, "exit code is ")
-		if got.Code != mustAtoi(t, want) {
-			t.Fatalf("exit code = %d, want %s", got.Code, want)
-		}
+	case strings.HasPrefix(line, "stdout contains "):
+		return check{kind: "stdout", want: unquote(strings.TrimPrefix(line, "stdout contains "))}, true
+	case strings.HasPrefix(line, "stderr contains "):
+		return check{kind: "stderr", want: unquote(strings.TrimPrefix(line, "stderr contains "))}, true
+	case strings.HasPrefix(line, "exit code is "):
+		return check{kind: "code", want: strings.TrimSpace(strings.TrimPrefix(line, "exit code is "))}, true
 	default:
-		t.Fatalf("unknown step: %q", st.text)
+		return check{}, false
 	}
 }
 
-func unquote(text, prefix string) string {
-	return strings.Trim(strings.TrimPrefix(text, prefix), "`")
-}
-
-func mustAtoi(t *testing.T, s string) int {
+func runScenario(t *testing.T, sc scenario) {
 	t.Helper()
-	var n int
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			t.Fatalf("invalid integer %q", s)
+
+	rt := testruntime.NewRuntime(sc.baseURL)
+	got := rt.Run(sc.argv)
+
+	for _, chk := range sc.checks {
+		switch chk.kind {
+		case "stdout":
+			if !strings.Contains(got.Stdout, chk.want) {
+				t.Fatalf("stdout missing %q\nstdout: %q", chk.want, got.Stdout)
+			}
+		case "stderr":
+			if !strings.Contains(got.Stderr, chk.want) {
+				t.Fatalf("stderr missing %q\nstderr: %q", chk.want, got.Stderr)
+			}
+		case "code":
+			want, err := strconv.Atoi(chk.want)
+			if err != nil {
+				t.Fatalf("invalid exit code %q: %v", chk.want, err)
+			}
+			if got.Code != want {
+				t.Fatalf("exit code = %d, want %d", got.Code, want)
+			}
+		default:
+			t.Fatalf("unknown check kind %q", chk.kind)
 		}
-		n = n*10 + int(r-'0')
 	}
-	return n
+}
+
+func unquote(text string) string {
+	text = strings.TrimSpace(text)
+	if s, err := strconv.Unquote(text); err == nil {
+		return s
+	}
+	return strings.Trim(text, `"`)
 }

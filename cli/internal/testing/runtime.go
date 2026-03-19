@@ -14,11 +14,16 @@ type Result struct {
 }
 
 type Runtime struct {
-	run func([]string, io.Writer, io.Writer) int
+	baseURL string
+	run     func([]string, io.Writer, io.Writer) int
 }
 
-func NewRuntime() *Runtime {
-	return &Runtime{run: app.Run}
+func NewRuntime(baseURL ...string) *Runtime {
+	rt := &Runtime{run: app.Run}
+	if len(baseURL) > 0 {
+		rt.baseURL = baseURL[0]
+	}
+	return rt
 }
 
 func (r *Runtime) Run(argv []string) Result {

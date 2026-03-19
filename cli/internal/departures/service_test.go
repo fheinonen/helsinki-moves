@@ -95,6 +95,110 @@ func TestLookupReturnsSecondCallErrorFromStopPrecisionFlow(t *testing.T) {
 	}
 }
 
+func TestLookupAllSortsMergedDeparturesByDepartureISO(t *testing.T) {
+	client := &stubClient{
+		geocode: api.GeocodeResponse{
+			Query: "Pasila",
+			Location: &api.GeocodeLocation{
+				Label:     "Pasila, Helsinki",
+				Latitude:  60.2,
+				Longitude: 24.9,
+			},
+		},
+		departures: []departuresReply{
+			{response: departuresResponse("BUS", departuresList(
+				departure("2026-03-19T13:07:00Z", "57", "Munkkiniemi"),
+			))},
+			{response: departuresResponse("TRAM", departuresList(
+				departure("2026-03-19T13:03:00Z", "9", "Jatkasaari"),
+			))},
+			{response: departuresResponse("RAIL", nil)},
+			{response: departuresResponse("METRO", nil)},
+		},
+	}
+
+	result, err := NewService(client).LookupAll(Query{Text: "Pasila", Line: "57", Results: "2", UseStopPrecision: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.departuresCalls) != 4 {
+		t.Fatalf("departures calls = %d, want 4", len(client.departuresCalls))
+	}
+	for i, wantMode := range []string{"bus", "tram", "rail", "metro"} {
+		if got := client.departuresCalls[i]; got.Mode != wantMode || got.StopID != "" {
+			t.Fatalf("departures call %d = %#v, want mode %q with empty stopId", i+1, got, wantMode)
+		}
+	}
+	if len(result.Departures) != 2 {
+		t.Fatalf("merged departures = %d, want 2", len(result.Departures))
+	}
+	if got := result.Departures[0]; got.Mode != "tram" || got.Departure.Line != "9" {
+		t.Fatalf("first merged departure = %#v", got)
+	}
+	if got := result.Departures[1]; got.Mode != "bus" || got.Departure.Line != "57" {
+		t.Fatalf("second merged departure = %#v", got)
+	}
+}
+
+func TestLookupAllReturnsWarningsWhenSomeModesFail(t *testing.T) {
+	client := &stubClient{
+		geocode: api.GeocodeResponse{
+			Query: "Pasila",
+			Location: &api.GeocodeLocation{
+				Label:     "Pasila, Helsinki",
+				Latitude:  60.2,
+				Longitude: 24.9,
+			},
+		},
+		departures: []departuresReply{
+			{response: departuresResponse("BUS", departuresList(
+				departure("2026-03-19T13:03:00Z", "57", "Munkkiniemi"),
+			))},
+			{err: errors.New("tram unavailable")},
+			{response: departuresResponse("RAIL", nil)},
+			{response: departuresResponse("METRO", nil)},
+		},
+	}
+
+	result, err := NewService(client).LookupAll(Query{Text: "Pasila"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.WarningModes; len(got) != 1 || got[0] != "tram" {
+		t.Fatalf("warnings = %#v, want %#v", got, []string{"tram"})
+	}
+	if len(result.Departures) != 1 {
+		t.Fatalf("merged departures = %d, want 1", len(result.Departures))
+	}
+}
+
+func TestLookupAllReturnsErrorWhenEveryModeFails(t *testing.T) {
+	client := &stubClient{
+		geocode: api.GeocodeResponse{
+			Query: "Pasila",
+			Location: &api.GeocodeLocation{
+				Label:     "Pasila, Helsinki",
+				Latitude:  60.2,
+				Longitude: 24.9,
+			},
+		},
+		departures: []departuresReply{
+			{err: errors.New("bus unavailable")},
+			{err: errors.New("tram unavailable")},
+			{err: errors.New("rail unavailable")},
+			{err: errors.New("metro unavailable")},
+		},
+	}
+
+	_, err := NewService(client).LookupAll(Query{Text: "Pasila"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := err.Error(); got != "bus unavailable" {
+		t.Fatalf("error = %q, want %q", got, "bus unavailable")
+	}
+}
+
 type stubClient struct {
 	geocode         api.GeocodeResponse
 	geocodeErr      error
@@ -118,4 +222,35 @@ func (s *stubClient) Departures(params api.DeparturesParams) (api.DeparturesResp
 	}
 	reply := s.departures[len(s.departuresCalls)-1]
 	return reply.response, reply.err
+}
+
+func departuresResponse(mode string, departures []api.Departure) api.DeparturesResponse {
+	return api.DeparturesResponse{
+		Mode: mode,
+		Station: &api.DepartureStation{
+			Departures: departures,
+			StopCode:   "Pa0001",
+			StopCodes:  []string{"Pa0001"},
+			StopName:   "Pasilan asema",
+			Type:       "station",
+		},
+		Stops: []api.DepartureStop{
+			{Code: "Pa0001", ID: "HSL:9001", Name: "Pasilan asema", StopCodes: []string{"Pa0001"}},
+		},
+	}
+}
+
+func departuresList(items ...api.Departure) []api.Departure {
+	return items
+}
+
+func departure(iso, line, destination string) api.Departure {
+	return api.Departure{
+		DepartureISO: iso,
+		Line:         line,
+		Destination:  destination,
+		StopCode:     "Pa0001",
+		StopID:       "HSL:9001",
+		StopName:     "Pasilan asema",
+	}
 }

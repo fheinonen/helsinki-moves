@@ -1,0 +1,56 @@
+Feature: hm CLI all modes and failures
+
+  Scenario: all modes merge departures from multiple modes
+    Given the Helsinki Moves API all-modes fixture is "merged departures"
+    When the user runs hm with arguments:
+      """
+      -l Pasila --all
+      """
+    Then the departures API is called 4 times
+    And the first departures API request has query parameter mode set to "BUS"
+    And the second departures API request has query parameter mode set to "TRAM"
+    And the third departures API request has query parameter mode set to "RAIL"
+    And the fourth departures API request has query parameter mode set to "METRO"
+    And stdout contains "Pasila, Helsinki — All departures"
+    And stdout contains "MODE"
+    And stdout contains "57"
+    And stdout contains "9"
+    And exit code is 0
+
+  Scenario: all modes warn when one mode is unavailable
+    Given the Helsinki Moves API all-modes fixture is "partial failure"
+    When the user runs hm with arguments:
+      """
+      -l Pasila --all
+      """
+    Then the departures API is called 4 times
+    And stderr contains "Warning: tram departures unavailable"
+    And stdout contains "57"
+    And exit code is 0
+
+  Scenario: all modes with no departures exits one
+    Given the Helsinki Moves API all-modes fixture is "no departures"
+    When the user runs hm with arguments:
+      """
+      -l Pasila --all
+      """
+    Then stderr contains "No upcoming departures at Pasila, Helsinki."
+    And exit code is 1
+
+  Scenario: departures API failure exits two
+    Given the Helsinki Moves API all-modes fixture is "departures API failure"
+    When the user runs hm with arguments:
+      """
+      -l Pasila
+      """
+    Then stderr contains "Could not reach Helsinki Moves API. API error (500): Internal Server Error"
+    And exit code is 2
+
+  Scenario: unreachable API exits two
+    Given the Helsinki Moves API is unreachable
+    When the user runs hm with arguments:
+      """
+      -l "Vihdintie 17"
+      """
+    Then stderr contains "Could not reach Helsinki Moves API."
+    And exit code is 2

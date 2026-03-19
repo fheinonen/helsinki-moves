@@ -1,5 +1,11 @@
 {
   "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/create",
+      "destination": "/create.html"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

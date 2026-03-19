@@ -160,6 +160,9 @@ Feature: Geocode client
               callCount += 1;
               return lat === 60.17 ? validStops : [];
             },
+            async getRoutes() {
+              return [];
+            },
           });
           world.nearbyStopCallCount = callCount;
         },

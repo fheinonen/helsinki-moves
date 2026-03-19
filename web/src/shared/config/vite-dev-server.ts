@@ -3,6 +3,16 @@ export interface ViteDevServerConfig {
   port: number;
 }
 
+export function resolveViteDevRuntimeEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  loadedEnv: Record<string, string>
+): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    ...loadedEnv,
+  };
+}
+
 const DEFAULT_VITE_DEV_HOST = "127.0.0.1";
 const DEFAULT_VITE_DEV_PORT = 4173;
 

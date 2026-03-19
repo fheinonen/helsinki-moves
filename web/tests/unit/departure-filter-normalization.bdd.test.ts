@@ -44,6 +44,14 @@ Feature: Departure destination filter normalization
     And departures are filtered by destination Kamppi via Töölö
     Then the destination filter count for Kamppi via Töölö is 2
     And both case variant departures remain visible
+
+  Scenario: Destination filtering matches partial destination names
+    Given departures include a destination with a via suffix
+    When destination filter options are built
+    And departures are filtered by destination Messukeskus
+    Then the destination filter count for Messukeskus via Kamppi is 1
+    And only the Messukeskus direction remains visible
+
   `,
   {
     createWorld: () => ({}),
@@ -234,6 +242,51 @@ Feature: Departure destination filter normalization
         run: ({ assert, world }) => {
           const result = world.filtered?.map((departure) => departure.destination).join("|");
           assert.equal(result, "Kamppi via Töölö|kamppi Via töölö");
+        },
+      },
+      {
+        pattern: /^Given departures include a destination with a via suffix$/,
+        run: ({ world }) => {
+          world.departures = [
+            {
+              departureIso: "2026-03-07T10:10:00.000Z",
+              destination: "Messukeskus via Kamppi",
+              line: "2",
+            },
+            {
+              departureIso: "2026-03-07T10:12:00.000Z",
+              destination: "Olympiaterm. via Kauppatori",
+              line: "2",
+            },
+          ];
+        },
+      },
+      {
+        pattern: /^When departures are filtered by destination Messukeskus$/,
+        run: ({ world }) => {
+          if (!world.departures) {
+            throw new Error("Expected departures");
+          }
+          world.filtered = filterDeparturesBySelections(world.departures, {
+            destinations: ["Messukeskus"],
+            lines: [],
+          });
+        },
+      },
+      {
+        pattern: /^Then the destination filter count for Messukeskus via Kamppi is 1$/,
+        run: ({ assert, world }) => {
+          const option = world.filterOptions?.destinations.find(
+            (candidate) => candidate.value === "Messukeskus via Kamppi"
+          );
+          assert.equal(option?.count, 1);
+        },
+      },
+      {
+        pattern: /^(Then|And) only the Messukeskus direction remains visible$/,
+        run: ({ assert, world }) => {
+          const result = world.filtered?.map((departure) => departure.destination).join("|");
+          assert.equal(result, "Messukeskus via Kamppi");
         },
       },
     ],

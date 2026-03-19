@@ -1,0 +1,330 @@
+@import "tailwindcss";
+
+:root {
+  --create-bg: #07111b;
+  --create-panel: rgba(10, 18, 30, 0.86);
+  --create-panel-border: rgba(148, 163, 184, 0.18);
+  --create-text: #f8fafc;
+  --create-muted: #94a3b8;
+  --create-shadow: 0 24px 80px rgba(2, 6, 23, 0.48);
+}
+
+html[data-page="create"] {
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.22), transparent 28rem),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 24rem),
+    linear-gradient(180deg, #020617 0%, #07111b 45%, #020617 100%);
+  min-height: 100%;
+}
+
+html[data-page="create"] body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--create-text);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+#create-root {
+  min-height: 100vh;
+}
+
+.create-page-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1.25rem;
+}
+
+.create-page-topbar {
+  display: grid;
+  gap: 1rem;
+}
+
+.create-page-eyebrow,
+.create-stop-kicker,
+.create-error-kicker,
+.create-destination-mode {
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--create-muted);
+  font-size: 0.72rem;
+}
+
+.create-page-heading,
+.create-stop-title {
+  margin: 0.25rem 0 0;
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.create-page-heading {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.create-page-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.74);
+  color: var(--create-muted);
+  font-size: 1rem;
+  padding: 0.95rem 1.15rem;
+}
+
+.create-page-main {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.create-page-main > * {
+  width: min(100%, 68rem);
+}
+
+.create-board-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.create-controls-card,
+.create-stop-header,
+.create-feedback-card {
+  border-radius: 1.5rem;
+  border: 1px solid var(--create-panel-border);
+  background: var(--create-panel);
+  box-shadow: var(--create-shadow);
+}
+
+.create-controls-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.create-control-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.create-control-label {
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.create-stop-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+}
+
+.create-stop-code {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.create-feedback-card {
+  padding: 1.25rem;
+}
+
+.create-page-prompt::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.create-page-api-key {
+  letter-spacing: 0.03em;
+}
+
+.create-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.create-action-button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0ea5e9, #14b8a6);
+  color: #f8fafc;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.8rem 1.1rem;
+  transform: translateY(0) scale(1);
+  transition:
+    transform 140ms ease,
+    filter 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
+}
+
+.create-action-button:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+.create-action-button:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.create-action-button[aria-busy="true"] {
+  box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.18), 0 10px 30px rgba(14, 165, 233, 0.22);
+  filter: brightness(1.03);
+}
+
+.create-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.create-action-button-secondary {
+  background: rgba(51, 65, 85, 0.9);
+}
+
+.create-hint,
+.create-error-text {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.create-hint {
+  color: var(--create-muted);
+}
+
+.create-error-text {
+  color: #fda4af;
+}
+
+.create-board-stage {
+  position: relative;
+}
+
+.create-loading-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.create-generation-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  align-items: start;
+}
+
+.create-skeleton {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.9), rgba(51, 65, 85, 0.85), rgba(30, 41, 59, 0.9));
+  min-height: 0.85rem;
+}
+
+.create-skeleton-title {
+  width: 38%;
+  height: 1rem;
+}
+
+.create-skeleton-row {
+  width: 100%;
+  height: 3.5rem;
+}
+
+.create-error-card h2,
+.create-error-card p {
+  margin: 0.25rem 0 0;
+}
+
+.create-mode-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem 0.35rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.create-mode-group-header:first-child {
+  margin-top: 0;
+  padding-top: 0.15rem;
+  border-top: 0;
+}
+
+.create-mode-group-title,
+.create-mode-group-summary {
+  margin: 0;
+}
+
+.create-mode-group-title {
+  color: #f8fafc;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.create-mode-group-summary {
+  color: var(--create-muted);
+  font-size: 0.82rem;
+}
+
+.create-departure-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.52);
+  padding: 0.85rem 1rem;
+}
+
+.create-line-badge {
+  min-width: 3rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.create-destination-name,
+.create-minutes {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.create-destination-name {
+  font-weight: 600;
+}
+
+.create-minutes {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+@media (min-width: 768px) {
+  .create-page-shell {
+    padding: 2rem;
+  }
+
+  .create-page-topbar {
+    align-items: end;
+  }
+
+  .create-board-layout {
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .create-controls-card,
+  .create-stop-header,
+  .create-feedback-card {
+    padding: 1.5rem;
+  }
+}

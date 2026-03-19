@@ -3,6 +3,7 @@ import { defineFeature } from "@tests/helpers/bdd-runner";
 import {
   createBrowserLocationService,
   type GetCurrentPositionOptions,
+  type LocationPermissionState,
   type LocationResult,
   type LocationService,
 } from "@client/services/location-service";
@@ -18,6 +19,7 @@ interface FakeGeolocation {
 interface World {
   geolocation?: FakeGeolocation;
   lastOptions?: PositionOptions;
+  permissionState?: LocationPermissionState;
   result?: LocationResult;
   service?: LocationService;
 }
@@ -42,6 +44,11 @@ Feature: Browser location service
     Given the browser geolocation denies permission
     When the current location is requested
     Then the location result is permission-denied
+
+  Scenario: Granted browser location permission is exposed without prompting
+    Given browser location permission is granted
+    When browser location permission is checked
+    Then the browser location permission state is granted
 
   Scenario: Other browser geolocation failures map to unavailable
     Given the browser geolocation fails without permission denial
@@ -73,6 +80,18 @@ Feature: Browser location service
           };
           world.service = createBrowserLocationService({
             geolocation: world.geolocation as unknown as Geolocation,
+          });
+        },
+      },
+      {
+        pattern: /^Given browser location permission is granted$/,
+        run: ({ world }) => {
+          world.service = createBrowserLocationService({
+            permissions: {
+              async query() {
+                return { state: "granted" as PermissionState };
+              },
+            } as unknown as Permissions,
           });
         },
       },
@@ -120,6 +139,15 @@ Feature: Browser location service
         },
       },
       {
+        pattern: /^When browser location permission is checked$/,
+        run: async ({ world }) => {
+          if (!world.service?.getPermissionState) {
+            throw new Error("Expected location service");
+          }
+          world.permissionState = await world.service.getPermissionState();
+        },
+      },
+      {
         pattern: /^When the current location is requested with high accuracy$/,
         run: async ({ world }) => {
           if (!world.service) {
@@ -133,6 +161,12 @@ Feature: Browser location service
         pattern: /^Then the location result is (.+)$/,
         run: ({ args, assert, world }) => {
           assert.equal(world.result?.ok ? "ok" : world.result?.code, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the browser location permission state is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.permissionState, args[0]);
         },
       },
       {

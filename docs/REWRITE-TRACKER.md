@@ -27,17 +27,183 @@ Update this file whenever a rewrite task:
 ## In Progress
 
 - `T35` Validate Vercel env vars, preview deploy, and production deploy plan
+- Intent-to-canvas create-route rewrite:
+  - block-plan contracts, session state, intent-resolution boundary, route-canvas assembly, constrained block-plan rendering, Digitransit route-plan adoption, and early itinerary planning are now in progress under `web/src/client/create/`
 
 ## Next Up
 
 - run local release validation with the current `.env`
 - confirm matching Vercel project env before production cutover
+- deepen itinerary planning on top of the Digitransit route-plan seam with richer degraded fallback detail and recovery actions beyond the now-landed no-route explanation, nearest-alternative guidance, and policy-aware itinerary support
+- verify the live Digitransit GraphQL alerts shape before wiring alert-aware disruption handling into route canvases
 
 ## Blocked
 
 - none
 
 ## Done
+
+- Intent-to-canvas create-route rewrite foundation completed:
+  - explicit canvas and block contracts added under `web/src/client/create/canvas-types.ts`, `block-plan-schema.ts`, and `block-plan-rules.ts`
+  - dedicated intent-session state added under `web/src/client/create/intent-session.ts` with BDD coverage for draft/submit, latest-request-wins, policy changes, Home setup, parse fallback, and degraded canvas state
+  - prompt parsing and destination-clarification boundary extracted into `web/src/client/create/intent-resolution.ts` and wired into `web/src/client/create/load-prompt-departures.ts`
+  - shared route-canvas view-model and assembly layer added under `web/src/client/create/canvas-view-model.ts` and `route-canvas-assembler.ts` with thin Home/destination adapters
+  - app-owned block-plan selection and constrained fixed-region block-plan rendering added under `web/src/client/create/block-plan-from-intent.ts` and `render-block-plan.ts`
+  - the create-page shell now routes travel-style prompts through the deterministic route-canvas branch while generic board-builder prompts still use the existing generated-board path
+  - draft edits in the create-route prompt now stay local while the last submitted deterministic route canvas remains visible until the next explicit submit
+  - the deterministic route canvas now exposes a real policy switch and recomputes the same visible canvas in place for `fastest` vs `least_walking`
+  - the create-route catalog and registry now include explicit `RouteBlock` and `SupportBlock` component types instead of relying on generic cards for the new intent-canvas spec
+  - fail-first BDD coverage added for the new create-route seams:
+    - `web/tests/unit/block-plan-rules.bdd.test.ts`
+    - `web/tests/unit/intent-session.bdd.test.ts`
+    - `web/tests/unit/intent-resolution.bdd.test.ts`
+    - `web/tests/unit/route-canvas-assembler.bdd.test.ts`
+    - `web/tests/unit/block-plan-from-intent.bdd.test.ts`
+    - `web/tests/unit/render-block-plan.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Digitransit route-plan seam completed for route-oriented canvases:
+  - `/api/v1/routes` now has contract and validation coverage under `web/tests/unit/routes-route-validation.bdd.test.ts` and `web/tests/unit/routes-route-contract.bdd.test.ts`
+  - the Digitransit client now uses the verified live GraphQL `planConnection` shape instead of an assumed `plan` shape
+  - browser route fetching now runs through `web/src/client/services/routes-client.ts`
+  - prompt-driven create loading now returns resolved route context from `web/src/client/create/load-prompt-departures.ts`
+  - the deterministic create-route canvas now prefers Digitransit route itineraries when they exist and keeps departures as supporting context/fallback
+- Early itinerary-planning support landed for route-oriented canvases:
+  - the route-canvas assembler now preserves transfer count and a transit-leg itinerary summary from Digitransit itineraries
+  - the route block renderer now shows that itinerary summary and transfer count in the visible canvas
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/route-canvas-assembler.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Leg-aware itinerary-details block landed for route-oriented canvases:
+  - validated block plans now allow a product-owned `itinerary_details` support block
+  - planned route recommendations now preserve visible transit-leg detail in the canvas view model
+  - the create-route renderer now shows leg-by-leg itinerary lines inside the fixed support region instead of relying only on summary text
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/render-block-plan.bdd.test.ts`
+    - `web/tests/unit/route-canvas-assembler.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Timed itinerary-details support landed for route-oriented canvases:
+  - itinerary legs now preserve visible time-range labels
+  - primary planned recommendations now expose the interchange stop for transferred itineraries
+  - the create-route support block now renders both leg timing and `Transfer at ...` messaging in the fixed support region
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/route-canvas-assembler.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Policy-aware itinerary detail landed for route-oriented canvases:
+  - the visible policy switch now exposes `fewest_transfers` alongside `fastest` and `least_walking`
+  - direct itineraries now keep an explicit `0 transfers` label instead of hiding transfer state
+  - create-route itinerary details now recompute visibly when the user switches to `fewest_transfers`
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/route-canvas-assembler.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Honest no-route fallback landed for planned route canvases:
+  - empty Digitransit itinerary results now stay on the deterministic route-canvas path instead of silently falling back to departure-ranked recommendations
+  - the route explanation block now explains the no-route state and points to the nearest viable alternative stop when supporting stop data exists
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Policy-specific no-route recovery landed for route-oriented canvases:
+  - when `fewest_transfers` produces no viable itinerary, the route explanation now suggests trying `fastest` instead of stopping at a dead-end message
+  - the nearest viable alternative stop remains visible inside the same no-route placard state
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Digitransit alerts seam landed after live GraphQL verification:
+  - verified from the live schema that root `alerts` exists as its own query and that `alerts` also attach to `Leg`, `Route`, `Stop`, `Trip`, and `Pattern`, not directly to `Itinerary`
+  - added a normalized alerts contract and `/api/v1/alerts` server seam with required `route` and/or `stop` filters
+  - the Digitransit client now normalizes root-alert payloads into product-owned alert entities instead of assuming common union-field shapes
+  - fail-first BDD coverage added in:
+    - `web/tests/unit/alerts-route-validation.bdd.test.ts`
+    - `web/tests/unit/alerts-route-contract.bdd.test.ts`
+    - `web/tests/unit/digitransit-alerts-client.bdd.test.ts`
+- First alert-aware route canvas support landed:
+  - added a browser alerts client under `web/src/client/services/alerts-client.ts`
+  - planned route legs now preserve route IDs from Digitransit so the create flow can query alert context against real upstream identifiers
+  - the deterministic route canvas now surfaces the first matched alert header inside the existing route explanation support block
+  - fail-first BDD coverage added in:
+    - `web/tests/unit/browser-alerts-client.bdd.test.ts`
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Primary-route alert prioritization landed:
+  - route recommendations now preserve `routeId` in the route canvas view model
+  - when both generic stop alerts and route-specific alerts are present, the support block now prefers the alert matched to the primary route instead of taking the first alert by upstream order
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Effect-aware detour copy landed for route canvases:
+  - route-matched alerts with effect `DETOUR` now render product-owned support copy like `Detour on line 7` instead of echoing the raw upstream header
+  - non-mapped alert effects still fall back to the upstream header for now
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Stop-moved alert copy landed for route canvases:
+  - alerts with effect `STOP_MOVED` now render product-owned support copy like `Stop moved near Rautatientori` when a stop entity name is available
+  - raw stop-moved headers now stay as fallback only when the upstream entity is too thin to rewrite safely
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- No-service alert copy landed for route canvases:
+  - route-matched alerts with effect `NO_SERVICE` now render stronger product copy like `Line 7 not running right now`
+  - raw no-service headers still remain fallback only when route identity is too thin to rewrite safely
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+- Alert-driven degraded confidence landed for severe route disruptions:
+  - preferred alerts now flow through a shared route-alert helper that handles alert selection, copy mapping, and degradation rules in one place
+  - `NO_SERVICE`, `SIGNIFICANT_DELAYS`, and `SEVERE` route alerts now mark the route canvas degraded
+  - the degraded signal now renders through the dedicated `confidence_notice` support block instead of being appended inline to the route explanation
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/create-route-intent-canvas.bdd.test.ts`
+    - `web/tests/unit/render-block-plan.bdd.test.ts`
+- Direct route-alert helper coverage landed:
+  - added focused BDD coverage for route-alert selection and trust rules under `web/tests/unit/route-alert-support.bdd.test.ts`
+  - `stop_on_route` alerts now count as route-linked matches when choosing the preferred alert for the current primary route
+  - `SIGNIFICANT_DELAYS` and `REDUCED_SERVICE` alerts now use product-owned line-specific copy instead of echoing upstream headers
+  - severe `REDUCED_SERVICE` alerts now stay advisory while `SIGNIFICANT_DELAYS` continues to lower confidence
+  - advisory alerts now render through a dedicated `service_note` support block while disruption alerts stay in `route_explanation` and `confidence_notice`
+  - alert-driven degraded states now use a dedicated `disruption_notice` block while generic low-confidence states keep `confidence_notice`
+  - no-route canvases now carry an explicit reason so policy dead-ends, service disruptions, and generic no-route states no longer share the same explanation copy
+  - policy-restricted no-route states now use a dedicated `policy_recovery` support block instead of hiding the recovery path inside explanation text
+  - service-disruption no-route states now use a dedicated `disruption_recovery` support block for nearest alternatives instead of mixing recovery guidance into the explanation paragraph
+  - added `web/src/client/create/route-alert-render-support.ts` so alert explanation suffixes, advisory service notes, and disruption-notice visibility now come from one helper instead of being re-derived inside `registry.tsx`
+  - added focused BDD coverage in `web/tests/unit/route-alert-render-support.bdd.test.ts`
+- No-route support composition is now centralized:
+  - added `web/src/client/create/no-route-copy.ts` and `web/src/client/create/no-route-support.ts` to keep no-route explanation and recovery copy out of `registry.tsx`
+  - generic no-route canvases now keep the nearest alternative inline in the explanation while policy and disruption dead-ends keep dedicated recovery blocks
+  - added fail-first BDD coverage in:
+    - `web/tests/unit/no-route-copy.bdd.test.ts`
+    - `web/tests/unit/no-route-support.bdd.test.ts`
+- Route-canvas block selection is now derived from canvas state:
+  - added `createBlockPlanForRouteCanvas(...)` so the create shell no longer hardcodes support-block combinations inline
+  - degraded state, backup availability, and itinerary detail now flow into one explicit block-plan helper before rendering
+  - support-block composition now also runs through `web/src/client/create/route-support-blocks.ts`, so advisory/disruption notices and no-route recovery blocks are selected from one helper instead of being re-derived inside `block-plan-from-intent.ts`
+  - added focused BDD coverage in `web/tests/unit/route-support-blocks.bdd.test.ts`
+  - fail-first BDD coverage expanded in:
+    - `web/tests/unit/block-plan-from-intent.bdd.test.ts`
+- Route-canvas fetch and recompute orchestration is now centralized:
+  - added `web/src/client/create/route-canvas-state.ts` so route planning, alert lookup, and route-canvas recompute now run through one helper instead of living inline in `bootstrap-create-page.tsx`
+  - `bootstrap-create-page.tsx` now stores one route-canvas data object rather than parallel responses, itineraries, alerts, and canvas state
+  - added focused BDD coverage in `web/tests/unit/route-canvas-state.bdd.test.ts`
+- Prompt clarification and pending-request transitions are now centralized:
+  - added `web/src/client/create/prompt-flow-state.ts` so prompt request start, clarification display, typed-location continuation, typed-destination continuation, and location-denial updates now run through one helper instead of ad hoc local state mutations in `bootstrap-create-page.tsx`
+  - `bootstrap-create-page.tsx` now stores one prompt-flow state object rather than separate pending request, clarification, and typed input states
+  - added focused BDD coverage in `web/tests/unit/prompt-flow-state.bdd.test.ts`
+- Current-location auto-resolve decisions are now centralized:
+  - added `web/src/client/create/current-location-flow.ts` so “should auto-resolve?” and “how does a location result update prompt flow?” no longer live inline in `bootstrap-create-page.tsx`
+  - `bootstrap-create-page.tsx` now delegates both permission/preference checks and successful/failed current-location resolution state changes through that helper
+  - added focused BDD coverage in `web/tests/unit/current-location-flow.bdd.test.ts`
+- Intent-session handoff is now centralized:
+  - added `web/src/client/create/intent-session-flow.ts` so draft updates, prompt submit, submitted-title lookup, and clarification handoff into prompt flow no longer live inline in `bootstrap-create-page.tsx`
+  - `bootstrap-create-page.tsx` now uses that helper for the remaining `intentSessionRef` touchpoints instead of directly mutating the session in multiple places
+  - added focused BDD coverage in `web/tests/unit/intent-session-flow.bdd.test.ts`
+- Legacy generated-board submit branching is now centralized:
+  - added `web/src/client/create/legacy-generation-flow.ts` so the decision about whether Generate should drive legacy board generation or stay on the intent-canvas path no longer lives inline in the button handler
+  - `bootstrap-create-page.tsx` now delegates that architecture split through one helper instead of mixing prompt classification and loader checks in-place
+  - added focused BDD coverage in `web/tests/unit/legacy-generation-flow.bdd.test.ts`
+- Create-page surfaces are now split into focused presentational components:
+  - added `web/src/client/create/create-legacy-controls.tsx` so the prompt, API key, generate/stop actions, and generation-status copy no longer live inline in `bootstrap-create-page.tsx`
+  - added `web/src/client/create/create-clarification-panels.tsx` so location and destination clarification cards no longer share a single giant JSX branch with the legacy control surface
+  - `bootstrap-create-page.tsx` now reads primarily as wiring between focused helpers, presentational surfaces, and the renderer instead of hosting both product surfaces directly
+- `/create` page-level coordination is now split more cleanly:
+  - added `web/src/client/create/create-legacy-generation-coordinator.tsx` so API key persistence, legacy generation hook wiring, generated-spec selection, and stage overlay behavior no longer live in the page shell
+  - `bootstrap-create-page.tsx` now primarily owns the intent-canvas travel session while delegating the legacy generated-board coordinator and the control-surface rendering separately
+  - the remaining mixed concern in the page shell is now mostly the top-level bootstrap/load boundary rather than both product architectures sharing one large component body
+- `/create` bootstrap and runtime are now separated cleanly:
+  - added `web/src/client/create/create-page-runtime.tsx` so the page shell, loading/error states, and runtime coordinator no longer live in the same file as the mount/load entrypoint
+  - `bootstrap-create-page.tsx` is now a thin bootstrap boundary: set page attribute, mount loading state, fetch departures, render runtime or error, and expose destroy
+  - bootstrap-focused BDD coverage in `web/tests/unit/create-route-bootstrap.bdd.test.ts` continues to guard the loading/error seam while the runtime behavior stays covered by the create-route generation and intent-canvas suites
 
 - Planning docs created:
   - `docs/EPICS-greenfield-rewrite.md`
@@ -197,6 +363,15 @@ Update this file whenever a rewrite task:
   - transit-board responsive sizing now flows through shared shell tokens instead of repeated per-breakpoint overrides
   - departures normalization and route assembly helpers are reduced to smaller reusable functions without changing filter or ordering behavior
   - shell-side stop/filter/departure helpers are split into smaller render and sync utilities so the UI iteration code is easier to maintain
+- Detached create-board prototype completed:
+  - `/create` now ships as an isolated React + json-render route alongside the existing vanilla app entry
+  - live departures are transformed into a json-render board state with custom `StopHeader` and `DepartureRow` components
+  - multi-entry build, route-level browser coverage, and existing-shell visual regression checks now verify the new route does not regress `/`
+- Detached create-board Phase 2 completed:
+  - `/create` now streams Google Gemini 3.1-generated json-render specs through a shared create-route catalog and validation pipeline
+  - `POST /api/v1/generate-ui` now ships with structured object streaming and stable Google API error mapping
+  - the create route now persists a Google API key locally, keeps live departure state stable during spec streaming, and supports stop/recovery flows
+  - focused unit coverage, mocked streaming browser coverage, typecheck, and visual regression checks now pass for the Phase 2 flow
 
 ## Decisions Locked
 

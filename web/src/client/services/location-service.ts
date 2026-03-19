@@ -1,6 +1,7 @@
 import type { Coordinates } from "@client/app/app-store";
 
 export type LocationFailureCode = "permission-denied" | "unavailable";
+export type LocationPermissionState = "denied" | "granted" | "prompt" | "unavailable";
 
 export type LocationResult =
   | { ok: true; value: Coordinates }
@@ -12,12 +13,15 @@ export interface GetCurrentPositionOptions {
 
 export interface LocationService {
   getCurrentPosition(options?: GetCurrentPositionOptions): Promise<LocationResult>;
+  getPermissionState?(): Promise<LocationPermissionState>;
 }
 
 export function createBrowserLocationService(input: {
   geolocation?: Geolocation;
+  permissions?: Permissions;
 } = {}): LocationService {
   const geolocation = input.geolocation;
+  const permissions = input.permissions;
 
   return {
     async getCurrentPosition(options = {}) {
@@ -48,6 +52,24 @@ export function createBrowserLocationService(input: {
           }
         );
       });
+    },
+    async getPermissionState() {
+      if (!permissions?.query) {
+        return "unavailable";
+      }
+
+      try {
+        const status = await permissions.query({
+          name: "geolocation",
+        } as PermissionDescriptor);
+        if (status.state === "granted" || status.state === "prompt" || status.state === "denied") {
+          return status.state;
+        }
+      } catch {
+        return "unavailable";
+      }
+
+      return "unavailable";
     },
   };
 }

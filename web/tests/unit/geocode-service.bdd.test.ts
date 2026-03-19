@@ -55,6 +55,9 @@ Feature: Geocode service
               async getNearbyStops({ lat }) {
                 return lat === 60.17 ? [] : [];
               },
+              async getRoutes() {
+                return [];
+              },
             },
             fetchImpl: async () =>
               ({
@@ -88,6 +91,9 @@ Feature: Geocode service
                 if (lat === 60.1705) {
                   return [createNearbyStop("Kamppi Center")];
                 }
+                return [];
+              },
+              async getRoutes() {
                 return [];
               },
             },

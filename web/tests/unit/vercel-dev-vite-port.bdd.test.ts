@@ -1,6 +1,9 @@
 import { afterEach, test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
-import { resolveViteDevServerConfig } from "@shared/config/vite-dev-server";
+import {
+  resolveViteDevRuntimeEnv,
+  resolveViteDevServerConfig,
+} from "@shared/config/vite-dev-server";
 
 interface LoadedConfig {
   preview?: {
@@ -18,6 +21,7 @@ interface LoadedConfig {
 interface World {
   config?: LoadedConfig;
   env?: NodeJS.ProcessEnv;
+  runtimeEnv?: NodeJS.ProcessEnv;
 }
 
 afterEach(() => {
@@ -38,6 +42,11 @@ Feature: Vercel dev frontend port selection
     Given Vercel does not assign a frontend port
     When the Vite config is loaded
     Then the Vite dev server uses port 4173
+
+  Scenario: Loaded env values are merged into the dev runtime
+    Given the local env provides DIGITRANSIT_API_KEY abc123
+    When the Vite dev runtime env is resolved
+    Then the Vite runtime env DIGITRANSIT_API_KEY is abc123
   `,
   {
     createWorld: () => ({}),
@@ -65,9 +74,30 @@ Feature: Vercel dev frontend port selection
         },
       },
       {
+        pattern: /^Given the local env provides DIGITRANSIT_API_KEY (.+)$/,
+        run: ({ args, world }) => {
+          world.env = {
+            HOST: "127.0.0.1",
+          };
+          world.runtimeEnv = resolveViteDevRuntimeEnv(world.env, {
+            DIGITRANSIT_API_KEY: args[0],
+          });
+        },
+      },
+      {
+        pattern: /^When the Vite dev runtime env is resolved$/,
+        run: () => {},
+      },
+      {
         pattern: /^Then the Vite dev server uses port (\d+)$/,
         run: ({ args, assert, world }) => {
           assert.equal(world.config?.server?.port, Number(args[0]));
+        },
+      },
+      {
+        pattern: /^Then the Vite runtime env DIGITRANSIT_API_KEY is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.runtimeEnv?.DIGITRANSIT_API_KEY, args[0]);
         },
       },
     ],

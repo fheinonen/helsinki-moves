@@ -78,6 +78,11 @@ Primary production domain is aliased to:
 
 - `https://helsinkimoves.fheinonen.eu`
 
+## Plans & Design Docs
+
+- Design docs and review artifacts are in `.gstack/plans/` (symlinked from `~/.gstack/projects/`).
+- Read these before implementing features — they contain problem statements, constraints, chosen approaches, and review findings.
+
 ## Version Control
 
 - Changes in this repository are committed with `jj` (Jujutsu).

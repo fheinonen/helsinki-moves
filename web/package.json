@@ -38,7 +38,11 @@
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^3.2.4",
     "jsdom": "^26.1.0",
     "typescript": "^5.9.2",
@@ -46,6 +50,16 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "hono": "^4.9.6"
+    "@ai-sdk/anthropic": "^3.0.63",
+    "@ai-sdk/google": "^3.0.52",
+    "@ai-sdk/react": "^3.0.136",
+    "@json-render/core": "^0.14.1",
+    "@json-render/react": "^0.14.1",
+    "@json-render/shadcn": "^0.14.1",
+    "ai": "^6.0.134",
+    "hono": "^4.9.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.0.0"
   }
 }

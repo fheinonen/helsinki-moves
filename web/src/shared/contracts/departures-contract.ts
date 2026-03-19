@@ -27,7 +27,16 @@ export interface StopStation {
   type: "stop";
 }
 
+export interface DestinationResolution {
+  confidence: number | null;
+  input: string;
+  resolved?: string;
+  suggestions?: string[];
+  type: "auto-corrected" | "needs-clarification";
+}
+
 export interface DeparturesSuccessResponse {
+  destinationResolution?: DestinationResolution;
   filterOptions: {
     destinations: FilterOption[];
     lines: FilterOption[];

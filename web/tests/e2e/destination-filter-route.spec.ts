@@ -81,6 +81,9 @@ Feature: Destination filter route integration
               }
               return departuresByStopId;
             },
+            async getRoutes() {
+              return [];
+            },
           };
           const app = createApp({ digitransitService: service });
           await page.route("**/api/v1/departures**", async (route) => {

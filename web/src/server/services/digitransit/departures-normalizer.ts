@@ -28,6 +28,20 @@ function matchesNormalizedFilter(value: string, filters: Set<string>): boolean {
   return filters.has(normalizeComparableValue(value));
 }
 
+function matchesNormalizedPartialFilter(value: string, filters: Set<string>): boolean {
+  if (filters.size === 0) {
+    return true;
+  }
+
+  const normalizedValue = normalizeComparableValue(value);
+  for (const filter of filters) {
+    if (normalizedValue.includes(filter)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function createEmptyStopGroup(node: NearbyStopNode): {
   code: string | null;
   distanceMeters: number;
@@ -171,6 +185,6 @@ export function filterDeparturesBySelections(
   return departures.filter(
     (departure) =>
       matchesNormalizedFilter(departure.line, lineFilterSet) &&
-      matchesNormalizedFilter(departure.destination, destinationFilterSet)
+      matchesNormalizedPartialFilter(departure.destination, destinationFilterSet)
   );
 }

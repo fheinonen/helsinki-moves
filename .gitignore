@@ -8,3 +8,4 @@ web/dist/.tailwind-intermediate.css
 .vercel
 ui-board*.png
 .gstack/
+cli/dist/

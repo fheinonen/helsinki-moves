@@ -49,6 +49,10 @@ function formatAlertMessage(input: {
     }
   }
 
+  if (input.alert.effect === "MODIFIED_SERVICE") {
+    return input.alert.headerText || "Service modified";
+  }
+
   return input.alert.headerText;
 }
 
@@ -92,7 +96,7 @@ export function getPreferredAlertTone(routeCanvas: RouteCanvasViewModel): Prefer
     return null;
   }
 
-  if (alert.effect === "REDUCED_SERVICE") {
+  if (alert.effect === "REDUCED_SERVICE" || alert.effect === "MODIFIED_SERVICE") {
     return "advisory";
   }
 
@@ -105,7 +109,7 @@ export function preferredAlertDegradesConfidence(routeCanvas: RouteCanvasViewMod
     return false;
   }
 
-  if (alert.effect === "REDUCED_SERVICE") {
+  if (alert.effect === "REDUCED_SERVICE" || alert.effect === "MODIFIED_SERVICE") {
     return false;
   }
 

@@ -4,7 +4,7 @@ import type { GeocodeClient } from "@client/services/geocode-client";
 import type { TravelIntentClient } from "@client/services/travel-intent-client";
 import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
 import type { Mode } from "@shared/domain/mode";
-import { resolveDestinationBoundary, resolvePromptIntentBoundary } from "./intent-resolution";
+import { promptLooksLikeTravelRequest, resolveDestinationBoundary, resolvePromptIntentBoundary } from "./intent-resolution";
 
 type DeparturesResponse = Awaited<ReturnType<DeparturesClient["getDepartures"]>>;
 
@@ -134,12 +134,14 @@ export async function loadPromptDepartures(input: {
     }
   }
 
+  const isTravelRequest = promptLooksLikeTravelRequest(input.prompt);
+  const hasGeocodedDestination = routeContext !== null && isTravelRequest;
   const responses: Array<DeparturesResponse | undefined> = new Array(requests.length);
   await Promise.all(
     effectiveRequests.map(async (request, index) => {
       const response = await input.client.getDepartures({
         coords: requestCoords,
-        destinations: request.destinations,
+        destinations: hasGeocodedDestination ? [] : request.destinations,
         lineIntent: request.lines.length > 0,
         lines: request.lines,
         mode: request.mode,
@@ -152,6 +154,9 @@ export async function loadPromptDepartures(input: {
   );
 
   const resolvedResponses = responses.filter(isDeparturesResponse);
+  if (hasGeocodedDestination) {
+    return okResult(resolvedResponses, routeContext);
+  }
   const destinationBoundary = resolveDestinationBoundary(resolvedResponses);
   if (destinationBoundary.status === "needs_clarification") {
     return {

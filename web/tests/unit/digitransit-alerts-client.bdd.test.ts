@@ -21,7 +21,7 @@ Feature: Digitransit alerts client
   Scenario: Digitransit alerts normalize route and stop entities from the root alerts query
     Given Digitransit GraphQL returns one route alert and one stop alert
     When Digitransit alerts are requested for route HSL:2149 and stop HSL:1250551
-    Then the upstream alerts query filters by route and stop
+    Then the upstream alerts query passes empty route and stop filters
     And 2 normalized alerts are returned
     And the first normalized alert includes route entity HSL:2149
     And the second normalized alert includes stop entity HSL:1250551
@@ -103,7 +103,7 @@ Feature: Digitransit alerts client
         },
       },
       {
-        pattern: /^Then the upstream alerts query filters by route and stop$/,
+        pattern: /^Then the upstream alerts query passes empty route and stop filters$/,
         run: ({ assert, world }) => {
           const body = JSON.parse(world.fetchCalls?.[0]?.body || "{}") as {
             variables?: Record<string, unknown>;
@@ -112,8 +112,8 @@ Feature: Digitransit alerts client
             JSON.stringify(body.variables),
             JSON.stringify({
               feeds: ["HSL"],
-              routeIds: ["HSL:2149"],
-              stopIds: ["HSL:1250551"],
+              routeIds: [],
+              stopIds: [],
             })
           );
         },

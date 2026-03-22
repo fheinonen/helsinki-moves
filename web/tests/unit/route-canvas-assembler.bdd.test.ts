@@ -144,7 +144,9 @@ Feature: Route canvas assembly
               id: "itinerary-transfer",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Pasila",
+                  departurePlatform: null,
                   departureStopName: "Helsinki",
                   endTimeIso: "2026-03-21T10:08:00.000Z",
                   headsign: "Airport",
@@ -153,7 +155,9 @@ Feature: Route canvas assembly
                   startTimeIso: "2026-03-21T10:02:00.000Z",
                 },
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Pasila",
                   endTimeIso: "2026-03-21T10:15:00.000Z",
                   headsign: "Mall of Tripla",
@@ -172,7 +176,9 @@ Feature: Route canvas assembly
               id: "itinerary-direct",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Rautatientori",
                   endTimeIso: "2026-03-21T10:17:00.000Z",
                   headsign: "Mall of Tripla",
@@ -198,7 +204,9 @@ Feature: Route canvas assembly
               id: "itinerary-transfer",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Pasila",
+                  departurePlatform: null,
                   departureStopName: "Helsinki",
                   endTimeIso: "2026-03-21T10:08:00.000Z",
                   headsign: "Airport",
@@ -207,7 +215,9 @@ Feature: Route canvas assembly
                   startTimeIso: "2026-03-21T10:02:00.000Z",
                 },
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Pasila",
                   endTimeIso: "2026-03-21T10:15:00.000Z",
                   headsign: "Mall of Tripla",

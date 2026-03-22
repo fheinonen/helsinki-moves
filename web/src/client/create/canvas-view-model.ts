@@ -3,6 +3,8 @@ import type { CanvasType } from "./canvas-types";
 import type { RoutePolicy } from "./intent-session";
 
 export interface ItineraryLegViewModel {
+  arrivalPlatform: string | null;
+  departurePlatform: string | null;
   destination: string;
   from: string;
   line: string;

@@ -9,7 +9,9 @@ export interface RoutePlanRequest {
 }
 
 export interface RouteLeg {
+  arrivalPlatform: string | null;
   arrivalStopName: string | null;
+  departurePlatform: string | null;
   departureStopName: string | null;
   endTimeIso: string;
   headsign: string | null;

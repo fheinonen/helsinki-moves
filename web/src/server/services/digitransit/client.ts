@@ -1,6 +1,5 @@
 import type { Departure } from "../../../shared/domain/departure.js";
 import type {
-  AlertsRequest,
   NormalizedAlert,
   NormalizedAlertEntity,
 } from "../../../shared/contracts/alerts-contract.js";
@@ -79,9 +78,15 @@ const routesQuery = `
             }
             from {
               name
+              stop {
+                platformCode
+              }
             }
             to {
               name
+              stop {
+                platformCode
+              }
             }
             start {
               scheduledTime
@@ -367,13 +372,14 @@ function normalizeRouteLeg(leg: Record<string, unknown>): RouteLeg | null {
     return null;
   }
 
+  const fromStop = leg.from as { name?: unknown; stop?: { platformCode?: unknown } } | undefined;
+  const toStop = leg.to as { name?: unknown; stop?: { platformCode?: unknown } | undefined };
+
   return {
-    arrivalStopName: typeof (leg.to as { name?: unknown } | undefined)?.name === "string"
-      ? ((leg.to as { name: string }).name.trim() || null)
-      : null,
-    departureStopName: typeof (leg.from as { name?: unknown } | undefined)?.name === "string"
-      ? ((leg.from as { name: string }).name.trim() || null)
-      : null,
+    arrivalPlatform: typeof toStop?.stop?.platformCode === "string" ? String(toStop.stop.platformCode).trim() || null : null,
+    arrivalStopName: typeof toStop?.name === "string" ? (toStop.name as string).trim() || null : null,
+    departurePlatform: typeof fromStop?.stop?.platformCode === "string" ? String(fromStop.stop.platformCode).trim() || null : null,
+    departureStopName: typeof fromStop?.name === "string" ? (fromStop.name as string).trim() || null : null,
     endTimeIso,
     headsign:
       typeof (leg.trip as { tripHeadsign?: unknown } | undefined)?.tripHeadsign === "string"
@@ -717,14 +723,14 @@ export function createDigitransitService(input: {
 
       return normalizeRouteItineraries(data);
     },
-    async getAlerts(input: AlertsRequest) {
+    async getAlerts() {
       const data = await graphqlRequest({
         body: {
           query: alertsQuery,
           variables: {
             feeds: ["HSL"],
-            routeIds: input.routeIds,
-            stopIds: input.stopIds,
+            routeIds: [],
+            stopIds: [],
           },
         },
         endpoint,

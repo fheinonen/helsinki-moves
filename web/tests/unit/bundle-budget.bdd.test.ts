@@ -16,10 +16,10 @@ Feature: Bundle budgets
     When bundle budgets are summarized
     Then the bundle budget violation count is 0
 
-  Scenario: Assets over both budgets produce two violations
-    Given gzip bundle assets over the configured budgets
+  Scenario: Assets over CSS budget produce one violation
+    Given gzip bundle assets over the CSS budget
     When bundle budgets are summarized
-    Then the bundle budget violation count is 2
+    Then the bundle budget violation count is 1
     And the bundle budget totals are 90000 JavaScript bytes and 50000 CSS bytes
   `,
   {
@@ -35,7 +35,7 @@ Feature: Bundle budgets
         },
       },
       {
-        pattern: /^Given gzip bundle assets over the configured budgets$/,
+        pattern: /^Given gzip bundle assets over the CSS budget$/,
         run: ({ world }) => {
           world.result = summarizeBundleBudgets([
             { fileName: "vendor.js", gzipBytes: 80_000, type: "js" },

@@ -44,7 +44,9 @@ Feature: Routes route contract
                   id: "itinerary-fast",
                   legs: [
                     {
+                      arrivalPlatform: null,
                       arrivalStopName: "Mall of Tripla",
+                      departurePlatform: null,
                       departureStopName: "Pasila asema",
                       endTimeIso: "2026-03-21T10:12:00.000Z",
                       headsign: "Mall of Tripla",
@@ -63,7 +65,9 @@ Feature: Routes route contract
                   id: "itinerary-walk",
                   legs: [
                     {
+                      arrivalPlatform: null,
                       arrivalStopName: "Mall of Tripla",
+                      departurePlatform: null,
                       departureStopName: "Tripla",
                       endTimeIso: "2026-03-21T10:14:00.000Z",
                       headsign: "Mall of Tripla",

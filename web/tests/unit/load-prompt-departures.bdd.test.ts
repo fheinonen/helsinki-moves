@@ -169,13 +169,14 @@ Feature: Prompt departures loading
     And prompt departures loading makes 1 departures request
     And the prompt geocode query is Kamppi
 
-  Scenario: A low-confidence destination match requires clarification
+  Scenario: A travel request geocodes the destination and skips destination clarification
     Given a prompt departures client stub
     And departures respond with low-confidence destination clarification
     When prompt departures are loaded for bus 59 from Talontie 17 to Tripla
-    Then prompt departures loading requires destination clarification
-    And prompt departures loading suggests Herttoniemi(M) via Pasila as.
-    And prompt departures loading identifies bus destination Tripla
+    Then prompt departures loading succeeds
+    And the first geocode query is for the origin
+    And the second geocode query is Tripla
+    And prompt departures loading makes 1 departures request with no destination filter
   `,
   {
     createWorld: () => ({}),
@@ -360,6 +361,18 @@ Feature: Prompt departures loading
         },
       },
       {
+        pattern: /^(Then|And) the first geocode query is for the origin$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.geocodeQueries?.[0], "Talontie 17");
+        },
+      },
+      {
+        pattern: /^(Then|And) the second geocode query is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.geocodeQueries?.[1], args[1]);
+        },
+      },
+      {
         pattern: /^(Then|And) the first generated departures request uses geocoded coordinates$/,
         run: ({ assert, world }) => {
           assert.equal(JSON.stringify(world.calls?.[0]?.coords), JSON.stringify({ lat: 60.1695, lon: 24.9321 }));
@@ -393,6 +406,13 @@ Feature: Prompt departures loading
         pattern: /^(Then|And) prompt departures loading makes 1 departures request$/,
         run: ({ assert, world }) => {
           assert.equal(world.calls?.length || 0, 1);
+        },
+      },
+      {
+        pattern: /^(Then|And) prompt departures loading makes 1 departures request with no destination filter$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.calls?.length || 0, 1);
+          assert.equal(JSON.stringify(world.calls?.[0]?.destinations), JSON.stringify([]));
         },
       },
       {

@@ -146,6 +146,8 @@ function toRecommendationFromItinerary(
   const itineraryLegs: ItineraryLegViewModel[] = itinerary.legs
     .filter((leg) => leg.mode !== "WALK" && leg.line)
     .map((leg) => ({
+      arrivalPlatform: leg.arrivalPlatform,
+      departurePlatform: leg.departurePlatform,
       destination: leg.headsign || leg.arrivalStopName || input.title,
       from: leg.departureStopName || "Current location",
       line: leg.line || leg.mode,

@@ -218,7 +218,13 @@ function SupportBlock({ props }: BaseComponentProps<SupportBlockProps>) {
       <div className="create-route-support" data-testid="create-itinerary-details">
         {routeCanvas.primary.itineraryLegs.map((leg, index) => (
           <p key={`${leg.line}-${leg.from}-${leg.to}-${index}`} className="create-destination-mode">
-            {leg.from} to {leg.to} on {leg.line}
+            {leg.from}
+            {leg.departurePlatform ? ` (Platform ${leg.departurePlatform})` : ""}
+            {" to "}
+            {leg.to}
+            {leg.arrivalPlatform ? ` (Platform ${leg.arrivalPlatform})` : ""}
+            {" on "}
+            {leg.line}
             {leg.timeRangeLabel ? ` · ${leg.timeRangeLabel}` : ""}
           </p>
         ))}

@@ -27,15 +27,17 @@ Update this file whenever a rewrite task:
 ## In Progress
 
 - `T35` Validate Vercel env vars, preview deploy, and production deploy plan
-- Intent-to-canvas create-route rewrite:
-  - block-plan contracts, session state, intent-resolution boundary, route-canvas assembly, constrained block-plan rendering, Digitransit route-plan adoption, and early itinerary planning are now in progress under `web/src/client/create/`
+  - Updated CSP in `vercel.json` to allow `https://speech.fheinonen.eu` and `https://generativelanguage.googleapis.com`
+  - Preview deploy successful: https://helsinki-commuter-train-timetable-r7anq61gm.vercel.app
+  - Verified: main page `/`, `/create`, and API endpoints return correct responses
+  - Still missing: `GEMINI_API_KEY` in Vercel env (needed for `/api/v1/generate-ui`)
 
 ## Next Up
 
-- run local release validation with the current `.env`
-- confirm matching Vercel project env before production cutover
+- add `GEMINI_API_KEY` to Vercel env (preview + production)
+- production cutover after env var is set
+- deep-dive itinerary planning with richer degraded fallback detail
 - deepen itinerary planning on top of the Digitransit route-plan seam with richer degraded fallback detail and recovery actions beyond the now-landed no-route explanation, nearest-alternative guidance, and policy-aware itinerary support
-- verify the live Digitransit GraphQL alerts shape before wiring alert-aware disruption handling into route canvases
 
 ## Blocked
 
@@ -43,6 +45,24 @@ Update this file whenever a rewrite task:
 
 ## Done
 
+- Geocoding-first destination resolution for travel requests (2026-03-22):
+  - for travel requests (prompts with take/go/get + to/towards/destination), when the LLM provides a destination, we now geocode it directly instead of trying to match against line destinations
+  - this skips the destination clarification flow for travel requests since geocoding handles the resolution
+  - board-building requests (non-travel prompts) still use destination filtering as before
+  - `promptLooksLikeTravelRequest` is now exported from `intent-resolution.ts` and used in `load-prompt-departures.ts` to distinguish between travel and board-building contexts
+  - updated `load-prompt-departures.bdd.test.ts` to reflect new behavior
+- Route leg platform codes now use correct Digitransit field (2026-03-22):
+  - live API verification showed `stop.platformCode` returns actual platform numbers (e.g., "3" for Pasila), while `stop.code` returns stop IDs (e.g., "H0062")
+  - fixed `normalizeRouteLeg` in `client.ts` to read `platformCode` instead of `code`
+  - updated GraphQL query to request `platformCode` instead of `code` on stop
+- Live Digitransit alerts GraphQL verification completed (2026-03-22):
+  - verified against official Digitransit docs that only `feeds`, `effect`, and `severityLevel` are supported filter params for `alerts()` query
+  - `route` and `stop` filter params are not part of the public API (not documented), confirmed by live testing (returns 0 results)
+  - live API returns 13 alerts in HSL feed, effects include `DETOUR`, `MODIFIED_SERVICE`, `OTHER_EFFECT`
+  - fixed `getAlerts` to use only the supported `feeds: ["HSL"]` filter and return all HSL alerts (entity filtering happens client-side in `selectPreferredAlert`)
+  - added `MODIFIED_SERVICE` effect handling to `route-alert-support.ts` alongside existing `REDUCED_SERVICE` handling
+  - updated `digitransit-alerts-client.bdd.test.ts` to reflect new behavior
+  - updated `bundle-budget.bdd.test.ts` for new JS budget (150KB)
 - Intent-to-canvas create-route rewrite foundation completed:
   - explicit canvas and block contracts added under `web/src/client/create/canvas-types.ts`, `block-plan-schema.ts`, and `block-plan-rules.ts`
   - dedicated intent-session state added under `web/src/client/create/intent-session.ts` with BDD coverage for draft/submit, latest-request-wins, policy changes, Home setup, parse fallback, and degraded canvas state

@@ -50,6 +50,21 @@ function createRouteDevPlugin(): Plugin {
   };
 }
 
+function devCspPlugin(): Plugin {
+  return {
+    name: "dev-csp-relax",
+    configureServer(server) {
+      server.middlewares.use((_req, res, next) => {
+        res.setHeader(
+          "Content-Security-Policy",
+          "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; worker-src 'self' blob:; img-src 'self' data: http: https:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://localhost:* http://localhost:* ws://127.0.0.1:* wss://127.0.0.1:* http://127.0.0.1:*; connect-src 'self' ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:* http://localhost:* http://127.0.0.1:* https://speech.fheinonen.eu https://generativelanguage.googleapis.com"
+        );
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   Object.assign(process.env, resolveViteDevRuntimeEnv(process.env, loadEnv(mode, __dirname, "")));
 
@@ -61,6 +76,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       createRouteDevPlugin(),
       htmlMinifyPlugin(),
+      ...(mode === "development" ? [devCspPlugin()] : []),
     ],
     resolve: {
       alias: {

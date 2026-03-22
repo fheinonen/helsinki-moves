@@ -37,7 +37,7 @@ function buildNeedsLocationMessage(requests: PromptDepartureRequest[]): string {
   return `Add a starting location or use current location to find departures to ${firstDestination}.`;
 }
 
-function promptLooksLikeTravelRequest(prompt: string): boolean {
+export function promptLooksLikeTravelRequest(prompt: string): boolean {
   return /\b(?:take|go|get)\b/i.test(prompt) && /\b(?:to|towards|destination)\b/i.test(prompt);
 }
 

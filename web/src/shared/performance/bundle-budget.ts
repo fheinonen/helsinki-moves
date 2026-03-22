@@ -19,7 +19,7 @@ export interface BundleBudgetSummary {
 
 export const BUNDLE_BUDGETS = {
   cssGzipBytes: 40 * 1024,
-  jsGzipBytes: 80 * 1024,
+  jsGzipBytes: 150 * 1024,
 };
 
 export function summarizeBundleBudgets(

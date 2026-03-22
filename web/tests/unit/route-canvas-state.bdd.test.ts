@@ -63,7 +63,9 @@ function createPlannedItinerary(): RouteItinerary[] {
       id: "itinerary-7",
       legs: [
         {
+          arrivalPlatform: null,
           arrivalStopName: "Mall of Tripla",
+          departurePlatform: null,
           departureStopName: "Rautatientori",
           endTimeIso: "2026-03-21T10:15:00.000Z",
           headsign: "Mall of Tripla",

@@ -260,6 +260,13 @@ Feature: Create route intent canvas
     Then the route canvas shows itinerary leg Helsinki to Pasila on P
     And the route canvas shows itinerary leg Pasila to Mall of Tripla on 59
 
+  Scenario: Route canvas shows platform codes for rail transfer legs
+    Given Digitransit routes include a P to 59 transfer to Mall of Tripla
+    And the create route canvas shell is bootstrapped
+    When the user enters a destination intent prompt
+    And the user starts create route generation
+    Then the route canvas shows arrival platform 3 for Pasila
+
   Scenario: Route canvas shows itinerary leg timing and interchange
     Given Digitransit routes include a P to 59 transfer to Mall of Tripla
     And the create route canvas shell is bootstrapped
@@ -370,7 +377,9 @@ Feature: Create route intent canvas
                 id: "itinerary-transfer",
                 legs: [
                   {
+                    arrivalPlatform: null,
                     arrivalStopName: "Pasila",
+                    departurePlatform: null,
                     departureStopName: "Helsinki",
                     endTimeIso: "2026-03-21T10:08:00.000Z",
                     headsign: "Airport",
@@ -379,7 +388,9 @@ Feature: Create route intent canvas
                     startTimeIso: "2026-03-21T10:02:00.000Z",
                   },
                   {
+                    arrivalPlatform: null,
                     arrivalStopName: "Mall of Tripla",
+                    departurePlatform: null,
                     departureStopName: "Pasila",
                     endTimeIso: "2026-03-21T10:15:00.000Z",
                     headsign: "Mall of Tripla",
@@ -412,7 +423,9 @@ Feature: Create route intent canvas
               id: "itinerary-transfer",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Pasila",
+                  departurePlatform: null,
                   departureStopName: "Helsinki",
                   endTimeIso: "2026-03-21T10:08:00.000Z",
                   headsign: "Airport",
@@ -421,7 +434,9 @@ Feature: Create route intent canvas
                   startTimeIso: "2026-03-21T10:02:00.000Z",
                 },
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Pasila",
                   endTimeIso: "2026-03-21T10:15:00.000Z",
                   headsign: "Mall of Tripla",
@@ -440,7 +455,9 @@ Feature: Create route intent canvas
               id: "itinerary-direct",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Rautatientori",
                   endTimeIso: "2026-03-21T10:17:00.000Z",
                   headsign: "Mall of Tripla",
@@ -466,7 +483,9 @@ Feature: Create route intent canvas
               id: "itinerary-7",
               legs: [
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Rautatientori",
                   endTimeIso: "2026-03-21T10:06:00.000Z",
                   headsign: "Mall of Tripla",
@@ -624,7 +643,9 @@ Feature: Create route intent canvas
               id: "itinerary-transfer",
               legs: [
                 {
+                  arrivalPlatform: "3",
                   arrivalStopName: "Pasila",
+                  departurePlatform: null,
                   departureStopName: "Helsinki",
                   endTimeIso: "2026-03-21T10:08:00.000Z",
                   headsign: "Airport",
@@ -634,7 +655,9 @@ Feature: Create route intent canvas
                   startTimeIso: "2026-03-21T10:02:00.000Z",
                 },
                 {
+                  arrivalPlatform: null,
                   arrivalStopName: "Mall of Tripla",
+                  departurePlatform: null,
                   departureStopName: "Pasila",
                   endTimeIso: "2026-03-21T10:15:00.000Z",
                   headsign: "Mall of Tripla",
@@ -915,6 +938,13 @@ Feature: Create route intent canvas
         run: async ({ assert, world }) => {
           assert.equal(world.root?.textContent?.includes("Mall of Tripla"), true);
           assert.equal(world.root?.textContent?.includes("59"), true);
+          await destroyPageHandle(world);
+        },
+      },
+      {
+        pattern: /^(Then|And) the route canvas shows arrival platform 3 for Pasila$/,
+        run: async ({ assert, world }) => {
+          assert.equal(world.root?.textContent?.includes("Platform 3"), true);
           await destroyPageHandle(world);
         },
       },

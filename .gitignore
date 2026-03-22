@@ -4,6 +4,7 @@ web/.vercel
 web/playwright-report/
 web/test-results/
 node_modules/
+web/dist/
 web/dist/.tailwind-intermediate.css
 .vercel
 ui-board*.png

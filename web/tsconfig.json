@@ -16,12 +16,11 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "vitest/globals"],
-    "baseUrl": ".",
     "paths": {
-      "@client/*": ["src/client/*"],
-      "@server/*": ["src/server/*"],
-      "@shared/*": ["src/shared/*"],
-      "@tests/*": ["tests/*"]
+      "@client/*": ["./src/client/*"],
+      "@server/*": ["./src/server/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@tests/*": ["./tests/*"]
     }
   },
   "include": [

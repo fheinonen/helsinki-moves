@@ -174,7 +174,7 @@ function createFilterPanelControls(
 
   setFilterPanelOpen({ panel, toggle, toggleLabel }, false);
   toggle.addEventListener("click", () => {
-    setFilterPanelOpen({ panel, toggle, toggleLabel }, panel.hidden);
+    setFilterPanelOpen({ panel, toggle, toggleLabel }, Boolean(panel.hidden));
   });
 
   return {

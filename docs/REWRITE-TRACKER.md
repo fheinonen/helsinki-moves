@@ -182,8 +182,8 @@ Update this file whenever a rewrite task:
   - `/api/v1/departures` now ships from a TypeScript Vercel entrypoint backed by the Hono app
   - `/api/health` now ships from a concrete TypeScript Vercel entrypoint backed by the Hono app
   - `/api/v1/geocode`, `/api/v1/client-error`, and `/api/v1/speech-transcribe` now also ship from concrete TypeScript Vercel entrypoints backed by the Hono app
-  - the legacy CommonJS departures implementation moved out of `web/api/` into `web/legacy-api/` so it no longer shadows the live route
-  - legacy CommonJS route handlers for departures, geocode, client-error, and speech transcription moved into `web/legacy-api/` so they no longer shadow the live routes
+  - the legacy CommonJS departures implementation moved out of `web/api/` so it no longer shadows the live route
+  - legacy CommonJS route handlers for departures, geocode, client-error, and speech transcription moved out of `web/api/` so they no longer shadow the live routes
   - contract coverage added for the Vercel departures, health, geocode, client-error, and speech-transcribe entrypoints and legacy helper tests were repointed to the moved modules
   - a scoped `api/v1/[...route].ts` catch-all was tested and rejected because `vercel dev` did not dispatch live `/api/v1/*` traffic to it reliably in this repo; concrete entrypoints remain the working deployment shape
 - Post-parity fix completed:

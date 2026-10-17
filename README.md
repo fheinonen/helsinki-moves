@@ -1,50 +1,79 @@
 # Helsinki Moves
 
-Web app for showing nearby Helsinki public transport departures using browser geolocation.
+Nearby Helsinki public transport departures in the browser. The page asks for your location, then shows rail, tram, metro, or bus departures. Voice search sends captured audio for transcription and geocodes the transcript.
 
-## Current status
+The running app is the TypeScript client and Hono API in `web/`. Rewrite status is in the [rewrite tracker](docs/REWRITE-TRACKER.md). The backlog is in [epics](docs/EPICS-greenfield-rewrite.md). The planned sequence is in the [sprint plan](docs/SPRINT-PLAN-greenfield-rewrite.md).
 
-- Transport modes: `RAIL`, `TRAM`, `METRO`, and `BUS`
-- Auto-loads location on page open
-- Auto-refreshes departures every 30 seconds
-- Manual refresh button
-- Rail filter: `Helsinki Only`
-- Bus/Tram/Metro controls:
-  - nearest stop selector
-  - line filters
-  - destination filters
-- UI state is persisted in URL query params and localStorage
-- Light/dark theme toggle with system preference fallback
-- Theme is initialized inline in `index.html` head before CSS load to avoid flash/mismatch
-- Frontend reports client errors to server-side logging endpoint
+## Run it locally
 
-## API routes
+From `web/`:
 
-- `GET /api/v1/departures`
-  - Required: `lat`, `lon`, `mode`
-  - `mode`: `RAIL`, `TRAM`, `METRO`, or `BUS`
-  - BUS/TRAM/METRO optional filters: `stopId`, `line`, `dest`
-  - Metro mode maps to Digitransit's upstream `SUBWAY` route mode
-- `POST /api/v1/client-error`
-  - Accepts sanitized client error reports (payload-limited)
+1. Copy the env file with `cp .env.example .env`.
+2. Set `DIGITRANSIT_API_KEY` in `.env`.
+3. Run `npm install`.
+4. Run `npm run build`.
+5. Run `vercel dev`.
 
-## Client Metric Events
+`npm run dev` starts the Vite client at `http://127.0.0.1:4173` unless `HOST` or `PORT` is set. `npm run preview` serves the built client at `http://127.0.0.1:4173`. `vercel dev` serves the API routes.
 
-Frontend also emits lightweight sampled metric events to `POST /api/v1/client-error`
-with `type: "metric"` and `context.metricName`.
+Voice transcription needs `SPEECH_TRANSCRIBE_API_KEY` and `SPEECH_TRANSCRIBE_MODEL` as well. `npm run env:check` treats `DIGITRANSIT_API_KEY`, `SPEECH_TRANSCRIBE_API_KEY`, and `SPEECH_TRANSCRIBE_MODEL` as required. `.env.example` sets `SPEECH_TRANSCRIBE_API_URL` and `SPEECH_TRANSCRIBE_LANGUAGE` too. When `SPEECH_TRANSCRIBE_API_URL` is unset, the server calls `https://api.openai.com/v1/audio/transcriptions`. When `SPEECH_TRANSCRIBE_LANGUAGE` is unset, the server uses `fi`. `OPENAI_API_KEY` is a speech auth fallback when `SPEECH_TRANSCRIBE_API_KEY` is empty. `.env.example` omits `OPENAI_API_KEY`.
 
-- `first_successful_render`
-  - `context` keys: `sessionElapsedMs`, `mode`, `requestMode`, `hasStation`, `departureCount`
-- `initial_nearest_stop_resolved`
-  - `context` keys: `sessionElapsedMs`, `mode`, `requestMode`, `selectedStopId`, `distanceMeters`, `departureCount`
-- `first_manual_interaction`
-  - `context` keys: `sessionElapsedMs`, `mode`, `interactionType` (+ optional interaction-specific keys)
-- `first_manual_stop_context_change`
-  - `context` keys: `sessionElapsedMs`, `mode`, `changeType`, `lineFilterCount`, `destinationFilterCount`
+`web/package.json` sets the Node.js runtime to `24.x`.
+
+## Deploy
+
+From `web/`, run `vercel --prod --yes`.
+
+Vercel serves the built client from `dist/` and the API entrypoints from `web/api/`. The production domain is [https://helsinkimoves.fheinonen.eu](https://helsinkimoves.fheinonen.eu).
+
+Cutover checks are in the [release checklist](docs/RELEASE-CHECKLIST-greenfield-rewrite.md) and the [deploy plan](docs/DEPLOY-PLAN-greenfield-rewrite.md).
+
+## App behavior
+
+- The mode names are `RAIL`, `TRAM`, `METRO`, and `BUS`. A metro request uses Digitransit mode `SUBWAY`.
+- Opening the page requests the current location and loads nearby departures.
+- The refresh control requests the location again.
+- The shell has a stop selector, line filters, and destination filters.
+- The page URL stores `mode`, `stop`, `line`, and `dest`.
+- Voice search posts audio to `POST /api/v1/speech-transcribe`, then geocodes the transcript.
+
+## Run checks
+
+Run these from `web/`. Unit and coverage scripts filter out passing Vitest lines and the summary.
+
+- `npm run typecheck` runs `tsc --noEmit`. `npm run lint` runs that same check.
+- `npm run test:unit` runs Vitest. `npm run test:coverage` adds coverage. `npm run test` runs lint and coverage.
+- `npm run test:e2e` runs Playwright. `npm run test:e2e:chromium`, `npm run test:e2e:firefox`, and `npm run test:e2e:webkit` each limit the run to one browser.
+- `npm run ci` runs typecheck, unit tests, coverage, and the Chromium end-to-end script.
+- `npm run ui:geometry` checks layout contracts. `npm run ui:fast` runs that check and the departures interaction test.
+- `npm run ui:check` compares the desktop and mobile shell snapshots. `npm run ui:baseline` updates those snapshots.
+- `npm run release:validate` runs the local cutover checks, including `npm run env:check`.
+- `npm run smoke:live` needs `SMOKE_BASE_URL` set to the deployed origin.
+
+## Where the code lives
+
+- `web/index.html` loads `web/src/client/main.ts`.
+- `web/src/client/` is the browser app. Vite builds it.
+- `web/src/server/` is the Hono app.
+- `web/src/shared/` holds domain types and contracts. `web/tsconfig.json` enables TypeScript `strict`.
+- `web/api/` holds the Vercel route entrypoints.
+- Import rules are in [web/src/README.md](web/src/README.md).
+- `web/scripts/README.md` and `web/styles/README.md` describe the previous client.
+- `cli/` is the Go CLI.
+
+## API
+
+`web/src/server/app.ts` registers the routes.
+
+- `GET /api/health` returns `{ "ok": true }`.
+- `GET /api/v1/departures` requires `lat`, `lon`, and `mode`. Optional keys are `stopId`, `line`, `dest`, `results`, `lineIntent`, and `intent`. `line` and `dest` are comma-separated.
+- `GET /api/v1/geocode` requires `q`. Optional keys are `lat`, `lon`, and `lang`.
+- `POST /api/v1/client-error` validates and sanitizes the JSON body, then returns `{ "accepted": true }` with status 202.
+- `POST /api/v1/speech-transcribe` returns a transcript when speech env is set. It returns status 503 when the speech service is not configured.
 
 ## CLI
 
-The terminal CLI now lives in `cli/` and is implemented in Go.
+The Go CLI lives in `cli/`.
 
 From `cli/`:
 
@@ -52,17 +81,17 @@ From `cli/`:
 go test ./...
 go run ./cmd/hm --help
 
-go run ./cmd/hm -l "Vihdintie 17"              # bus departures near an address
-go run ./cmd/hm -l "Vihdintie 17" --line 57    # filter to line 57
-go run ./cmd/hm --stop Talontie                # precise single-stop lookup
-go run ./cmd/hm -l Kamppi -m tram              # tram departures
-go run ./cmd/hm -l Pasila --all                # all transit modes
+go run ./cmd/hm -l "Vihdintie 17"
+go run ./cmd/hm -l "Vihdintie 17" --line 57
+go run ./cmd/hm --stop Talontie
+go run ./cmd/hm -l Kamppi -m tram
+go run ./cmd/hm -l Pasila --all
 go run ./cmd/hm -l Pasila -m rail --json | jq '.[]'
 ```
 
-Set `HM_API_URL` to override the default API endpoint (e.g. for local dev).
+The default API is `https://helsinkimoves.fheinonen.eu`. Set `HM_API_URL` to use another base URL.
 
-Tagged releases also publish prebuilt archives on `GitHub Releases`.
+Tagged releases publish prebuilt archives on `GitHub Releases`.
 
 ```text
 hm_2026.3.19_darwin_arm64.tar.gz
@@ -72,7 +101,7 @@ hm_2026.3.19_linux_arm64.tar.gz
 hm_2026.3.19_windows_amd64.zip
 ```
 
-Those tagged artifacts are produced from `cli/` and packaged under `cli/dist/` during release builds.
+The release scripts write those archives under `cli/dist/`.
 
 ```bash
 VERSION=2026.3.19 ./scripts/build-release.sh linux amd64
@@ -82,56 +111,8 @@ VERSION=2026.3.19 ./scripts/archive-release.sh linux amd64
 tar -tzf ./dist/hm_2026.3.19_linux_amd64.tar.gz
 ```
 
-Release archives follow `hm_<version>_<goos>_<goarch>.tar.gz` on Unix targets and `.zip` on Windows.
+Unix archives use `hm_<version>_<goos>_<goarch>.tar.gz`. Windows archives use `.zip`.
 
-## Project structure
+## Commit
 
-- `cli/cmd/hm/main.go` Go CLI entrypoint
-- `cli/tests/bdd/*.scenarios.txt` CLI behavior and contract scenarios
-- `web/index.html` app shell
-- `web/scripts/app/*.js` frontend runtime modules (ordered via `web/scripts/app/entry.js`)
-- `web/scripts/README.md` module boundaries/load order (`window.HMApp` contract)
-- `web/styles/main.css` stylesheet entrypoint
-- `web/styles/*.css` modular stylesheets (see `web/styles/README.md`)
-- `web/tools/build-assets.mjs` asset bundling script
-- `web/dist/` generated JS/CSS bundles loaded by `index.html`
-- `web/assets/icons/` static icons
-- `web/api/v1/departures.js` departures API
-- `web/api/v1/client-error.js` client error reporting API
-- `web/api/lib/digitransit.js` Digitransit GraphQL client + queries
-- `web/api/lib/departures-utils.js` shared departures parsing/filter utilities
-- `web/vercel.json` security headers config
-
-## Local development
-
-From `web/`:
-
-1. `cp .env.example .env`
-2. Set `DIGITRANSIT_API_KEY`, `AZURE_SPEECH_KEY`, and `AZURE_SPEECH_REGION` in `.env`
-3. `npm install`
-4. `npm run build`
-5. Run `vercel dev`
-
-Quick checks:
-
-From repository root:
-
-- `node --check web/scripts/app/01-state.js`
-- `node --check web/scripts/app/02-ui.js`
-- `node --check web/scripts/app/03-data.js`
-- `node --check web/scripts/app/04-init.js`
-- `node --check web/scripts/app/entry.js`
-- `node --check web/tools/build-assets.mjs`
-- `node --check web/api/v1/departures.js`
-- `node --check web/api/v1/client-error.js`
-- `node --check web/api/lib/digitransit.js`
-- `node --check web/api/lib/departures-utils.js`
-
-## Deploy (Vercel)
-
-1. Import repository to Vercel.
-2. Set **Root Directory** to `web`.
-3. Add environment variables `DIGITRANSIT_API_KEY`, `AZURE_SPEECH_KEY`, and `AZURE_SPEECH_REGION`.
-4. Deploy.
-
-Runtime: Node.js `24.x` (`web/package.json`).
+Changes in this repository are committed with `jj`.

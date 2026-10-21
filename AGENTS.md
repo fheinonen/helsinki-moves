@@ -71,7 +71,3 @@ Runtime target:
 Primary production domain is aliased to:
 
 - `https://helsinkimoves.fheinonen.eu`
-
-## Version Control
-
-- Changes in this repository are committed with `jj` (Jujutsu).

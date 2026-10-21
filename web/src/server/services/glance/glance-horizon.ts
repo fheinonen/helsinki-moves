@@ -55,7 +55,7 @@ export function selectGlanceDepartures(input: {
   if (!usePerLineFirst(policy, input.selections)) {
     return windowed.slice(0, policy.maxRows);
   }
-  return appendUnlistedUntilMaxRows(earliestDeparturePerLine(windowed), windowed, policy.maxRows);
+  return appendUnlistedUntilMaxRows(earliestDeparturePerLineDestination(windowed), windowed, policy.maxRows);
 }
 
 function compareDeparturesByTime(left: Departure, right: Departure): number {
@@ -115,14 +115,19 @@ function usePerLineFirst(policy: GlancePolicy, selections: GlanceSelections): bo
   return policy.perLineFirst;
 }
 
-function earliestDeparturePerLine(windowed: readonly Departure[]): Departure[] {
+function lineDestinationKey(departure: Departure): string {
+  return `${departure.line}\u0000${departure.destination}`;
+}
+
+function earliestDeparturePerLineDestination(windowed: readonly Departure[]): Departure[] {
   const seen = new Set<string>();
   const picks: Departure[] = [];
   for (const departure of windowed) {
-    if (seen.has(departure.line)) {
+    const key = lineDestinationKey(departure);
+    if (seen.has(key)) {
       continue;
     }
-    seen.add(departure.line);
+    seen.add(key);
     picks.push(departure);
   }
   return picks;

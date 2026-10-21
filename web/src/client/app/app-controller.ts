@@ -27,6 +27,8 @@ interface CreateAppControllerOptions {
   voiceTypedFallbackPrompt?: VoiceTypedFallbackPrompt | null;
 }
 
+type DepartureLoadPresentation = "blank" | "keep";
+
 export interface AppController {
   chooseVoiceLocation(index: number): Promise<void>;
   getActiveMode(): Mode;
@@ -144,14 +146,30 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     store.applyDeparturesResponse(response);
   }
 
-  async function loadDeparturesForCurrentState(): Promise<void> {
+  function presentDepartureLoad(presentation: DepartureLoadPresentation): void {
+    switch (presentation) {
+      case "blank":
+        store.startLoading(LOADING_MESSAGE);
+        return;
+      case "keep":
+        return;
+      default: {
+        const unreachable: never = presentation;
+        throw new Error(`Unexpected departure load presentation: ${String(unreachable)}`);
+      }
+    }
+  }
+
+  async function loadDeparturesForCurrentState(
+    presentation: DepartureLoadPresentation = "blank"
+  ): Promise<void> {
     if (!store.getState().coords) {
       await refreshNearbyDepartures();
       return;
     }
 
     const { abortController, requestId } = createRequestToken();
-    store.startLoading(LOADING_MESSAGE);
+    presentDepartureLoad(presentation);
 
     try {
       await applyDeparturesRequest(requestId, abortController.signal);
@@ -496,13 +514,13 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     async toggleDestinationFilter(destination) {
       store.toggleDestinationFilter(destination);
       if (store.getState().coords) {
-        await loadDeparturesForCurrentState();
+        await loadDeparturesForCurrentState("keep");
       }
     },
     async toggleLineFilter(line) {
       store.toggleLineFilter(line);
       if (store.getState().coords) {
-        await loadDeparturesForCurrentState();
+        await loadDeparturesForCurrentState("keep");
       }
     },
   };

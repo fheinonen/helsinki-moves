@@ -62,7 +62,7 @@ function departuresFor(world: World): Departure[] {
   }));
 }
 
-function boardText(world: World): string {
+function boardLines(world: World, includeDestination: boolean): string {
   const departures = world.payload?.station?.departures;
   if (!departures) {
     throw new Error("Expected a departure board");
@@ -72,9 +72,20 @@ function boardText(world: World): string {
       const minutes = Math.round(
         (new Date(departure.departureIso).getTime() - world.clockMs) / 60_000
       );
+      if (includeDestination) {
+        return `${departure.line} ${departure.destination} ${minutes}`;
+      }
       return `${departure.line} ${minutes}`;
     })
     .join(", ");
+}
+
+function boardText(world: World): string {
+  return boardLines(world, false);
+}
+
+function boardReading(world: World): string {
+  return boardLines(world, true);
 }
 
 async function loadBoard(world: World, search = ""): Promise<void> {
@@ -145,11 +156,23 @@ Feature: Glance horizon
     When the departures route loads that stop
     Then the board is A 50, A 50, A 50, A 54
 
-  Scenario: A busy rail stop leads with one departure from each line
+  Scenario: A busy rail stop lists departures in ascending time
     Given the clock is 2026-03-07T10:00:00.000Z
     And a RAIL stop has the busy line mix
     When the departures route loads that stop
-    Then the board is I 1, P 4, L 6, A 8, U 13, I 2, I 3, I 5, I 7, I 9
+    Then the board is I 1, I 2, I 3, P 4, I 5, L 6, I 7, A 8, I 9, I 10
+
+  Scenario: Both directions of one line stay in glance order
+    Given the clock is 2026-03-07T10:00:00.000Z
+    And a BUS stop has 550 to Leppävaara in 1 minute, 550 to Itäkeskus in 2 minutes, 52 to Kamppi in 10 minutes, and 200 to Elielinaukio in 20 minutes
+    When the departures route loads that stop
+    Then the board reads 550 Leppävaara 1, 550 Itäkeskus 2, 52 Kamppi 10, 200 Elielinaukio 20
+
+  Scenario: A full glance board still shows the opposite destination
+    Given the clock is 2026-03-07T10:00:00.000Z
+    And a BUS stop has 550 to Leppävaara in 1 minute, 550 to Itäkeskus in 2 minutes, and eleven other lines from 10 minutes
+    When the departures route loads that stop
+    Then the board reads 550 Leppävaara 1, 550 Itäkeskus 2, L01 North 10, L02 North 11, L03 North 12, L04 North 13, L05 North 14, L06 North 15, L07 North 16, L08 North 17, L09 North 18, L10 North 19
 
   Scenario: Rail departures never pass seventy five minutes
     Given the clock is 2026-03-07T10:00:00.000Z
@@ -173,7 +196,7 @@ Feature: Glance horizon
     Given the clock is 2026-03-07T10:00:00.000Z
     And a RAIL stop has the busy line mix
     When the departures route loads that stop with results 2
-    Then the board is I 1, P 4, L 6, A 8, U 13, I 2, I 3, I 5, I 7, I 9
+    Then the board is I 1, I 2, I 3, P 4, I 5, L 6, I 7, A 8, I 9, I 10
 
   Scenario: Metro departures stop at twenty five minutes
     Given the clock is 2026-03-07T10:00:00.000Z
@@ -260,6 +283,33 @@ Feature: Glance horizon
         run: ({ world }) => {
           world.mode = "RAIL";
           world.rows = BUSY_ROWS.map((row) => ({ ...row }));
+        },
+      },
+      {
+        pattern: /^Given a BUS stop has 550 to Leppävaara in 1 minute, 550 to Itäkeskus in 2 minutes, 52 to Kamppi in 10 minutes, and 200 to Elielinaukio in 20 minutes$/,
+        run: ({ world }) => {
+          world.mode = "BUS";
+          world.rows = [
+            { destination: "Leppävaara", line: "550", minutes: 1 },
+            { destination: "Itäkeskus", line: "550", minutes: 2 },
+            { destination: "Kamppi", line: "52", minutes: 10 },
+            { destination: "Elielinaukio", line: "200", minutes: 20 },
+          ];
+        },
+      },
+      {
+        pattern: /^Given a BUS stop has 550 to Leppävaara in 1 minute, 550 to Itäkeskus in 2 minutes, and eleven other lines from 10 minutes$/,
+        run: ({ world }) => {
+          world.mode = "BUS";
+          world.rows = [
+            { destination: "Leppävaara", line: "550", minutes: 1 },
+            { destination: "Itäkeskus", line: "550", minutes: 2 },
+            ...Array.from({ length: 11 }, (_item, index) => ({
+              destination: "North",
+              line: `L${String(index + 1).padStart(2, "0")}`,
+              minutes: 10 + index,
+            })),
+          ];
         },
       },
       {
@@ -350,6 +400,12 @@ Feature: Glance horizon
         pattern: /^Then the board is (.+)$/,
         run: ({ assert, world, args }) => {
           assert.equal(boardText(world), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the board reads (.+)$/,
+        run: ({ assert, world, args }) => {
+          assert.equal(boardReading(world), args[0]);
         },
       },
       {

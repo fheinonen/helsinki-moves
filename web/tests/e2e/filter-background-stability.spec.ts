@@ -210,9 +210,10 @@ Feature: Filter background stability
             const chipFill = getComputedStyle(chip).backgroundImage;
             const shellFill = getComputedStyle(shell).backgroundImage;
             chip.click();
+            const chipStyle = getComputedStyle(chip);
             return {
-              highlight: getComputedStyle(chip).webkitTapHighlightColor,
-              sameFill: getComputedStyle(chip).backgroundImage === chipFill,
+              highlight: chipStyle.getPropertyValue("-webkit-tap-highlight-color"),
+              sameFill: chipStyle.backgroundImage === chipFill,
               sameShell: getComputedStyle(shell).backgroundImage === shellFill,
             };
           }, selector);

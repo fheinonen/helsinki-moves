@@ -3,6 +3,7 @@ import type { Mode } from "@shared/domain/mode";
 
 interface RenderDepartureCardOptions {
   departure: Departure;
+  destinationColor?: string;
   documentRef: Document;
   mode: Mode;
 }
@@ -55,7 +56,7 @@ function buildDepartureCardModel(departure: Departure, mode: Mode): DepartureCar
 }
 
 export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTableRowElement {
-  const { departure, documentRef, mode } = options;
+  const { departure, destinationColor, documentRef, mode } = options;
   const model = buildDepartureCardModel(departure, mode);
   const item = documentRef.createElement("tr");
   item.className = "departure-card";
@@ -70,6 +71,10 @@ export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTa
   const destinationText = documentRef.createElement("span");
   destinationText.className = "departure-card__destination-text";
   destinationText.textContent = model.destination;
+  if (destinationColor) {
+    item.style.setProperty("--destination-color", destinationColor);
+    destinationText.style.color = destinationColor;
+  }
   destination.appendChild(destinationText);
 
   if (model.platformLabel) {

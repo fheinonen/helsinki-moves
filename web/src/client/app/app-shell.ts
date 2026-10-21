@@ -5,6 +5,7 @@ import { createStopSelectorView } from "@client/features/stops/stop-selector-vie
 import { getVoiceActionLabel } from "@client/features/voice/voice-capability";
 import type { AppState } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
+import { createDestinationColorBook } from "@shared/domain/destination-color";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
@@ -258,6 +259,7 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
   departuresList.className = "app-shell__departures";
   head.appendChild(columnHeaders);
   element.append(head, departuresList);
+  const destinationColors = createDestinationColorBook();
   let previousSignature = "";
 
   return {
@@ -281,6 +283,7 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
         departuresList.appendChild(
           renderDepartureCard({
             departure,
+            destinationColor: destinationColors.colorFor(departure.destination),
             documentRef,
             mode: state.activeMode,
           })

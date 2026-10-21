@@ -138,7 +138,6 @@ Feature: App shell render stability
             controller,
             documentRef,
             root,
-            store: world.store,
           });
           world.container = root;
         },

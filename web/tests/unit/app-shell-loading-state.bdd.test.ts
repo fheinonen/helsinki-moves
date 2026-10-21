@@ -66,7 +66,6 @@ Feature: App shell loading state
             controller,
             documentRef,
             root: container,
-            store: world.store,
           });
           world.documentRef = documentRef;
           world.container = container;

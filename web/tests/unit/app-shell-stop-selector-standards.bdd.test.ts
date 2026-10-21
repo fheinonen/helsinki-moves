@@ -189,13 +189,11 @@ Feature: App shell stop selector standards
             controller,
             documentRef: world.documentRef,
             root,
-            store: world.store,
           });
           world.cleanup = renderAppShell({
             controller,
             documentRef: world.documentRef,
             root,
-            store: world.store,
           });
         },
       },
@@ -231,7 +229,6 @@ Feature: App shell stop selector standards
             controller,
             documentRef,
             root,
-            store: world.store,
           });
 
           world.container = root;
@@ -266,13 +263,11 @@ Feature: App shell stop selector standards
             controller,
             documentRef,
             root: firstContainer,
-            store: world.store,
           });
           renderAppShell({
             controller,
             documentRef,
             root: secondContainer,
-            store: world.store,
           });
 
           world.documentRef = documentRef;

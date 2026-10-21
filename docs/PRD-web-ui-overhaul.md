@@ -4,6 +4,8 @@
 **Date:** 2026-02-26
 **Status:** Draft
 
+The tree sketch in this draft named the previous client. That client is deleted. The running app is under `web/src/`.
+
 ---
 
 ## 1. Executive Summary

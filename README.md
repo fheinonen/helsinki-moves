@@ -58,7 +58,6 @@ Run these from `web/`. Unit and coverage scripts filter out passing Vitest lines
 - `web/src/shared/` holds domain types and contracts. `web/tsconfig.json` enables TypeScript `strict`.
 - `web/api/` holds the Vercel route entrypoints.
 - Import rules are in [web/src/README.md](web/src/README.md).
-- `web/scripts/README.md` and `web/styles/README.md` describe the previous client.
 - `cli/` is the Go CLI.
 
 ## API

@@ -197,6 +197,14 @@ Update this file whenever a rewrite task:
   - transit-board responsive sizing now flows through shared shell tokens instead of repeated per-breakpoint overrides
   - departures normalization and route assembly helpers are reduced to smaller reusable functions without changing filter or ordering behavior
   - shell-side stop/filter/departure helpers are split into smaller render and sync utilities so the UI iteration code is easier to maintain
+- Legacy API removal completed:
+  - `web/legacy-api/` is deleted
+- Glance horizon completed:
+  - departures selection uses `web/src/server/services/glance/glance-horizon.ts`
+- `T38` completed:
+  - the previous browser client under `web/scripts/`, the previous stylesheets under `web/styles/`, and the CommonJS helpers under `web/api/lib/` are deleted
+  - the previous asset build script and the JavaScript tests that only covered those trees are deleted
+  - same-origin script and connect Content Security Policy rules, ESM package scope, and explicit `.js` server imports are checked by Vitest
 
 ## Decisions Locked
 
@@ -264,3 +272,4 @@ Update this file whenever a rewrite task:
 | T35 | Validate Vercel env vars, preview deploy, and production deploy plan | 6 | in_progress | T33 | Local env gate now passes; preview runtime compatibility is fixed and a fresh preview is healthy; waiting on full release validation and production confirmation |
 | T36 | Production cutover and smoke verification | 6 | todo | T34, T35 | Run only after local validation |
 | T37 | Cut `/api/v1/departures` over to the Hono server route | 6 | done | T15 | Legacy JS route moved out of `web/api/` to stop Vercel shadowing |
+| T38 | Remove the remaining legacy client, styles, and CommonJS helpers | 6 | done | T37 | Previous browser client, stylesheets, `web/api/lib`, and their unrun JavaScript tests are gone. Live CSP and Vercel module checks run in Vitest |

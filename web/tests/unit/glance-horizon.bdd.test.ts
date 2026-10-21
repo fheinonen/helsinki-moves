@@ -156,11 +156,11 @@ Feature: Glance horizon
     When the departures route loads that stop
     Then the board is A 50, A 50, A 50, A 54
 
-  Scenario: A busy rail stop leads with one departure from each line
+  Scenario: A busy rail stop lists departures in ascending time
     Given the clock is 2026-03-07T10:00:00.000Z
     And a RAIL stop has the busy line mix
     When the departures route loads that stop
-    Then the board is I 1, P 4, L 6, A 8, U 13, I 2, I 3, I 5, I 7, I 9
+    Then the board is I 1, I 2, I 3, P 4, I 5, L 6, I 7, A 8, I 9, I 10
 
   Scenario: Both directions of one line stay in glance order
     Given the clock is 2026-03-07T10:00:00.000Z
@@ -196,7 +196,7 @@ Feature: Glance horizon
     Given the clock is 2026-03-07T10:00:00.000Z
     And a RAIL stop has the busy line mix
     When the departures route loads that stop with results 2
-    Then the board is I 1, P 4, L 6, A 8, U 13, I 2, I 3, I 5, I 7, I 9
+    Then the board is I 1, I 2, I 3, P 4, I 5, L 6, I 7, A 8, I 9, I 10
 
   Scenario: Metro departures stop at twenty five minutes
     Given the clock is 2026-03-07T10:00:00.000Z

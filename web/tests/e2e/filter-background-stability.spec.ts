@@ -11,7 +11,14 @@ interface BackgroundProbe {
   samples: number;
 }
 
+interface ChipFillProbe {
+  highlight: string;
+  sameFill: boolean;
+  sameShell: boolean;
+}
+
 interface World {
+  fill?: ChipFillProbe;
   probe?: BackgroundProbe;
 }
 
@@ -87,6 +94,19 @@ Feature: Filter background stability
     And the departure board is open for background sampling
     When the destination filter is sampled for background flashes
     Then the departure background stays visible for every sample
+
+  Scenario: Pressing a line filter keeps the chip fill color
+    Given departure fixtures are ready for background sampling
+    And the departure board is open for background sampling
+    When the line filter fill is sampled
+    Then the filter chip keeps its fill
+    And the filter chip has no tap highlight
+
+  Scenario: Pressing a destination filter keeps the chip fill color
+    Given departure fixtures are ready for background sampling
+    And the departure board is open for background sampling
+    When the destination filter fill is sampled
+    Then the filter chip keeps its fill
   `,
   {
     createWorld: async () => ({}),
@@ -172,6 +192,46 @@ Feature: Filter background stability
               return { backgroundFrames, hiddenBoardFrames, samples };
             },
             { targetSelector: selector, windowMs: RELOAD_DELAY_MS + 80 }
+          );
+        },
+      },
+      {
+        pattern: /^When the (line|destination) filter fill is sampled$/,
+        run: async ({ args, fixtures, world }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const selector =
+            args[0] === "line" ? "[data-line-filter='550']" : "[data-destination-filter='Kamppi']";
+          world.fill = await page.evaluate((targetSelector) => {
+            const chip = document.querySelector(targetSelector);
+            const shell = document.querySelector(".app-shell");
+            if (!(chip instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
+              return { highlight: "", sameFill: false, sameShell: false };
+            }
+            const chipFill = getComputedStyle(chip).backgroundImage;
+            const shellFill = getComputedStyle(shell).backgroundImage;
+            chip.click();
+            return {
+              highlight: getComputedStyle(chip).webkitTapHighlightColor,
+              sameFill: getComputedStyle(chip).backgroundImage === chipFill,
+              sameShell: getComputedStyle(shell).backgroundImage === shellFill,
+            };
+          }, selector);
+        },
+      },
+      {
+        pattern: /^Then the filter chip keeps its fill$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.fill?.sameShell, true, "the panel background changed when a filter was pressed");
+          assert.equal(world.fill?.sameFill, true, "the filter chip fill changed color when it was pressed");
+        },
+      },
+      {
+        pattern: /^Then the filter chip has no tap highlight$/,
+        run: ({ assert, world }) => {
+          assert.match(
+            world.fill?.highlight || "",
+            /^(transparent|rgba\(0,\s*0,\s*0,\s*0\))$/i,
+            "a pressed filter still paints a tap highlight"
           );
         },
       },

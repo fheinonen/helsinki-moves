@@ -4,6 +4,8 @@
 **Date:** 2026-02-28  
 **Status:** Draft
 
+The implementation paths in this draft named the previous client. That client is deleted. The running app is under `web/src/`.
+
 ## 1. Executive Summary
 
 - **Problem Statement:** Filtering currently requires moving from departure results to the filter panel, which adds friction during quick-glance usage. Users want to filter directly from the cards they are already reading (hero and list rows).

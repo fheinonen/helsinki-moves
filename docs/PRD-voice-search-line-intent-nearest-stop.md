@@ -4,6 +4,8 @@
 **Date:** 2026-03-05  
 **Status:** Draft
 
+The implementation paths in this draft named the previous client and CommonJS helpers. Those files are deleted. The running app is under `web/src/`.
+
 ## 1. Executive Summary
 
 - **Problem Statement:** Voice Search currently resolves spoken input as a place query. Inputs like "Bus 67", "Tram 9", "A-train", "bussi 67", "ratikka 9", or "A-juna" are not treated as line-intent requests, so users do not reliably get the nearest stop with that line's departures.

@@ -93,8 +93,7 @@ From `web/`:
 ## Production Cutover Rules
 
 - Cut over only after all required validation gates pass locally.
-- Treat the rewrite-native performance probes as the release gates, not the legacy `.js` probes.
-- Keep the legacy test files as reference material only.
+- Treat the rewrite-native performance probes as the release gates.
 - Use the deploy procedure in `docs/DEPLOY-PLAN-greenfield-rewrite.md`.
 - Deploy from `web/` with:
   - `vercel --prod --yes`

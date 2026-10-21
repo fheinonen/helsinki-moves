@@ -3,12 +3,7 @@
 **Status:** In review  
 **Date:** 2026-03-07
 
-This checklist compares the rewrite in `web/src/` against legacy user-visible behavior and test coverage found in:
-
-- `web/tests/e2e/*.js`
-- `web/tests/*.test.js`
-- legacy app modules under `web/scripts/app/`
-- legacy API handlers under `web/api/v1/`
+This checklist compares the rewrite in `web/src/` against the user-visible behavior previously covered by the old browser client and CommonJS API. Those trees are deleted. The running checks are the Vitest and Playwright suites.
 
 ## Covered In Rewrite
 
@@ -111,15 +106,13 @@ These exist in legacy tests or modules but do not yet have direct rewrite covera
 
 ## Historical Diagnostics Only
 
-- [x] `web/tests/e2e/mode-switch-performance.spec.js`
-  Superseded by rewrite-native `tests/e2e/mode-switch-responsiveness.spec.ts`.
-- [x] `web/tests/e2e/light-filter-panel-flicker.spec.js`
-  Superseded by rewrite-native `tests/e2e/light-theme-controls-stability.spec.ts`; the old collapsible-panel probe no longer matches the rewrite UI.
-- [x] `web/tests/firefox-performance.test.js`
-  Treated as historical reference except for the glass-blur fallback, which is now covered by rewrite-native unit tests.
+The old JavaScript probes are deleted. Their release-critical behavior now lives in the rewrite suites:
+
+- Mode-switch responsiveness is `web/tests/e2e/mode-switch-responsiveness.spec.ts`.
+- Light-theme control stability is `web/tests/e2e/light-theme-controls-stability.spec.ts`.
+- The Firefox glass-blur fallback is covered by rewrite-native unit tests.
 
 ## Suggested T33 Focus
 
 1. Run the rewrite-native cutover gates as part of final local validation.
-2. Keep the legacy `.js` probes as reference material only unless a concrete regression reappears.
-3. Move release work to env validation and cutover preparation.
+2. Move release work to env validation and cutover preparation.

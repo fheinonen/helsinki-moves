@@ -4,6 +4,8 @@
 **Date:** 2026-02-28  
 **Status:** Draft
 
+The implementation paths in this draft named the previous client. That client is deleted. The running app is under `web/src/`.
+
 ## 1. Executive Summary
 
 - **Problem Statement:** The current departure cards and top action controls are functional but visually dense, slowing quick-glance reading on mobile. The current `Describe Location` wording and icon set also do not match the intended interaction model shown in the mockup.

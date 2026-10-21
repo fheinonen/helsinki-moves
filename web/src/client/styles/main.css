@@ -53,6 +53,7 @@ select {
 
 button {
   appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app-shell {
@@ -227,6 +228,13 @@ button {
   text-transform: uppercase;
   transition:
     border-color 140ms ease,
+    color 140ms ease;
+}
+
+.mode-selector__button,
+.voice-choice {
+  transition:
+    border-color 140ms ease,
     background-color 140ms ease,
     color 140ms ease;
 }
@@ -290,11 +298,15 @@ button {
 }
 
 .mode-selector__button.is-active,
-.filter-chip.is-active,
 .app-shell__filter-toggle.is-open,
 .app-shell__voice.is-listening {
   border-color: var(--interactive);
   background: linear-gradient(180deg, rgba(215, 181, 121, 0.08), rgba(215, 181, 121, 0.02));
+  color: var(--interactive-strong);
+}
+
+.filter-chip.is-active {
+  border-color: var(--interactive);
   color: var(--interactive-strong);
 }
 

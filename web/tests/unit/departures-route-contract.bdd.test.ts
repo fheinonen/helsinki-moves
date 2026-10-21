@@ -2,8 +2,9 @@ import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import { createApp } from "@server/app";
 import type { Departure } from "@shared/domain/departure";
-import type { Mode } from "@shared/domain/mode";
 import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
+
+const FIXTURE_NOW_MS = Date.parse("2026-03-07T10:09:00.000Z");
 
 interface NearbyStopNode {
   distance: number;
@@ -16,7 +17,7 @@ interface NearbyStopNode {
 }
 
 interface DigitransitServiceStub {
-  getDeparturesForStopIds(stopIds: string[], options: { mode: Mode; resultLimit: number }): Promise<Map<string, Departure[]>>;
+  getDeparturesForStopIds(stopIds: string[]): Promise<Map<string, Departure[]>>;
   getNearbyStops(input: { lat: number; lon: number; radius: number }): Promise<NearbyStopNode[]>;
 }
 
@@ -72,7 +73,7 @@ Feature: Departures route contract
           if (!world.service) {
             throw new Error("Expected Digitransit service");
           }
-          const app = createApp({ digitransitService: world.service });
+          const app = createApp({ digitransitService: world.service, now: () => FIXTURE_NOW_MS });
           world.response = await app.request(
             "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=BUS"
           );
@@ -154,7 +155,7 @@ Feature: Departures route contract
           if (!world.service) {
             throw new Error("Expected Digitransit service");
           }
-          const app = createApp({ digitransitService: world.service });
+          const app = createApp({ digitransitService: world.service, now: () => FIXTURE_NOW_MS });
           world.response = await app.request(
             "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=BUS&stopId=HSL:STOP_A"
           );
@@ -255,7 +256,7 @@ Feature: Departures route contract
           if (!world.service) {
             throw new Error("Expected Digitransit service");
           }
-          const app = createApp({ digitransitService: world.service });
+          const app = createApp({ digitransitService: world.service, now: () => FIXTURE_NOW_MS });
           world.response = await app.request(
             "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=BUS&stopId=HSL:STOP_A&line=550"
           );

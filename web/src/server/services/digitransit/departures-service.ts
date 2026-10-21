@@ -12,6 +12,7 @@ import {
 } from "./departures-normalizer.js";
 import type { DigitransitService, NearbyStopNode } from "./types.js";
 import type { Departure } from "../../../shared/domain/departure.js";
+import { departureFetchWindow, selectGlanceDepartures } from "../glance/glance-horizon.js";
 
 const SEARCH_RADIUS_METERS = 1200;
 
@@ -71,7 +72,10 @@ function buildStation(stop: Stop, departures: Departure[]): StopStation {
 }
 
 export class DeparturesService {
-  constructor(private readonly digitransitService: DigitransitService) {}
+  constructor(
+    private readonly digitransitService: DigitransitService,
+    private readonly now: () => number = Date.now,
+  ) {}
 
   async execute(request: DeparturesRequest): Promise<DeparturesSuccessResponse> {
     const nearbyStops = await this.digitransitService.getNearbyStops({
@@ -90,18 +94,25 @@ export class DeparturesService {
       return buildEmptyResponse(request.mode);
     }
 
+    const nowMs = this.now();
+    const selections = {
+      destinations: request.destinations,
+      lines: request.lines,
+    };
     const departuresByStopId = await this.digitransitService.getDeparturesForStopIds(
       selectedStop.memberStopIds,
       {
+        fetchWindow: departureFetchWindow(request.mode, nowMs),
         mode: request.mode,
-        resultLimit: request.requestedResultLimit,
       }
     );
     const allDepartures = mergeDeparturesForStopIds(departuresByStopId, selectedStop.memberStopIds);
-    const visibleDepartures = filterDeparturesBySelections(allDepartures, {
-      destinations: request.destinations,
-      lines: request.lines,
-    }).slice(0, request.requestedResultLimit);
+    const visibleDepartures = selectGlanceDepartures({
+      departures: filterDeparturesBySelections(allDepartures, selections),
+      mode: request.mode,
+      nowMs,
+      selections,
+    });
 
     return {
       filterOptions: buildFilterOptions(allDepartures),

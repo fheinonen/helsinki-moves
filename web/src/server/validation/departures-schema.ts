@@ -1,10 +1,5 @@
 import { error, ok, type Result } from "../../shared/utils/result.js";
-import {
-  getDefaultResultLimit,
-  isMode,
-  parseMode,
-  type Mode,
-} from "../../shared/domain/mode.js";
+import { isMode, parseMode, type Mode } from "../../shared/domain/mode.js";
 import type { DeparturesRequest } from "../../shared/contracts/departures-contract.js";
 
 type ValidationError = "invalid coordinates";
@@ -70,11 +65,7 @@ export function validateDeparturesRequest(
   }
 
   const mode: Mode = parseMode(rawMode);
-  const requestedResultLimit = parseResultLimit(
-    searchParams.get("results"),
-    getDefaultResultLimit(mode)
-  );
-  if (requestedResultLimit == null) {
+  if (parseResultLimit(searchParams.get("results"), MIN_RESULT_LIMIT) == null) {
     return error("invalid coordinates");
   }
 
@@ -85,7 +76,6 @@ export function validateDeparturesRequest(
     lines: parseMultiValue(searchParams.get("line")),
     lon,
     mode,
-    requestedResultLimit,
     stopId: searchParams.get("stopId")?.trim() || null,
   });
 }

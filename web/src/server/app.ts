@@ -13,6 +13,7 @@ interface AppOptions {
   digitransitService?: DigitransitService;
   geocodeService?: GeocodeService;
   logClientPayload?: (payload: ClientErrorPayload) => void;
+  now?: () => number;
   speechTranscriptionService?: SpeechTranscriptionService | null;
 }
 
@@ -22,7 +23,7 @@ export function createApp(options: AppOptions = {}): Hono {
 
   app.get("/api/health", (context) => context.json({ ok: true }, 200));
 
-  registerDeparturesRoute(app, { digitransitService });
+  registerDeparturesRoute(app, { digitransitService, now: options.now });
   registerClientErrorRoute(app, {
     logPayload: options.logClientPayload,
   });

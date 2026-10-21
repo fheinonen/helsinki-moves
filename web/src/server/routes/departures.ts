@@ -9,10 +9,11 @@ import type { DigitransitService } from "../services/digitransit/types.js";
 
 interface DeparturesRouteOptions {
   digitransitService: DigitransitService;
+  now?: () => number;
 }
 
 export function registerDeparturesRoute(app: Hono, options: DeparturesRouteOptions): void {
-  const departuresService = new DeparturesService(options.digitransitService);
+  const departuresService = new DeparturesService(options.digitransitService, options.now);
 
   app.get("/api/v1/departures", async (context) => {
     const validationResult = validateDeparturesRequest(new URL(context.req.url).searchParams);

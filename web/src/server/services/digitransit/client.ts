@@ -3,6 +3,7 @@ import {
   getUpstreamMode,
   type Mode,
 } from "../../../shared/domain/mode.js";
+import type { DepartureFetchWindow } from "../glance/glance-horizon.js";
 import type { DigitransitService, NearbyStopNode } from "./types.js";
 
 const DIGITRANSIT_ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
@@ -33,7 +34,7 @@ const nearbyStopsQuery = `
   }
 `;
 
-function buildMultiStopDeparturesQuery(stopIds: string[], departures: number): {
+function buildMultiStopDeparturesQuery(stopIds: string[], fetchWindow: DepartureFetchWindow): {
   aliases: string[];
   query: string;
   variables: Record<string, number | string>;
@@ -43,10 +44,15 @@ function buildMultiStopDeparturesQuery(stopIds: string[], departures: number): {
     throw new Error("buildMultiStopDeparturesQuery requires at least one stop id");
   }
 
-  const variableDefinitions = ["$departures: Int!"];
+  const variableDefinitions = ["$startTime: Long!", "$timeRange: Int!", "$departures: Int!"];
   const stopFields: string[] = [];
   const aliases: string[] = [];
-  const variables: Record<string, number | string> = { departures };
+  const horizonSeconds = fetchWindow.timeRangeSeconds;
+  const variables: Record<string, number | string> = {
+    departures: horizonSeconds,
+    startTime: fetchWindow.startTimeUnixSeconds,
+    timeRange: horizonSeconds,
+  };
 
   ids.forEach((stopId, index) => {
     const alias = `s${index}`;
@@ -57,7 +63,7 @@ function buildMultiStopDeparturesQuery(stopIds: string[], departures: number): {
     stopFields.push(`
       ${alias}: stop(id: $${variableName}) {
         platformCode
-        stoptimesWithoutPatterns(numberOfDepartures: $departures) {
+        stoptimesWithoutPatterns(startTime: $startTime, timeRange: $timeRange, numberOfDepartures: $departures) {
           serviceDay
           scheduledDeparture
           realtimeDeparture
@@ -283,8 +289,7 @@ export function createDigitransitService(input: {
         return new Map();
       }
 
-      const departuresLimit = Math.max(24, options.resultLimit);
-      const query = buildMultiStopDeparturesQuery(stopIds, departuresLimit);
+      const query = buildMultiStopDeparturesQuery(stopIds, options.fetchWindow);
       const data = await graphqlRequest({
         body: {
           query: query.query,
@@ -316,7 +321,8 @@ export function createDigitransitService(input: {
                 })
               )
               .filter((value): value is Departure => value != null)
-          )
+          ),
+          options.fetchWindow.nowMs,
         );
         departuresByStopId.set(stopId, departures);
       });

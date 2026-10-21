@@ -10,7 +10,6 @@ export interface DeparturesRequest {
   lines: string[];
   lon: number;
   mode: Mode;
-  requestedResultLimit: number;
   stopId: string | null;
 }
 

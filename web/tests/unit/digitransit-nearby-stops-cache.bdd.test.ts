@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import { createDigitransitService } from "@server/services/digitransit/client";
+import { departureFetchWindow } from "@server/services/glance/glance-horizon";
 import type { NearbyStopNode } from "@server/services/digitransit/types";
 
 interface World {
@@ -212,13 +213,14 @@ Feature: Digitransit nearby stop caching
             now: () => world.currentTime,
           });
 
+          const fetchWindow = departureFetchWindow("BUS", world.currentTime);
           await service.getDeparturesForStopIds(["HSL:STOP_A"], {
+            fetchWindow,
             mode: "BUS",
-            resultLimit: 5,
           });
           await service.getDeparturesForStopIds(["HSL:STOP_A"], {
+            fetchWindow,
             mode: "BUS",
-            resultLimit: 5,
           });
         },
       },

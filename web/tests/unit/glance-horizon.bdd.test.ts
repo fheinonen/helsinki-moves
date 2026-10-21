@@ -2,6 +2,7 @@ import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import { createApp } from "@server/app";
 import { createDigitransitService } from "@server/services/digitransit/client";
+import { departureFetchWindow } from "@server/services/glance/glance-horizon";
 import type { Departure } from "@shared/domain/departure";
 import type { Mode } from "@shared/domain/mode";
 import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
@@ -21,6 +22,7 @@ interface World {
   queryText?: string;
   queryVariables?: Record<string, number | string>;
   rows: Row[];
+  status?: number;
 }
 
 const BUSY_ROWS: Row[] = [
@@ -95,6 +97,7 @@ async function loadBoard(world: World, search = ""): Promise<void> {
         ];
       },
     },
+    now: () => world.clockMs,
   });
   const response = await app.request(
     `http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=${world.mode}&stopId=${STOP_ID}${search}`
@@ -119,8 +122,8 @@ async function askUpstream(world: World, mode: Mode): Promise<void> {
     getApiKey: () => "test-key",
   });
   await service.getDeparturesForStopIds([STOP_ID], {
+    fetchWindow: departureFetchWindow(mode, world.clockMs),
     mode,
-    resultLimit: 8,
   });
 }
 
@@ -202,6 +205,10 @@ Feature: Glance horizon
     Then the upstream time range is 4500 seconds
     And the upstream departure count is 4500
     And the upstream start time is the clock
+
+  Scenario: A results count outside 1 to 60 is rejected
+    When the departures route rejects results 0
+    Then the departures response status is 400
 
   Scenario: Metro fetch asks for the forty five minute horizon
     Given the clock is 2026-03-07T10:00:00.000Z
@@ -350,6 +357,22 @@ Feature: Glance horizon
         run: ({ assert, world }) => {
           const lineZ = world.payload?.filterOptions.lines.find((option) => option.value === "Z");
           assert.equal(lineZ?.count, 1);
+        },
+      },
+      {
+        pattern: /^When the departures route rejects results 0$/,
+        run: async ({ world }) => {
+          const app = createApp();
+          const response = await app.request(
+            "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=RAIL&results=0"
+          );
+          world.status = response.status;
+        },
+      },
+      {
+        pattern: /^Then the departures response status is 400$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.status, 400);
         },
       },
       {

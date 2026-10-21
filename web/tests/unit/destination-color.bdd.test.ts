@@ -1,5 +1,13 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
+import {
+  closestProtanopiaDistance,
+  contrastOnDarkBoard,
+  GLANCEABLE_PROTANOPIA_DISTANCE,
+  parseCssRgb,
+  READABLE_BOARD_CONTRAST,
+  simulateProtanopia,
+} from "@tests/helpers/protanopia";
 import { createAppStore, type AppStore } from "@client/app/app-store";
 import { renderAppShell } from "@client/app/app-shell";
 import { createAppController } from "@client/app/app-controller";
@@ -194,6 +202,12 @@ Feature: Destination color
     When the departure board is shown
     Then each destination uses its own color
     And the destination texts stay in departure order
+
+  Scenario: Destination colors stay distinct for protanopia
+    Given a board with 16 different destinations
+    When the departure board is shown
+    Then each destination color stays distinct under protanopia
+    And each destination color stays readable on the dark board
   `,
   {
     createWorld: () => ({
@@ -347,6 +361,35 @@ Feature: Destination color
           assert.equal(rows.length, 2);
           assert.match(rows[0].color, COLOR_PATTERN);
           assert.equal(rows[0].color, rows[1].color);
+        },
+      },
+      {
+        pattern: /^Then each destination color stays distinct under protanopia$/,
+        run: ({ assert, world }) => {
+          const colors = [...colorsByDestination(readRows(world)).values()];
+          assert.equal(colors.length, 16);
+          const closest = closestProtanopiaDistance(colors);
+          assert.equal(
+            closest >= GLANCEABLE_PROTANOPIA_DISTANCE,
+            true,
+            `Closest protanopia pair differs by ${closest.toFixed(2)}`
+          );
+        },
+      },
+      {
+        pattern: /^Then each destination color stays readable on the dark board$/,
+        run: ({ assert, world }) => {
+          for (const color of colorsByDestination(readRows(world)).values()) {
+            const rgb = parseCssRgb(color);
+            const painted = contrastOnDarkBoard(rgb);
+            const simulated = contrastOnDarkBoard(simulateProtanopia(rgb));
+            assert.equal(painted >= READABLE_BOARD_CONTRAST, true, `${color} contrast ${painted.toFixed(2)}`);
+            assert.equal(
+              simulated >= READABLE_BOARD_CONTRAST,
+              true,
+              `${color} protanopia contrast ${simulated.toFixed(2)}`
+            );
+          }
         },
       },
       {

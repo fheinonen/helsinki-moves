@@ -1,22 +1,23 @@
 const FINNISH_LOCALE = "fi-FI";
 
+// Ordered so the first destinations a rider sees stay farthest apart under protanopia.
 const DESTINATION_COLORS = [
-  "#e69494",
-  "#94e6ac",
-  "#c494e6",
-  "#e6dc94",
-  "#94d8e6",
-  "#e694c0",
-  "#a8e694",
-  "#9794e6",
-  "#e6af94",
-  "#94e6c7",
-  "#df94e6",
-  "#d5e694",
-  "#94bde6",
-  "#e694a5",
-  "#94e69b",
-  "#b394e6",
+  "#ffff22",
+  "#a283ff",
+  "#cb9484",
+  "#b5ffe4",
+  "#d4d6ff",
+  "#7ca51b",
+  "#feffb5",
+  "#adcac7",
+  "#a4959c",
+  "#e5c7ac",
+  "#a5ca00",
+  "#dd9f6a",
+  "#b3a8c2",
+  "#f7e678",
+  "#65c1ff",
+  "#c684cf",
 ] as const;
 
 export interface DestinationColorBook {

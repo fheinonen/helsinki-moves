@@ -56,7 +56,6 @@ bootstrapApp({
   locationRef: window.location,
   root,
   storage: window.localStorage,
-  store,
 });
 
 controller.initializeVoice();

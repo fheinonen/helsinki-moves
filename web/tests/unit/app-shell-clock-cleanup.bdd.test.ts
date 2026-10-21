@@ -99,7 +99,6 @@ Feature: App shell clock cleanup
             controller,
             documentRef,
             root,
-            store: world.store,
           });
         },
       },

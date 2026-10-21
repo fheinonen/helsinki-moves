@@ -1,5 +1,4 @@
-import { createStore, type Store } from "@client/lib/store/create-store";
-import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
+import type { DeparturesSuccessResponse, StopStation } from "@shared/contracts/departures-contract";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
 import type { Mode } from "@shared/domain/mode";
 import type { Stop } from "@shared/domain/stop";
@@ -10,7 +9,6 @@ import {
   type FilterOption,
   type FilterState,
 } from "@shared/domain/filter";
-import type { StopStation } from "@shared/contracts/departures-contract";
 import type { VoiceAvailability, VoicePhase } from "@client/features/voice/voice-capability";
 
 export type ThemeMode = "dark" | "light";
@@ -36,7 +34,6 @@ export interface AppState {
     lines: FilterOption[];
   };
   loadState: LoadState;
-  message: string | null;
   selectedStopId: string | null;
   station: StopStation | null;
   statusMessage: string | null;
@@ -50,9 +47,14 @@ export interface AppState {
   };
 }
 
-export interface AppStore extends Store<AppState> {
+interface AppStateStore {
+  getState(): AppState;
+  setState(updater: AppState | ((state: AppState) => AppState)): void;
+  subscribe(listener: (state: AppState) => void): () => void;
+}
+
+export interface AppStore extends AppStateStore {
   applyDeparturesResponse(response: DeparturesSuccessResponse): void;
-  clearFilters(): void;
   clearVoiceChoices(): void;
   clearVoiceQuery(): void;
   setCoordinates(coords: Coordinates): void;
@@ -82,7 +84,6 @@ function createInitialState(): AppState {
       lines: [],
     },
     loadState: "idle",
-    message: null,
     selectedStopId: null,
     station: null,
     statusMessage: null,
@@ -97,8 +98,37 @@ function createInitialState(): AppState {
   };
 }
 
+function createStore(initialState: AppState): AppStateStore {
+  let state = initialState;
+  const listeners = new Set<(nextState: AppState) => void>();
+
+  function getState(): AppState {
+    return state;
+  }
+
+  function setState(updater: AppState | ((currentState: AppState) => AppState)): void {
+    state = typeof updater === "function" ? updater(state) : updater;
+    for (const listener of listeners) {
+      listener(state);
+    }
+  }
+
+  function subscribe(listener: (nextState: AppState) => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }
+
+  return {
+    getState,
+    setState,
+    subscribe,
+  };
+}
+
 export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
-  const store = createStore<AppState>({
+  const store = createStore({
     ...createInitialState(),
     ...initialState,
   });
@@ -117,21 +147,10 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         }),
         filterOptions: response.filterOptions,
         loadState: "ready",
-        message: response.message || null,
         selectedStopId: response.selectedStopId,
         station: response.station,
         statusMessage: response.message || null,
         stops: response.stops,
-      }));
-    },
-    clearFilters() {
-      store.setState((state) => ({
-        ...state,
-        filters: {
-          ...createEmptyFilterState(),
-          stopId: state.filters.stopId,
-        },
-        selectedStopId: state.filters.stopId,
       }));
     },
     clearVoiceChoices() {

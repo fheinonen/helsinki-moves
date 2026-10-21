@@ -30,7 +30,6 @@ function createBaseState(): AppState {
       lines: [],
     },
     loadState: "idle",
-    message: null,
     selectedStopId: "HSL:SELECTED",
     station: null,
     statusMessage: null,

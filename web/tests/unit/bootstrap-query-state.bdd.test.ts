@@ -1,7 +1,28 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
+import { createAppController, type AppController } from "@client/app/app-controller";
+import { createAppStore, type AppStore } from "@client/app/app-store";
 import { bootstrapApp } from "@client/app/bootstrap";
-import type { AppStore } from "@client/app/app-store";
+import type { DeparturesClient } from "@client/services/departures-client";
+import type { LocationService } from "@client/services/location-service";
+
+function createController(): AppController {
+  const departuresClient: DeparturesClient = {
+    async getDepartures() {
+      throw new Error("Departures client should not be called");
+    },
+  };
+  const locationService: LocationService = {
+    async getCurrentPosition() {
+      return { code: "unavailable", ok: false };
+    },
+  };
+  return createAppController({
+    departuresClient,
+    locationService,
+    store: createAppStore(),
+  });
+}
 
 interface HistoryLike {
   replaceState(data: unknown, unused: string, url?: string | URL | null): void;
@@ -102,6 +123,7 @@ Feature: Bootstrap query state
           }
 
           world.store = bootstrapApp({
+            controller: createController(),
             documentRef: world.documentRef,
             historyRef: world.historyRef,
             locationRef: world.locationRef,

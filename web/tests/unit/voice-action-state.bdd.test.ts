@@ -67,7 +67,6 @@ Feature: Voice action state
             controller,
             documentRef,
             root,
-            store: world.store,
           });
 
           world.container = root;

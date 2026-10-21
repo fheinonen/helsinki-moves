@@ -98,7 +98,6 @@ Feature: App shell rendering
             controller,
             documentRef,
             root: container,
-            store: world.store,
           });
 
           world.container = container;

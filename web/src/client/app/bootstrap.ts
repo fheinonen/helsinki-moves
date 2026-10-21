@@ -1,4 +1,4 @@
-import { createAppStore, type AppStore, type ThemeMode } from "@client/app/app-store";
+import type { AppStore, ThemeMode } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
 import {
   readModeFromSearch,
@@ -14,13 +14,12 @@ interface StorageLike {
 }
 
 interface BootstrapOptions {
-  controller?: AppController;
+  controller: AppController;
   documentRef: Document;
   historyRef?: HistoryLike;
   locationRef?: LocationLike;
   root: HTMLElement;
   storage?: StorageLike;
-  store?: AppStore;
 }
 
 function resolveTheme(storage?: StorageLike): ThemeMode {
@@ -29,58 +28,18 @@ function resolveTheme(storage?: StorageLike): ThemeMode {
 }
 
 export function bootstrapApp(options: BootstrapOptions): AppStore {
-  const {
-    controller,
-    documentRef,
-    historyRef,
-    locationRef,
-    root,
-    storage,
-    store = createAppStore(),
-  } = options;
+  const { controller, documentRef, historyRef, locationRef, root, storage } = options;
+  const store = controller.store;
   const theme = resolveTheme(storage);
   documentRef.documentElement.setAttribute("data-theme", theme);
   store.setTheme(theme);
   if (locationRef) {
     store.setMode(readModeFromSearch(locationRef.search));
   }
-  const fallbackController: AppController = {
-    async chooseVoiceLocation() {},
-    getActiveMode() {
-      return store.getState().activeMode;
-    },
-    async refreshNearbyDepartures() {},
-    getVoiceAvailability() {
-      return store.getState().voice.availability;
-    },
-    initializeVoice() {
-      store.setVoiceAvailability(store.getState().voice.availability);
-    },
-    setMode(mode) {
-      store.setMode(mode);
-    },
-    async setSelectedStop(stopId) {
-      store.setSelectedStop(stopId);
-    },
-    async startVoiceSearch() {},
-    store,
-    subscribe(listener) {
-      return store.subscribe((state) => {
-        listener(state.activeMode);
-      });
-    },
-    async toggleDestinationFilter(destination) {
-      store.toggleDestinationFilter(destination);
-    },
-    async toggleLineFilter(line) {
-      store.toggleLineFilter(line);
-    },
-  };
   renderAppShell({
-    controller: controller || fallbackController,
+    controller,
     documentRef,
     root,
-    store,
   });
   if (historyRef && locationRef) {
     store.subscribe((state) => {

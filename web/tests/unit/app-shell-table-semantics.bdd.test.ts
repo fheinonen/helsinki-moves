@@ -93,7 +93,6 @@ Feature: App shell departure table semantics
             controller,
             documentRef,
             root,
-            store: world.store,
           });
           world.container = root;
         },

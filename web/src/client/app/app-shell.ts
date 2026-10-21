@@ -3,7 +3,7 @@ import { createFilterControlsView } from "@client/features/filters/filter-contro
 import { renderModeSelector } from "@client/features/mode/mode-view";
 import { createStopSelectorView } from "@client/features/stops/stop-selector-view";
 import { getVoiceActionLabel } from "@client/features/voice/voice-capability";
-import type { AppStore, AppState } from "@client/app/app-store";
+import type { AppState } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
@@ -12,7 +12,6 @@ interface RenderAppShellOptions {
   controller: AppController;
   documentRef: Document;
   root: HTMLElement;
-  store: AppStore;
 }
 
 interface FilterPanelControls {
@@ -292,7 +291,8 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
 }
 
 export function renderAppShell(options: RenderAppShellOptions): () => void {
-  const { controller, documentRef, root, store } = options;
+  const { controller, documentRef, root } = options;
+  const store = controller.store;
   cleanupRoot(root);
   root.innerHTML = "";
   root.className = "app-shell";

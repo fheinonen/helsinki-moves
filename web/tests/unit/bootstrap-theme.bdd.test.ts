@@ -1,6 +1,28 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
+import { createAppController, type AppController } from "@client/app/app-controller";
+import { createAppStore } from "@client/app/app-store";
 import { bootstrapApp } from "@client/app/bootstrap";
+import type { DeparturesClient } from "@client/services/departures-client";
+import type { LocationService } from "@client/services/location-service";
+
+function createController(): AppController {
+  const departuresClient: DeparturesClient = {
+    async getDepartures() {
+      throw new Error("Departures client should not be called");
+    },
+  };
+  const locationService: LocationService = {
+    async getCurrentPosition() {
+      return { code: "unavailable", ok: false };
+    },
+  };
+  return createAppController({
+    departuresClient,
+    locationService,
+    store: createAppStore(),
+  });
+}
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -55,6 +77,7 @@ Feature: Theme bootstrap
           }
 
           bootstrapApp({
+            controller: createController(),
             documentRef: world.documentRef,
             root: world.root,
             storage: world.storage,

@@ -127,7 +127,6 @@ Feature: App shell filter controls
             controller,
             documentRef,
             root,
-            store: world.store,
           });
 
           world.container = root;

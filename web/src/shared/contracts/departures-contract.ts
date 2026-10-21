@@ -6,7 +6,6 @@ import { type Stop } from "../domain/stop.js";
 export interface DeparturesRequest {
   destinations: string[];
   lat: number;
-  lineIntentRequested: boolean;
   lines: string[];
   lon: number;
   mode: Mode;

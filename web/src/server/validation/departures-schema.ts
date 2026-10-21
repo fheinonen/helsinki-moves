@@ -40,16 +40,6 @@ function parseResultLimit(value: string | null, defaultValue: number): number | 
   return parsed;
 }
 
-function parseLineIntentRequested(searchParams: URLSearchParams): boolean {
-  const values = [searchParams.get("lineIntent"), searchParams.get("intent")];
-  return values.some((value) => {
-    const normalized = String(value || "")
-      .trim()
-      .toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "line";
-  });
-}
-
 export function validateDeparturesRequest(
   searchParams: URLSearchParams
 ): Result<DeparturesRequest, ValidationError> {
@@ -72,7 +62,6 @@ export function validateDeparturesRequest(
   return ok({
     destinations: parseMultiValue(searchParams.get("dest")),
     lat,
-    lineIntentRequested: parseLineIntentRequested(searchParams),
     lines: parseMultiValue(searchParams.get("line")),
     lon,
     mode,

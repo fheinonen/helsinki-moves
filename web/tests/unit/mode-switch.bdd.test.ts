@@ -1,13 +1,16 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
-import { createModeStore, type ModeStore } from "@client/features/mode/mode-store";
+import { createAppController } from "@client/app/app-controller";
+import { createAppStore, type AppStore } from "@client/app/app-store";
 import { renderModeSelector } from "@client/features/mode/mode-view";
+import type { DeparturesClient } from "@client/services/departures-client";
+import type { LocationService } from "@client/services/location-service";
 
 interface World {
   container: HTMLElement;
   documentRef: Document;
   unsubscribe?: () => void;
-  store: ModeStore;
+  store: AppStore;
 }
 
 defineFeature<World>(
@@ -35,20 +38,25 @@ Feature: Mode selector
         throw new Error("Expected root container");
       }
 
-      const store = createModeStore("RAIL");
+      const store = createAppStore();
+      const departuresClient: DeparturesClient = {
+        async getDepartures() {
+          throw new Error("Departures client should not be called");
+        },
+      };
+      const locationService: LocationService = {
+        async getCurrentPosition() {
+          return { code: "unavailable", ok: false };
+        },
+      };
+      const controller = createAppController({
+        departuresClient,
+        locationService,
+        store,
+      });
       const unsubscribe = renderModeSelector({
         container,
-        controller: {
-          getActiveMode() {
-            return store.getActiveMode();
-          },
-          setMode(mode) {
-            store.setMode(mode);
-          },
-          subscribe(listener) {
-            return store.subscribeMode(listener);
-          },
-        },
+        controller,
         documentRef,
       });
 

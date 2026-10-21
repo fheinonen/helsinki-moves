@@ -111,7 +111,6 @@ export class DeparturesService {
       departures: filterDeparturesBySelections(allDepartures, selections),
       mode: request.mode,
       nowMs,
-      selections,
     });
 
     return {

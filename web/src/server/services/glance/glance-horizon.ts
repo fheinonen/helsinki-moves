@@ -9,14 +9,13 @@ interface GlancePolicy {
   readonly maxHorizonMinutes: number;
   readonly maxRows: number;
   readonly minRows: number;
-  readonly perLineFirst: true;
 }
 
 const GLANCE_POLICIES = {
-  BUS: { horizonMinutes: 45, maxHorizonMinutes: 75, maxRows: 12, minRows: 4, perLineFirst: true },
-  METRO: { horizonMinutes: 25, maxHorizonMinutes: 45, maxRows: 10, minRows: 3, perLineFirst: true },
-  RAIL: { horizonMinutes: 40, maxHorizonMinutes: 75, maxRows: 10, minRows: 4, perLineFirst: true },
-  TRAM: { horizonMinutes: 35, maxHorizonMinutes: 60, maxRows: 10, minRows: 3, perLineFirst: true },
+  BUS: { horizonMinutes: 45, maxHorizonMinutes: 75, maxRows: 12, minRows: 4 },
+  METRO: { horizonMinutes: 25, maxHorizonMinutes: 45, maxRows: 10, minRows: 3 },
+  RAIL: { horizonMinutes: 40, maxHorizonMinutes: 75, maxRows: 10, minRows: 4 },
+  TRAM: { horizonMinutes: 35, maxHorizonMinutes: 60, maxRows: 10, minRows: 3 },
 } as const satisfies Record<Mode, GlancePolicy>;
 
 const departureFetchWindowBrand = Symbol("DepartureFetchWindow");
@@ -27,11 +26,6 @@ export type DepartureFetchWindow = {
   readonly startTimeUnixSeconds: number;
   readonly timeRangeSeconds: number;
 };
-
-interface GlanceSelections {
-  readonly destinations: readonly string[];
-  readonly lines: readonly string[];
-}
 
 export function departureFetchWindow(mode: Mode, nowMs: number): DepartureFetchWindow {
   return {
@@ -46,16 +40,12 @@ export function selectGlanceDepartures(input: {
   departures: readonly Departure[];
   mode: Mode;
   nowMs: number;
-  selections: GlanceSelections;
 }): Departure[] {
   const policy = GLANCE_POLICIES[input.mode];
   const sorted = [...input.departures].sort(compareDeparturesByTime);
   const horizonMinutes = resolveHorizonMinutes(policy, sorted, input.nowMs);
   const windowed = departuresInHorizon(sorted, input.nowMs, horizonMinutes, policy.maxHorizonMinutes);
-  if (!usePerLineFirst(policy, input.selections)) {
-    return windowed.slice(0, policy.maxRows);
-  }
-  return appendUnlistedUntilMaxRows(earliestDeparturePerLineDestination(windowed), windowed, policy.maxRows);
+  return windowed.slice(0, policy.maxRows);
 }
 
 function compareDeparturesByTime(left: Departure, right: Departure): number {
@@ -105,53 +95,3 @@ function shouldStretch(
   return inside.length < policy.minRows;
 }
 
-function usePerLineFirst(policy: GlancePolicy, selections: GlanceSelections): boolean {
-  if (selections.lines.length > 0) {
-    return false;
-  }
-  if (selections.destinations.length > 0) {
-    return false;
-  }
-  return policy.perLineFirst;
-}
-
-function lineDestinationKey(departure: Departure): string {
-  return `${departure.line}\u0000${departure.destination}`;
-}
-
-function earliestDeparturePerLineDestination(windowed: readonly Departure[]): Departure[] {
-  const seen = new Set<string>();
-  const picks: Departure[] = [];
-  for (const departure of windowed) {
-    const key = lineDestinationKey(departure);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    picks.push(departure);
-  }
-  return picks;
-}
-
-function appendUnlistedUntilMaxRows(
-  picks: readonly Departure[],
-  windowed: readonly Departure[],
-  maxRows: number,
-): Departure[] {
-  if (picks.length >= maxRows) {
-    return picks.slice(0, maxRows);
-  }
-  const listed = new Set(picks);
-  const filled = picks.slice();
-  for (const departure of windowed) {
-    if (filled.length >= maxRows) {
-      break;
-    }
-    if (listed.has(departure)) {
-      continue;
-    }
-    listed.add(departure);
-    filled.push(departure);
-  }
-  return filled;
-}

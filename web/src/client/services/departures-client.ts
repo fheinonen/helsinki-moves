@@ -4,7 +4,7 @@ import type { Mode } from "@shared/domain/mode";
 
 export interface DeparturesClient {
   getDepartures(input: {
-    coords: Coordinates;
+    coords: Coordinates | null;
     destinations: string[];
     lineIntent?: boolean;
     lines: string[];
@@ -30,10 +30,12 @@ export function createBrowserDeparturesClient(input: {
   return {
     async getDepartures({ coords, destinations, lineIntent = false, lines, mode, signal, stopId }) {
       const searchParams = new URLSearchParams({
-        lat: String(coords.lat),
-        lon: String(coords.lon),
         mode,
       });
+      if (coords) {
+        searchParams.set("lat", String(coords.lat));
+        searchParams.set("lon", String(coords.lon));
+      }
       if (stopId) {
         searchParams.set("stopId", stopId);
       }

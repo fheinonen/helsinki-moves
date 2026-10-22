@@ -59,4 +59,4 @@ bootstrapApp({
 });
 
 controller.initializeVoice();
-void controller.refreshNearbyDepartures();
+void controller.loadInitialDepartures();

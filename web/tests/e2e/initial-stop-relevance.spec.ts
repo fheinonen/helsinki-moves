@@ -5,8 +5,10 @@ interface World {
   departuresCalls: URL[];
 }
 
-function buildStopModePayload(selectedStopId: string): Record<string, unknown> {
-  const selectedId = selectedStopId === "HSL:OLD" ? "HSL:OLD" : "HSL:NEAR";
+function buildStopModePayload(url: URL): Record<string, unknown> {
+  const requestedStopId = String(url.searchParams.get("stopId") || "").trim();
+  const mode = String(url.searchParams.get("mode") || "BUS");
+  const selectedId = requestedStopId === "HSL:OLD" ? "HSL:OLD" : "HSL:NEAR";
   const isOld = selectedId === "HSL:OLD";
 
   return {
@@ -19,7 +21,7 @@ function buildStopModePayload(selectedStopId: string): Record<string, unknown> {
           destinations: [{ count: 1, value: "Central Railway Station" }],
           lines: [{ count: 1, value: "20" }],
         },
-    mode: "BUS",
+    mode,
     selectedStopId: selectedId,
     station: {
       departures: [
@@ -29,7 +31,7 @@ function buildStopModePayload(selectedStopId: string): Record<string, unknown> {
           line: isOld ? "550" : "20",
         },
       ],
-      distanceMeters: isOld ? 620 : 80,
+      distanceMeters: isOld ? 0 : 80,
       stopCode: isOld ? "O200" : "N100",
       stopCodes: [isOld ? "O200" : "N100"],
       stopName: isOld ? "Old Terminal" : "Nearest Stop",
@@ -40,14 +42,18 @@ function buildStopModePayload(selectedStopId: string): Record<string, unknown> {
         code: "N100",
         distanceMeters: 80,
         id: "HSL:NEAR",
+        lat: 60.17,
+        lon: 24.94,
         memberStopIds: ["HSL:NEAR"],
         name: "Nearest Stop",
         stopCodes: ["N100"],
       },
       {
         code: "O200",
-        distanceMeters: 620,
+        distanceMeters: 0,
         id: "HSL:OLD",
+        lat: 60.2,
+        lon: 24.9,
         memberStopIds: ["HSL:OLD"],
         name: "Old Terminal",
         stopCodes: ["O200"],
@@ -59,26 +65,96 @@ function buildStopModePayload(selectedStopId: string): Record<string, unknown> {
 definePlaywrightFeature<World>(
   test,
   `
-Feature: Stop-mode relevance
+Feature: Bookmarked query
 
-  Scenario: First stop-mode load ignores stale stop context and picks nearest stop
-    Given browser geolocation is fixed for stop relevance
-    And departures reflect the requested stop context
-    When the page is opened with stale bus stop query filters
-    Then first departures request omits stop id
+  Scenario: A bookmark restores mode, stop, line, and destination without device location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened with a bookmarked bus query
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
+    And the BUS mode button is active
+    And current URL stop query equals HSL:OLD
+    And current URL line filter equals 550
+    And current URL destination filter equals Old Terminal
+    And line filter 550 is active
+
+  Scenario: Refresh loads departures from the device location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened with a bookmarked bus query
+    And the user refreshes nearby departures
+    Then geolocation call count is 1
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.1699|24.9384
     And the station title is Nearest Stop
-    And current URL stop query equals HSL:NEAR
+
+  Scenario: A stop and line bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD&line=550
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request line equals 550
+    And the first departures request has no destination filter
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
+    And line filter 550 is active
+    And current URL has no destination filter
+
+  Scenario: A stop and mode bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request has no line filter
+    And the first departures request has no destination filter
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
     And current URL has no line or destination filters
 
-  Scenario: Stop context is restored only after explicit user re-selection
-    Given browser geolocation is fixed for stop relevance
-    And departures reflect the requested stop context
-    When the page is opened with stale bus stop query filters
-    And the user selects stop HSL:OLD
-    Then first departures request omits stop id
-    And second departures request stop id equals HSL:OLD
+  Scenario: Changing mode from a stop and mode bookmark searches from that stop
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD
+    And the user selects tram mode
+    Then geolocation call count is 0
+    And the latest departures request mode is TRAM
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.2|24.9
+
+  Scenario: A stopId, mode, and line bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stopId=HSL:OLD&line=550
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request line equals 550
+    And the first departures request omits coordinates
+    And geolocation call count is 0
     And the station title is Old Terminal
-    And current URL stop query equals HSL:OLD
+
+  Scenario: Changing mode from a stopId and mode bookmark searches from that stop
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stopId=HSL:OLD
+    And the user selects tram mode
+    Then geolocation call count is 0
+    And the latest departures request mode is TRAM
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.2|24.9
+
+  Scenario: Changing mode searches from the bookmarked stop
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened with a bookmarked bus query
+    And the user selects tram mode
+    Then geolocation call count is 0
+    And the latest departures request mode is TRAM
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.2|24.9
   `,
   {
     createWorld: async () => ({
@@ -86,14 +162,20 @@ Feature: Stop-mode relevance
     }),
     stepDefinitions: [
       {
-        pattern: /^Given browser geolocation is fixed for stop relevance$/,
+        pattern: /^Given browser geolocation is counted for bookmarks$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.addInitScript(() => {
+            const counter = { calls: 0 };
+            Object.defineProperty(window, "__geoCalls", {
+              configurable: true,
+              value: () => counter.calls,
+            });
             Object.defineProperty(navigator, "geolocation", {
               configurable: true,
               value: {
                 getCurrentPosition(success: PositionCallback) {
+                  counter.calls += 1;
                   success({
                     coords: {
                       accuracy: 20,
@@ -119,15 +201,14 @@ Feature: Stop-mode relevance
         },
       },
       {
-        pattern: /^Given departures reflect the requested stop context$/,
+        pattern: /^Given departures reflect the requested stop and mode$/,
         run: async ({ fixtures, world }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.route("**/api/v1/departures**", async (route) => {
             const url = new URL(route.request().url());
             world.departuresCalls.push(url);
-            const requestedStopId = String(url.searchParams.get("stopId") || "").trim();
             await route.fulfill({
-              body: JSON.stringify(buildStopModePayload(requestedStopId)),
+              body: JSON.stringify(buildStopModePayload(url)),
               contentType: "application/json",
               status: 200,
             });
@@ -135,52 +216,99 @@ Feature: Stop-mode relevance
         },
       },
       {
-        pattern: /^When the page is opened with stale bus stop query filters$/,
-        run: async ({ fixtures }) => {
-          const page = fixtures.page as import("@playwright/test").Page;
-          await page.goto("/?mode=bus&stop=HSL:OLD&line=550&dest=Old%20Terminal");
-        },
-      },
-      {
-        pattern: /^When the user selects stop (.+)$/,
+        pattern: /^When the page is opened at (.+)$/,
         run: async ({ args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          await page.locator("[data-stop-select]").click();
-          await page.locator(`[data-stop-option="${args[0]}"]`).click();
-        },
-      },
-      {
-        pattern: /^Then first departures request omits stop id$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.departuresCalls[0]?.searchParams.has("stopId"), false);
-        },
-      },
-      {
-        pattern: /^Then second departures request stop id equals (.+)$/,
-        run: ({ args, assert, world }) => {
-          assert.equal(world.departuresCalls[1]?.searchParams.get("stopId"), args[0]);
-        },
-      },
-      {
-        pattern: /^Then the station title is Nearest Stop$/,
-        run: async ({ assert, fixtures }) => {
-          const page = fixtures.page as import("@playwright/test").Page;
-          await page.waitForFunction(() => {
-            const element = document.querySelector("[data-station-title]");
-            return element?.textContent === "Nearest Stop";
-          });
-          assert.equal(await page.locator("[data-station-title]").textContent(), "Nearest Stop");
-        },
-      },
-      {
-        pattern: /^Then the station title is Old Terminal$/,
-        run: async ({ assert, fixtures }) => {
-          const page = fixtures.page as import("@playwright/test").Page;
+          await page.goto(args[0]);
           await page.waitForFunction(() => {
             const element = document.querySelector("[data-station-title]");
             return element?.textContent === "Old Terminal";
           });
-          assert.equal(await page.locator("[data-station-title]").textContent(), "Old Terminal");
+        },
+      },
+      {
+        pattern: /^When the page is opened with a bookmarked bus query$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.goto("/?mode=bus&stop=HSL:OLD&line=550&dest=Old%20Terminal");
+          await page.waitForFunction(() => {
+            const element = document.querySelector("[data-station-title]");
+            return element?.textContent === "Old Terminal";
+          });
+        },
+      },
+      {
+        pattern: /^When the user refreshes nearby departures$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.locator("[data-refresh]").click();
+        },
+      },
+      {
+        pattern: /^When the user selects tram mode$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.locator('[data-mode="TRAM"]').click();
+        },
+      },
+      {
+        pattern: /^Then the first departures request stop id equals (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.get("stopId"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the first departures request line equals (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.get("line"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the first departures request has no line filter$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.has("line"), false);
+        },
+      },
+      {
+        pattern: /^Then the first departures request has no destination filter$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.has("dest"), false);
+        },
+      },
+      {
+        pattern: /^Then the first departures request omits coordinates$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.has("lat"), false);
+          assert.equal(world.departuresCalls[0]?.searchParams.has("lon"), false);
+        },
+      },
+      {
+        pattern: /^Then geolocation call count is (\d+)$/,
+        run: async ({ args, assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const calls = await page.evaluate(() => {
+            const readCalls = (window as unknown as { __geoCalls?: () => number }).__geoCalls;
+            return readCalls ? readCalls() : -1;
+          });
+          assert.equal(calls, Number(args[0]));
+        },
+      },
+      {
+        pattern: /^Then the station title is (.+)$/,
+        run: async ({ args, assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(
+            (title) => document.querySelector("[data-station-title]")?.textContent === title,
+            args[0]
+          );
+          assert.equal(await page.locator("[data-station-title]").textContent(), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the BUS mode button is active$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          assert.equal(await page.locator('[data-mode="BUS"]').getAttribute("aria-checked"), "true");
         },
       },
       {
@@ -195,12 +323,78 @@ Feature: Stop-mode relevance
         },
       },
       {
-        pattern: /^Then current URL has no line or destination filters$/,
-        run: ({ assert, fixtures }) => {
+        pattern: /^Then current URL has no destination filter$/,
+        run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(
+            () => new URL(window.location.href).searchParams.getAll("dest").length === 0
+          );
+          assert.equal(new URL(page.url()).searchParams.getAll("dest").length, 0);
+        },
+      },
+      {
+        pattern: /^Then current URL has no line or destination filters$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(() => {
+            const params = new URL(window.location.href).searchParams;
+            return params.getAll("line").length === 0 && params.getAll("dest").length === 0;
+          });
           const params = new URL(page.url()).searchParams;
           assert.equal(params.getAll("line").length, 0);
           assert.equal(params.getAll("dest").length, 0);
+        },
+      },
+      {
+        pattern: /^Then current URL line filter equals (.+)$/,
+        run: async ({ args, assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(
+            (line) => new URL(window.location.href).searchParams.getAll("line").join("|") === line,
+            args[0]
+          );
+          assert.equal(new URL(page.url()).searchParams.getAll("line").join("|"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then current URL destination filter equals (.+)$/,
+        run: async ({ args, assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(
+            (destination) => new URL(window.location.href).searchParams.getAll("dest").join("|") === destination,
+            args[0]
+          );
+          assert.equal(new URL(page.url()).searchParams.getAll("dest").join("|"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then line filter (.+) is active$/,
+        run: async ({ args, assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const chip = page.locator(`[data-line-filter="${args[0]}"]`);
+          await chip.waitFor({ state: "attached" });
+          assert.equal(await chip.evaluate((element) => element.classList.contains("is-active")), true);
+        },
+      },
+      {
+        pattern: /^Then the latest departures request omits stop id$/,
+        run: ({ assert, world }) => {
+          const latest = world.departuresCalls[world.departuresCalls.length - 1];
+          assert.equal(latest?.searchParams.has("stopId"), false);
+        },
+      },
+      {
+        pattern: /^Then the latest departures request coordinates are (.+)$/,
+        run: ({ args, assert, world }) => {
+          const latest = world.departuresCalls[world.departuresCalls.length - 1];
+          assert.equal(`${latest?.searchParams.get("lat")}|${latest?.searchParams.get("lon")}`, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the latest departures request mode is (.+)$/,
+        run: ({ args, assert, world }) => {
+          const latest = world.departuresCalls[world.departuresCalls.length - 1];
+          assert.equal(latest?.searchParams.get("mode"), args[0]);
         },
       },
     ],

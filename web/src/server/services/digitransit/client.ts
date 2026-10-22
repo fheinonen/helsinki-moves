@@ -16,6 +16,15 @@ interface NearbyStopsCacheEntry {
   value?: NearbyStopNode[];
 }
 
+const stopPointQuery = `
+  query StopPoint($id: String!) {
+    stop(id: $id) {
+      lat
+      lon
+    }
+  }
+`;
+
 const nearbyStopsQuery = `
   query NearbyStops($lat: Float!, $lon: Float!, $radius: Int!) {
     stopsByRadius(lat: $lat, lon: $lon, radius: $radius) {
@@ -26,6 +35,8 @@ const nearbyStopsQuery = `
             gtfsId
             name
             code
+            lat
+            lon
             vehicleMode
           }
         }
@@ -284,6 +295,25 @@ export function createDigitransitService(input: {
   const nearbyStopsCache = new Map<string, NearbyStopsCacheEntry>();
 
   return {
+    async getStopPoint(stopId) {
+      const data = await graphqlRequest({
+        body: {
+          query: stopPointQuery,
+          variables: { id: stopId },
+        },
+        endpoint,
+        fetchImpl,
+        getApiKey,
+        timeoutMs,
+      });
+      const stop = data.stop as { lat?: number; lon?: number } | null | undefined;
+      const lat = stop?.lat;
+      const lon = stop?.lon;
+      if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      return { lat, lon };
+    },
     async getDeparturesForStopIds(stopIds, options) {
       if (stopIds.length === 0) {
         return new Map();

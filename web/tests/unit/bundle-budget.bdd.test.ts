@@ -1,8 +1,15 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
-import { summarizeBundleBudgets } from "@shared/performance/bundle-budget";
+import { summarizeBundleBudgets } from "../../tools/bundle-budget-core.mjs";
+
+interface BundleAsset {
+  fileName: string;
+  gzipBytes: number;
+  type: "css" | "js";
+}
 
 interface World {
+  assets?: BundleAsset[];
   result?: ReturnType<typeof summarizeBundleBudgets>;
 }
 
@@ -28,25 +35,30 @@ Feature: Bundle budgets
       {
         pattern: /^Given gzip bundle assets under the configured budgets$/,
         run: ({ world }) => {
-          world.result = summarizeBundleBudgets([
+          world.assets = [
             { fileName: "app.js", gzipBytes: 10_000, type: "js" },
             { fileName: "app.css", gzipBytes: 2_000, type: "css" },
-          ]);
+          ];
         },
       },
       {
         pattern: /^Given gzip bundle assets over the configured budgets$/,
         run: ({ world }) => {
-          world.result = summarizeBundleBudgets([
+          world.assets = [
             { fileName: "vendor.js", gzipBytes: 80_000, type: "js" },
             { fileName: "app.js", gzipBytes: 10_000, type: "js" },
             { fileName: "app.css", gzipBytes: 50_000, type: "css" },
-          ]);
+          ];
         },
       },
       {
         pattern: /^When bundle budgets are summarized$/,
-        run: () => {},
+        run: ({ world }) => {
+          if (!world.assets) {
+            throw new Error("Expected gzip bundle assets");
+          }
+          world.result = summarizeBundleBudgets(world.assets);
+        },
       },
       {
         pattern: /^Then the bundle budget violation count is (\d+)$/,

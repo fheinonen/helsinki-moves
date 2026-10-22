@@ -157,7 +157,6 @@ Update this file whenever a rewrite task:
 - `T33` completed:
   - parity gaps found in QA and e2e are now closed for the current rewrite scope
 - `T34` completed:
-  - a typed bundle-budget evaluator now exists under `src/shared/performance/bundle-budget.ts`
   - `tools/check-bundle-budgets.mjs` now enforces gzip budgets against built `dist/assets`
   - `npm run perf:bundle` now checks the current build against the rewrite bundle budgets
   - rewrite-native performance gates are now defined: `test:unit`, `ui:perf`, `ui:flicker`, `perf:bundle`, and `ui:check`

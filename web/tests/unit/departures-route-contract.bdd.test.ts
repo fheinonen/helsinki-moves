@@ -11,6 +11,8 @@ interface NearbyStopNode {
   stop: {
     code?: string;
     gtfsId: string;
+    lat?: number;
+    lon?: number;
     name: string;
     vehicleMode: string;
   };
@@ -19,9 +21,12 @@ interface NearbyStopNode {
 interface DigitransitServiceStub {
   getDeparturesForStopIds(stopIds: string[]): Promise<Map<string, Departure[]>>;
   getNearbyStops(input: { lat: number; lon: number; radius: number }): Promise<NearbyStopNode[]>;
+  getStopPoint?(stopId: string): Promise<{ lat: number; lon: number } | null>;
 }
 
 interface World {
+  nearbySearchCount?: number;
+  nearbySearchOrigin?: string;
   payload?: DeparturesSuccessResponse;
   response?: Response;
   service?: DigitransitServiceStub;
@@ -45,6 +50,20 @@ Feature: Departures route contract
     And the selected stop id is HSL:STOP_A
     And the station departures include line 550 and 551
     And the departures filter options include line 550 count 2
+
+  Scenario: A bookmarked stop without coordinates is searched from that stop
+    Given Digitransit can locate bookmarked stop HSL:OLD at 60.2, 24.9
+    When the departures route handles a bus request for stop HSL:OLD without coordinates
+    Then the nearby search origin is 60.2|24.9
+    And the response selected stop id is HSL:OLD
+    And the selected stop coordinates are 60.2|24.9
+
+  Scenario: An unknown bookmarked stop returns no nearby stops
+    Given Digitransit cannot locate bookmarked stop HSL:MISSING
+    When the departures route handles a bus request for stop HSL:MISSING without coordinates
+    Then the departures response status is 200
+    And the departures response message is No nearby bus stops
+    And nearby stops were not searched
 
   Scenario: Line filtering preserves departure order across grouped stop members
     Given Digitransit returns grouped stop members with interleaved line departures
@@ -261,6 +280,105 @@ Feature: Departures route contract
             "http://localhost/api/v1/departures?lat=60.17&lon=24.94&mode=BUS&stopId=HSL:STOP_A&line=550"
           );
           world.payload = (await world.response.json()) as DeparturesSuccessResponse;
+        },
+      },
+      {
+        pattern: /^Given Digitransit can locate bookmarked stop HSL:OLD at 60\.2, 24\.9$/,
+        run: ({ world }) => {
+          world.nearbySearchCount = 0;
+          world.service = {
+            async getDeparturesForStopIds() {
+              return new Map([
+                [
+                  "HSL:OLD",
+                  [
+                    {
+                      departureIso: "2026-03-07T10:10:00.000Z",
+                      destination: "Old Terminal",
+                      line: "550",
+                      stopId: "HSL:OLD",
+                    },
+                  ],
+                ],
+              ]);
+            },
+            async getNearbyStops(input) {
+              world.nearbySearchCount = (world.nearbySearchCount || 0) + 1;
+              world.nearbySearchOrigin = `${input.lat}|${input.lon}`;
+              return [
+                {
+                  distance: 0,
+                  stop: {
+                    code: "O200",
+                    gtfsId: "HSL:OLD",
+                    lat: input.lat,
+                    lon: input.lon,
+                    name: "Old Terminal",
+                    vehicleMode: "BUS",
+                  },
+                },
+              ];
+            },
+            async getStopPoint() {
+              return { lat: 60.2, lon: 24.9 };
+            },
+          };
+        },
+      },
+      {
+        pattern: /^Given Digitransit cannot locate bookmarked stop HSL:MISSING$/,
+        run: ({ world }) => {
+          world.nearbySearchCount = 0;
+          world.service = {
+            async getDeparturesForStopIds() {
+              return new Map();
+            },
+            async getNearbyStops() {
+              world.nearbySearchCount = (world.nearbySearchCount || 0) + 1;
+              return [];
+            },
+            async getStopPoint() {
+              return null;
+            },
+          };
+        },
+      },
+      {
+        pattern: /^When the departures route handles a bus request for stop (.+) without coordinates$/,
+        run: async ({ args, world }) => {
+          if (!world.service) {
+            throw new Error("Expected Digitransit service");
+          }
+          const app = createApp({ digitransitService: world.service, now: () => FIXTURE_NOW_MS });
+          world.response = await app.request(
+            `http://localhost/api/v1/departures?mode=BUS&stopId=${args[0]}`
+          );
+        },
+      },
+      {
+        pattern: /^Then the response selected stop id is (.+)$/,
+        run: async ({ args, assert, world }) => {
+          world.payload = (await world.response?.json()) as DeparturesSuccessResponse;
+          assert.equal(world.payload.selectedStopId, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the nearby search origin is (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.nearbySearchOrigin, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the selected stop coordinates are (.+)$/,
+        run: ({ args, assert, world }) => {
+          const stop = world.payload?.stops.find((item) => item.id === world.payload?.selectedStopId);
+          assert.equal(`${stop?.lat}|${stop?.lon}`, args[0]);
+        },
+      },
+      {
+        pattern: /^Then nearby stops were not searched$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.nearbySearchCount, 0);
         },
       },
       {

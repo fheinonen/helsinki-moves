@@ -91,11 +91,13 @@ defineFeature<World>(
   `
 Feature: Bootstrap query state
 
-  Scenario: Bootstrap restores mode from the URL but ignores stale stop filters
+  Scenario: Bootstrap restores the bookmarked mode, stop, line, and destination
     Given the page URL contains bus mode and stale stop filters
     When the app is bootstrapped with query state support
     Then the active mode is BUS
-    And the selected stop id is empty
+    And the selected stop id equals HSL:OLD
+    And the line filters equal 550
+    And the destination filters equal Old Terminal
 
   Scenario: Bootstrap syncs the selected stop back into the URL after departures load
     Given the page URL contains bus mode and stale stop filters
@@ -328,6 +330,13 @@ Feature: Bootstrap query state
         run: ({ assert, world }) => {
           assert.equal(world.store?.getState().selectedStopId, null);
           assert.equal(world.store?.getState().filters.stopId, null);
+        },
+      },
+      {
+        pattern: /^Then the selected stop id equals (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.store?.getState().selectedStopId, args[0]);
+          assert.equal(world.store?.getState().filters.stopId, args[0]);
         },
       },
       {

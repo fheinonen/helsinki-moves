@@ -91,6 +91,61 @@ Feature: Bookmarked query
     And the latest departures request coordinates are 60.1699|24.9384
     And the station title is Nearest Stop
 
+  Scenario: A stop and line bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD&line=550
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request line equals 550
+    And the first departures request has no destination filter
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
+    And line filter 550 is active
+    And current URL has no destination filter
+
+  Scenario: A stop and mode bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request has no line filter
+    And the first departures request has no destination filter
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
+    And current URL has no line or destination filters
+
+  Scenario: Changing mode from a stop and mode bookmark searches from that stop
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stop=HSL:OLD
+    And the user selects tram mode
+    Then geolocation call count is 0
+    And the latest departures request mode is TRAM
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.2|24.9
+
+  Scenario: A stopId, mode, and line bookmark uses that stop as the location
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stopId=HSL:OLD&line=550
+    Then the first departures request stop id equals HSL:OLD
+    And the first departures request line equals 550
+    And the first departures request omits coordinates
+    And geolocation call count is 0
+    And the station title is Old Terminal
+
+  Scenario: Changing mode from a stopId and mode bookmark searches from that stop
+    Given browser geolocation is counted for bookmarks
+    And departures reflect the requested stop and mode
+    When the page is opened at /?mode=bus&stopId=HSL:OLD
+    And the user selects tram mode
+    Then geolocation call count is 0
+    And the latest departures request mode is TRAM
+    And the latest departures request omits stop id
+    And the latest departures request coordinates are 60.2|24.9
+
   Scenario: Changing mode searches from the bookmarked stop
     Given browser geolocation is counted for bookmarks
     And departures reflect the requested stop and mode
@@ -161,6 +216,17 @@ Feature: Bookmarked query
         },
       },
       {
+        pattern: /^When the page is opened at (.+)$/,
+        run: async ({ args, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.goto(args[0]);
+          await page.waitForFunction(() => {
+            const element = document.querySelector("[data-station-title]");
+            return element?.textContent === "Old Terminal";
+          });
+        },
+      },
+      {
         pattern: /^When the page is opened with a bookmarked bus query$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
@@ -189,6 +255,24 @@ Feature: Bookmarked query
         pattern: /^Then the first departures request stop id equals (.+)$/,
         run: ({ args, assert, world }) => {
           assert.equal(world.departuresCalls[0]?.searchParams.get("stopId"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the first departures request line equals (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.get("line"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then the first departures request has no line filter$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.has("line"), false);
+        },
+      },
+      {
+        pattern: /^Then the first departures request has no destination filter$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.departuresCalls[0]?.searchParams.has("dest"), false);
         },
       },
       {
@@ -236,6 +320,29 @@ Feature: Bookmarked query
             args[0]
           );
           assert.equal(new URL(page.url()).searchParams.get("stop"), args[0]);
+        },
+      },
+      {
+        pattern: /^Then current URL has no destination filter$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(
+            () => new URL(window.location.href).searchParams.getAll("dest").length === 0
+          );
+          assert.equal(new URL(page.url()).searchParams.getAll("dest").length, 0);
+        },
+      },
+      {
+        pattern: /^Then current URL has no line or destination filters$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.waitForFunction(() => {
+            const params = new URL(window.location.href).searchParams;
+            return params.getAll("line").length === 0 && params.getAll("dest").length === 0;
+          });
+          const params = new URL(page.url()).searchParams;
+          assert.equal(params.getAll("line").length, 0);
+          assert.equal(params.getAll("dest").length, 0);
         },
       },
       {

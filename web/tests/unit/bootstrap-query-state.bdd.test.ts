@@ -106,6 +106,38 @@ Feature: Bootstrap query state
     Then the current URL stop query equals HSL:NEAR
     And the current URL has no line or destination filters
 
+  Scenario: Bootstrap restores a stop and line without a destination
+    Given the page URL contains bus mode, stop HSL:OLD, and line 550
+    When the app is bootstrapped with query state support
+    Then the active mode is BUS
+    And the selected stop id equals HSL:OLD
+    And the line filters equal 550
+    And the destination filters are empty
+
+  Scenario: Bootstrap restores a stop and mode without line or destination
+    Given the page URL contains bus mode and stop HSL:OLD
+    When the app is bootstrapped with query state support
+    Then the active mode is BUS
+    And the selected stop id equals HSL:OLD
+    And the line filters are empty
+    And the destination filters are empty
+
+  Scenario: Bootstrap restores a stopId query with mode and line
+    Given the page URL contains bus mode, stopId HSL:OLD, and line 550
+    When the app is bootstrapped with query state support
+    Then the active mode is BUS
+    And the selected stop id equals HSL:OLD
+    And the line filters equal 550
+    And the destination filters are empty
+
+  Scenario: Bootstrap restores a stopId query with mode
+    Given the page URL contains bus mode and stopId HSL:OLD
+    When the app is bootstrapped with query state support
+    Then the active mode is BUS
+    And the selected stop id equals HSL:OLD
+    And the line filters are empty
+    And the destination filters are empty
+
   Scenario: Bootstrap applies a line filter from the URL
     Given the page URL contains bus mode and line filter 550
     When the app is bootstrapped with query state support
@@ -161,6 +193,30 @@ Feature: Bootstrap query state
         pattern: /^Given the page URL contains bus mode and stale stop filters$/,
         run: ({ world }) => {
           installQueryPage(world, "?mode=bus&stop=HSL:OLD&line=550&dest=Old%20Terminal");
+        },
+      },
+      {
+        pattern: /^Given the page URL contains bus mode, stop HSL:OLD, and line 550$/,
+        run: ({ world }) => {
+          installQueryPage(world, "?mode=bus&stop=HSL:OLD&line=550");
+        },
+      },
+      {
+        pattern: /^Given the page URL contains bus mode and stop HSL:OLD$/,
+        run: ({ world }) => {
+          installQueryPage(world, "?mode=bus&stop=HSL:OLD");
+        },
+      },
+      {
+        pattern: /^Given the page URL contains bus mode, stopId HSL:OLD, and line 550$/,
+        run: ({ world }) => {
+          installQueryPage(world, "?mode=bus&stopId=HSL:OLD&line=550");
+        },
+      },
+      {
+        pattern: /^Given the page URL contains bus mode and stopId HSL:OLD$/,
+        run: ({ world }) => {
+          installQueryPage(world, "?mode=bus&stopId=HSL:OLD");
         },
       },
       {

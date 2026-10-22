@@ -34,6 +34,8 @@ Cutover checks are in the [release checklist](docs/RELEASE-CHECKLIST-greenfield-
 - Opening the page requests the current location and loads nearby departures.
 - The refresh control requests the location again.
 - The shell has a stop selector, line filters, and destination filters.
+- Trips to one destination share a color, and a different destination uses a different color. The destination name stays on the row. The color stays when the board refreshes or a line or destination filter is applied.
+- The colors stay distinct for protanopia. They separate by blue against yellow and by lightness, and each stays readable on the dark board. One visit uses 16 colors; a further new destination reuses an earlier color.
 - The page URL stores `mode`, `stop`, `line`, and `dest`.
 - Voice search posts audio to `POST /api/v1/speech-transcribe`, then geocodes the transcript.
 

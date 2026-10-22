@@ -152,7 +152,7 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
       store.setState((state) => ({
         ...state,
         activeMode: response.mode,
-        coords: readStopAnchor(response.stops, response.selectedStopId) || state.coords,
+        coords: state.coords ?? readStopAnchor(response.stops, response.selectedStopId),
         filters: sanitizeFilterState(state.filters, {
           allowedDestinations: response.filterOptions.destinations.map((option) => option.value),
           allowedLines: response.filterOptions.lines.map((option) => option.value),

@@ -1,6 +1,7 @@
 import { test } from "@playwright/test";
 import { definePlaywrightFeature } from "@tests/helpers/playwright-bdd-runner";
 import { installFixedNow } from "@tests/helpers/install-fixed-now";
+import { averagePngColor, colorsStay, formatRgb, type Rgb } from "@tests/helpers/png-color";
 
 const FIXED_NOW_MS = Date.parse("2026-03-07T10:00:00.000Z");
 const RELOAD_DELAY_MS = 180;
@@ -17,10 +18,26 @@ interface ChipFillProbe {
   sameShell: boolean;
 }
 
+interface GutterProbe {
+  after: Rgb;
+  before: Rgb;
+  heightAfter: number;
+  heightBefore: number;
+}
+
+interface ToggleFillProbe {
+  sameFill: boolean;
+}
+
 interface World {
   fill?: ChipFillProbe;
+  gutter?: GutterProbe;
   probe?: BackgroundProbe;
+  toggleFill?: ToggleFillProbe;
 }
+
+const TALL_LINES = ["550", "510", "14", "18", "21", "63", "65A", "8", "560", "55"];
+const GUTTER_CLIP = { height: 6, width: 6, x: 6, y: 156 };
 
 function buildPayload(selection?: { destination?: string; line?: string }): Record<string, unknown> {
   const departures = [
@@ -78,6 +95,44 @@ function buildPayload(selection?: { destination?: string; line?: string }): Reco
   };
 }
 
+function buildTallPayload(selection?: { line?: string }): Record<string, unknown> {
+  const departures = TALL_LINES.map((line, index) => ({
+    departureIso: new Date(FIXED_NOW_MS + (index + 2) * 60_000).toISOString(),
+    destination: index % 2 === 0 ? "Kamppi" : "Pasila",
+    line,
+  })).filter((departure) => !selection?.line || departure.line === selection.line);
+
+  return {
+    filterOptions: {
+      destinations: [
+        { count: 5, value: "Kamppi" },
+        { count: 5, value: "Pasila" },
+      ],
+      lines: TALL_LINES.map((value) => ({ count: 1, value })),
+    },
+    mode: "BUS",
+    selectedStopId: "HSL:STOP_A",
+    station: {
+      departures,
+      distanceMeters: 80,
+      stopCode: "A1",
+      stopCodes: ["A1"],
+      stopName: "Kamppi",
+      type: "stop",
+    },
+    stops: [
+      {
+        code: "A1",
+        distanceMeters: 80,
+        id: "HSL:STOP_A",
+        memberStopIds: ["HSL:STOP_A"],
+        name: "Kamppi",
+        stopCodes: ["A1"],
+      },
+    ],
+  };
+}
+
 definePlaywrightFeature<World>(
   test,
   `
@@ -107,6 +162,22 @@ Feature: Filter background stability
     And the departure board is open for background sampling
     When the destination filter fill is sampled
     Then the filter chip keeps its fill
+
+  Scenario: Opening filters keeps the shell color
+    Given a tall departure board is ready for color sampling
+    When the shell gutter is sampled while filters open
+    Then the shell keeps its color while its height changes
+
+  Scenario: Filtering a tall board keeps the shell color
+    Given a tall departure board is ready for color sampling
+    And filters are open on the tall board
+    When the shell gutter is sampled while a line filter is pressed
+    Then the shell keeps its color while its height changes
+
+  Scenario: Opening filters keeps the toggle fill
+    Given a tall departure board is ready for color sampling
+    When the filter toggle fill is sampled
+    Then the filter toggle keeps its fill
   `,
   {
     createWorld: async () => ({}),
@@ -234,6 +305,114 @@ Feature: Filter background stability
             /^(transparent|rgba\(0,\s*0,\s*0,\s*0\))$/i,
             "a pressed filter still paints a tap highlight"
           );
+        },
+      },
+      {
+        pattern: /^Given a tall departure board is ready for color sampling$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await installFixedNow(page, FIXED_NOW_MS);
+          await page.route("**/api/v1/departures**", async (route) => {
+            const url = new URL(route.request().url());
+            const line = url.searchParams.get("line") || undefined;
+            await route.fulfill({
+              body: JSON.stringify(buildTallPayload({ line })),
+              contentType: "application/json",
+              status: 200,
+            });
+          });
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.goto("/?mode=bus");
+          await page.waitForSelector(".departure-card");
+        },
+      },
+      {
+        pattern: /^(?:Given|And) filters are open on the tall board$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.locator("[data-filter-toggle]").click();
+          await page.waitForSelector("[data-line-filter='550']");
+        },
+      },
+      {
+        pattern: /^When the shell gutter is sampled while filters open$/,
+        run: async ({ fixtures, world }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const before = await page.screenshot({ clip: GUTTER_CLIP });
+          const heightBefore = await page.evaluate(() => {
+            const shell = document.querySelector(".app-shell");
+            return shell instanceof HTMLElement ? shell.getBoundingClientRect().height : 0;
+          });
+          await page.locator("[data-filter-toggle]").click();
+          await page.waitForSelector("[data-line-filter='550']");
+          const after = await page.screenshot({ clip: GUTTER_CLIP });
+          const heightAfter = await page.evaluate(() => {
+            const shell = document.querySelector(".app-shell");
+            return shell instanceof HTMLElement ? shell.getBoundingClientRect().height : 0;
+          });
+          world.gutter = {
+            after: averagePngColor(after),
+            before: averagePngColor(before),
+            heightAfter,
+            heightBefore,
+          };
+        },
+      },
+      {
+        pattern: /^When the shell gutter is sampled while a line filter is pressed$/,
+        run: async ({ fixtures, world }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const before = await page.screenshot({ clip: GUTTER_CLIP });
+          const heightBefore = await page.evaluate(() => {
+            const shell = document.querySelector(".app-shell");
+            return shell instanceof HTMLElement ? shell.getBoundingClientRect().height : 0;
+          });
+          await page.locator("[data-line-filter='550']").click();
+          await page.waitForFunction(() => document.querySelectorAll(".departure-card").length === 1);
+          const after = await page.screenshot({ clip: GUTTER_CLIP });
+          const heightAfter = await page.evaluate(() => {
+            const shell = document.querySelector(".app-shell");
+            return shell instanceof HTMLElement ? shell.getBoundingClientRect().height : 0;
+          });
+          world.gutter = {
+            after: averagePngColor(after),
+            before: averagePngColor(before),
+            heightAfter,
+            heightBefore,
+          };
+        },
+      },
+      {
+        pattern: /^Then the shell keeps its color while its height changes$/,
+        run: ({ assert, world }) => {
+          const gutter = world.gutter;
+          assert.equal(Boolean(gutter && gutter.heightBefore !== gutter.heightAfter), true, "the shell height did not change, so the color check missed the resize");
+          assert.equal(
+            gutter ? colorsStay(gutter.before, gutter.after) : false,
+            true,
+            `the shell color changed from ${gutter ? formatRgb(gutter.before) : ""} to ${gutter ? formatRgb(gutter.after) : ""}`
+          );
+        },
+      },
+      {
+        pattern: /^When the filter toggle fill is sampled$/,
+        run: async ({ fixtures, world }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          world.toggleFill = await page.evaluate(() => {
+            const toggle = document.querySelector("[data-filter-toggle]");
+            if (!(toggle instanceof HTMLElement)) {
+              return { sameFill: false };
+            }
+            const fill = getComputedStyle(toggle).backgroundImage;
+            toggle.click();
+            return { sameFill: getComputedStyle(toggle).backgroundImage === fill };
+          });
+        },
+      },
+      {
+        pattern: /^Then the filter toggle keeps its fill$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.toggleFill?.sameFill, true, "the filter control fill changed color when it was pressed");
         },
       },
       {

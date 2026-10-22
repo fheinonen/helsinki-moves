@@ -36,6 +36,7 @@ export interface AppController {
   getActiveMode(): Mode;
   getVoiceAvailability(): VoiceAvailability;
   initializeVoice(): void;
+  loadInitialDepartures(): Promise<void>;
   refreshNearbyDepartures(): Promise<void>;
   setMode(mode: Mode): void;
   setSelectedStop(stopId: string | null): Promise<void>;
@@ -104,7 +105,7 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
 
   function buildCurrentRequestInput(signal: AbortSignal) {
     const state = store.getState();
-    if (!state.coords) {
+    if (!state.coords && !state.filters.stopId) {
       return null;
     }
 
@@ -208,7 +209,8 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
   async function loadDeparturesForCurrentState(
     presentation: DepartureLoadPresentation = "blank"
   ): Promise<void> {
-    if (!store.getState().coords) {
+    const state = store.getState();
+    if (!state.coords && !state.filters.stopId) {
       await refreshNearbyDepartures();
       return;
     }
@@ -275,6 +277,7 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
       return;
     }
 
+    store.setStopAnchor(null);
     store.setCoordinates(locationResult.value);
 
     try {
@@ -497,6 +500,13 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
       if (options.voiceAvailability) {
         store.setVoiceAvailability(voiceAvailability);
       }
+    },
+    async loadInitialDepartures() {
+      if (store.getState().filters.stopId) {
+        await loadDeparturesForCurrentState();
+        return;
+      }
+      await refreshNearbyDepartures();
     },
     async refreshNearbyDepartures() {
       await refreshNearbyDepartures();

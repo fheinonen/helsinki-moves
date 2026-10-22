@@ -46,6 +46,11 @@ export function readLineAndDestinationFilters(
   };
 }
 
+export function readStopFromSearch(search: string): string | null {
+  const stopId = new URLSearchParams(search).get("stop")?.trim() || "";
+  return stopId || null;
+}
+
 function appendValues(params: URLSearchParams, key: string, values: string[]): void {
   for (const value of values) {
     const normalized = String(value || "").trim();

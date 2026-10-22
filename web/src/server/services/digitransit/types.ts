@@ -7,12 +7,15 @@ export interface NearbyStopNode {
   stop: {
     code?: string;
     gtfsId: string;
+    lat?: number;
+    lon?: number;
     name: string;
     vehicleMode?: string;
   };
 }
 
 export interface DigitransitService {
+  getStopPoint?(stopId: string): Promise<{ lat: number; lon: number } | null>;
   getDeparturesForStopIds(
     stopIds: string[],
     options: {

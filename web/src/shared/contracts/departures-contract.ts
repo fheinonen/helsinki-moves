@@ -5,9 +5,9 @@ import { type Stop } from "../domain/stop.js";
 
 export interface DeparturesRequest {
   destinations: string[];
-  lat: number;
+  lat: number | null;
   lines: string[];
-  lon: number;
+  lon: number | null;
   mode: Mode;
   stopId: string | null;
 }

@@ -43,9 +43,16 @@ function parseResultLimit(value: string | null, defaultValue: number): number | 
 export function validateDeparturesRequest(
   searchParams: URLSearchParams
 ): Result<DeparturesRequest, ValidationError> {
+  const stopId = searchParams.get("stopId")?.trim() || null;
+  const hasLat = searchParams.has("lat");
+  const hasLon = searchParams.has("lon");
   const lat = parseCoordinate(searchParams.get("lat"));
   const lon = parseCoordinate(searchParams.get("lon"));
-  if (lat == null || lon == null || !coordinatesAreValid(lat, lon)) {
+  if (hasLat || hasLon) {
+    if (lat == null || lon == null || !coordinatesAreValid(lat, lon)) {
+      return error("invalid coordinates");
+    }
+  } else if (!stopId) {
     return error("invalid coordinates");
   }
 
@@ -65,6 +72,6 @@ export function validateDeparturesRequest(
     lines: parseMultiValue(searchParams.get("line")),
     lon,
     mode,
-    stopId: searchParams.get("stopId")?.trim() || null,
+    stopId,
   });
 }

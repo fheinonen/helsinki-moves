@@ -64,6 +64,7 @@ export interface AppStore extends AppStateStore {
   setLocationUnavailable(message: string): void;
   setMode(mode: Mode): void;
   setSelectedStop(stopId: string | null): void;
+  setStopAnchor(stopId: string | null): void;
   setStatus(message: string | null): void;
   startLoading(message: string): void;
   setTheme(theme: ThemeMode): void;
@@ -73,6 +74,17 @@ export interface AppStore extends AppStateStore {
   setVoiceQuery(query: string | null): void;
   toggleDestinationFilter(destination: string): void;
   toggleLineFilter(line: string): void;
+}
+
+function readStopAnchor(stops: Stop[], selectedStopId: string | null): Coordinates | null {
+  const selected = stops.find((stop) => stop.id === selectedStopId);
+  if (!selected || selected.lat == null || selected.lon == null) {
+    return null;
+  }
+  if (!Number.isFinite(selected.lat) || !Number.isFinite(selected.lon)) {
+    return null;
+  }
+  return { lat: selected.lat, lon: selected.lon };
 }
 
 function createInitialState(): AppState {
@@ -140,6 +152,7 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
       store.setState((state) => ({
         ...state,
         activeMode: response.mode,
+        coords: readStopAnchor(response.stops, response.selectedStopId) || state.coords,
         filters: sanitizeFilterState(state.filters, {
           allowedDestinations: response.filterOptions.destinations.map((option) => option.value),
           allowedLines: response.filterOptions.lines.map((option) => option.value),
@@ -224,6 +237,17 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         filters: {
           destinations: [],
           lines: [],
+          stopId: normalizedStopId,
+        },
+        selectedStopId: normalizedStopId,
+      }));
+    },
+    setStopAnchor(stopId) {
+      const normalizedStopId = String(stopId || "").trim() || null;
+      store.setState((state) => ({
+        ...state,
+        filters: {
+          ...state.filters,
           stopId: normalizedStopId,
         },
         selectedStopId: normalizedStopId,

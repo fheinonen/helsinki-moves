@@ -71,6 +71,27 @@ function buildStation(stop: Stop, departures: Departure[]): StopStation {
   };
 }
 
+function readRequestOrigin(request: DeparturesRequest): { lat: number; lon: number } | null {
+  if (request.lat == null || request.lon == null) {
+    return null;
+  }
+  return { lat: request.lat, lon: request.lon };
+}
+
+async function resolveSearchOrigin(
+  service: DigitransitService,
+  request: DeparturesRequest,
+): Promise<{ lat: number; lon: number } | null> {
+  const requestOrigin = readRequestOrigin(request);
+  if (requestOrigin) {
+    return requestOrigin;
+  }
+  if (!request.stopId || !service.getStopPoint) {
+    return null;
+  }
+  return service.getStopPoint(request.stopId);
+}
+
 export class DeparturesService {
   constructor(
     private readonly digitransitService: DigitransitService,
@@ -78,9 +99,14 @@ export class DeparturesService {
   ) {}
 
   async execute(request: DeparturesRequest): Promise<DeparturesSuccessResponse> {
+    const origin = await resolveSearchOrigin(this.digitransitService, request);
+    if (!origin) {
+      return buildEmptyResponse(request.mode);
+    }
+
     const nearbyStops = await this.digitransitService.getNearbyStops({
-      lat: request.lat,
-      lon: request.lon,
+      lat: origin.lat,
+      lon: origin.lon,
       radius: SEARCH_RADIUS_METERS,
     });
     const modeStops = filterModeStops(nearbyStops, getUpstreamMode(request.mode));

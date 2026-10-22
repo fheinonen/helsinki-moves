@@ -41,6 +41,10 @@ body {
     radial-gradient(circle at 14% 10%, rgba(213, 181, 121, 0.12), transparent 24%),
     radial-gradient(circle at 88% 4%, rgba(213, 181, 121, 0.08), transparent 18%),
     linear-gradient(180deg, #020202 0%, #070707 34%, #050505 100%);
+  background-color: #050505;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100dvh;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -53,6 +57,7 @@ select {
 
 button {
   appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app-shell {
@@ -114,6 +119,10 @@ button {
   background:
     linear-gradient(180deg, rgba(17, 17, 17, 0.92) 0%, rgba(5, 5, 5, 0.96) 100%),
     var(--panel);
+  background-color: #050505;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100dvh;
   border: 1px solid var(--panel-edge);
   border-radius: 1rem;
   box-shadow: var(--shadow-soft), var(--shadow-edge);
@@ -132,6 +141,9 @@ button {
   background:
     radial-gradient(circle at 10% 4%, rgba(240, 210, 154, 0.12), transparent 18%),
     radial-gradient(circle at 90% 14%, rgba(240, 210, 154, 0.06), transparent 16%);
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100dvh;
   opacity: 0.9;
 }
 
@@ -227,6 +239,13 @@ button {
   text-transform: uppercase;
   transition:
     border-color 140ms ease,
+    color 140ms ease;
+}
+
+.mode-selector__button,
+.voice-choice {
+  transition:
+    border-color 140ms ease,
     background-color 140ms ease,
     color 140ms ease;
 }
@@ -290,11 +309,15 @@ button {
 }
 
 .mode-selector__button.is-active,
-.filter-chip.is-active,
-.app-shell__filter-toggle.is-open,
 .app-shell__voice.is-listening {
   border-color: var(--interactive);
   background: linear-gradient(180deg, rgba(215, 181, 121, 0.08), rgba(215, 181, 121, 0.02));
+  color: var(--interactive-strong);
+}
+
+.app-shell__filter-toggle.is-open,
+.filter-chip.is-active {
+  border-color: var(--interactive);
   color: var(--interactive-strong);
 }
 

@@ -269,10 +269,6 @@ func writeNoMatchGeocode(query string, stderr io.Writer) int {
 	return exitNotFound
 }
 
-func writeGeocodeHeading(label, mode string, stdout io.Writer) {
-	fmt.Fprintln(stdout, geocodeHeading(label, mode))
-}
-
 func geocodeHeading(label, mode string) string {
 	return fmt.Sprintf("%s — %s departures", label, title(mode))
 }

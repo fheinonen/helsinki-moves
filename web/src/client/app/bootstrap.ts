@@ -1,6 +1,7 @@
 import type { AppStore, ThemeMode } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
 import {
+  readLineAndDestinationFilters,
   readModeFromSearch,
   syncUrlFromState,
   type HistoryLike,
@@ -34,7 +35,10 @@ export function bootstrapApp(options: BootstrapOptions): AppStore {
   documentRef.documentElement.setAttribute("data-theme", theme);
   store.setTheme(theme);
   if (locationRef) {
-    store.setMode(readModeFromSearch(locationRef.search));
+    const search = locationRef.search;
+    store.setMode(readModeFromSearch(search));
+    const selections = readLineAndDestinationFilters(search);
+    store.setLineAndDestinationFilters(selections.lines, selections.destinations);
   }
   renderAppShell({
     controller,

@@ -60,6 +60,7 @@ export interface AppStore extends AppStateStore {
   setCoordinates(coords: Coordinates): void;
   setError(message: string): void;
   setLocationDenied(message: string): void;
+  setLineAndDestinationFilters(lines: string[], destinations: string[]): void;
   setLocationUnavailable(message: string): void;
   setMode(mode: Mode): void;
   setSelectedStop(stopId: string | null): void;
@@ -189,6 +190,16 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         ...state,
         loadState: "location-denied",
         statusMessage: message,
+      }));
+    },
+    setLineAndDestinationFilters(lines, destinations) {
+      store.setState((state) => ({
+        ...state,
+        filters: {
+          ...state.filters,
+          destinations: [...destinations],
+          lines: [...lines],
+        },
       }));
     },
     setLocationUnavailable(message) {

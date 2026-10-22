@@ -1,4 +1,5 @@
 import type { AppState } from "@client/app/app-store";
+import type { FilterState } from "@shared/domain/filter";
 import { parseMode } from "@shared/domain/mode";
 
 export interface HistoryLike {
@@ -19,6 +20,30 @@ export function readModeFromSearch(search: string): AppState["activeMode"] {
   const searchParams = new URLSearchParams(search);
   const modeParam = String(searchParams.get("mode") || "").trim().toUpperCase();
   return parseMode(modeParam, "RAIL");
+}
+
+function readRepeatedValues(params: URLSearchParams, key: string): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const raw of params.getAll(key)) {
+    const normalized = raw.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    values.push(normalized);
+  }
+  return values;
+}
+
+export function readLineAndDestinationFilters(
+  search: string
+): Pick<FilterState, "destinations" | "lines"> {
+  const params = new URLSearchParams(search);
+  return {
+    destinations: readRepeatedValues(params, "dest"),
+    lines: readRepeatedValues(params, "line"),
+  };
 }
 
 function appendValues(params: URLSearchParams, key: string, values: string[]): void {

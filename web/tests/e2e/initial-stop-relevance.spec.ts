@@ -76,7 +76,7 @@ Feature: Stop-mode relevance
     When the page is opened with stale bus stop query filters
     And the user selects stop HSL:OLD
     Then first departures request omits stop id
-    And second departures request stop id equals HSL:OLD
+    And the latest departures request stop id equals HSL:OLD
     And the station title is Old Terminal
     And current URL stop query equals HSL:OLD
   `,
@@ -156,9 +156,10 @@ Feature: Stop-mode relevance
         },
       },
       {
-        pattern: /^Then second departures request stop id equals (.+)$/,
+        pattern: /^Then the latest departures request stop id equals (.+)$/,
         run: ({ args, assert, world }) => {
-          assert.equal(world.departuresCalls[1]?.searchParams.get("stopId"), args[0]);
+          const latest = world.departuresCalls[world.departuresCalls.length - 1];
+          assert.equal(latest?.searchParams.get("stopId"), args[0]);
         },
       },
       {

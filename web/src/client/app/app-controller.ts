@@ -13,7 +13,9 @@ import type { SpeechTranscribeClient } from "@client/services/speech-transcribe-
 import type { VoiceRecorder } from "@client/features/voice/browser-voice-recorder";
 import type { VoiceAvailability } from "@client/features/voice/voice-capability";
 import type { VoiceTypedFallbackPrompt } from "@client/features/voice/voice-typed-fallback";
+import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
+import { sanitizeFilterState } from "@shared/domain/filter";
 import type { Mode } from "@shared/domain/mode";
 
 interface CreateAppControllerOptions {
@@ -64,6 +66,13 @@ const VOICE_AMBIGUOUS_MESSAGE = "Multiple matches found. Choose one below.";
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function sameValues(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
 }
 
 export function createAppController(options: CreateAppControllerOptions): AppController {
@@ -143,7 +152,43 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     if (requestId !== activeRequestId) {
       return;
     }
-    store.applyDeparturesResponse(response);
+    const nextResponse = await reloadIfQueryFiltersWereRejected(response, requestId, signal);
+    if (requestId !== activeRequestId) {
+      return;
+    }
+    store.applyDeparturesResponse(nextResponse);
+  }
+
+  async function reloadIfQueryFiltersWereRejected(
+    response: DeparturesSuccessResponse,
+    requestId: number,
+    signal: AbortSignal
+  ): Promise<DeparturesSuccessResponse> {
+    const state = store.getState();
+    const retained = sanitizeFilterState(state.filters, {
+      allowedDestinations: response.filterOptions.destinations.map((option) => option.value),
+      allowedLines: response.filterOptions.lines.map((option) => option.value),
+      availableStopIds: state.stops.map((stop) => stop.id),
+      selectedStopId: state.filters.stopId,
+    });
+    if (
+      sameValues(state.filters.lines, retained.lines) &&
+      sameValues(state.filters.destinations, retained.destinations)
+    ) {
+      return response;
+    }
+
+    store.setLineAndDestinationFilters(retained.lines, retained.destinations);
+    if (requestId !== activeRequestId || signal.aborted) {
+      return response;
+    }
+
+    const requestInput = buildCurrentRequestInput(signal);
+    if (!requestInput) {
+      return response;
+    }
+
+    return departuresClient.getDepartures(requestInput);
   }
 
   function presentDepartureLoad(presentation: DepartureLoadPresentation): void {

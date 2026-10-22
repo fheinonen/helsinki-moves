@@ -32,7 +32,7 @@ Cutover checks are in the [release checklist](docs/RELEASE-CHECKLIST-greenfield-
 
 - The mode names are `RAIL`, `TRAM`, `METRO`, and `BUS`. A metro request uses Digitransit mode `SUBWAY`.
 - Opening the page without a stop requests the current location and loads nearby departures.
-- The page URL is a bookmark of `mode`, `stop`, repeated `line`, and repeated `dest`. Opening that URL restores all four and does not request the device location. The departures request sends the stop id. The server looks up that stop and searches nearby from its coordinates.
+- The page URL can bookmark `mode`, `stop`, repeated `line`, and repeated `dest`. A `stop` or `stopId` value is the location. Opening a URL with a stop restores that stop, and any line or destination in the URL, and does not request the device location. `?mode=bus&stop=...&line=550` and `?mode=bus&stop=...` behave the same way. The departures request sends the stop id. The server looks up that stop and searches nearby from its coordinates.
 - A line or destination the loaded stop does not offer is removed, and the board loads again.
 - The refresh control requests the device location. On success it drops the bookmarked stop and loads departures from that location. A denied or unavailable location leaves the bookmark in place.
 - Changing mode does not request the device location. The selected stop's coordinates become the origin. The app clears the stop, line, and destination and loads the nearest stop for the new mode from that origin.

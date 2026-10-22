@@ -47,7 +47,8 @@ export function readLineAndDestinationFilters(
 }
 
 export function readStopFromSearch(search: string): string | null {
-  const stopId = new URLSearchParams(search).get("stop")?.trim() || "";
+  const params = new URLSearchParams(search);
+  const stopId = params.get("stop")?.trim() || params.get("stopId")?.trim() || "";
   return stopId || null;
 }
 

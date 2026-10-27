@@ -8,7 +8,7 @@ import {
   type VoiceLineIntent,
 } from "@client/features/voice/voice-line-intent";
 import type { GeocodeClient } from "@client/services/geocode-client";
-import type { LocationService } from "@client/services/location-service";
+import type { LocationResult, LocationService } from "@client/services/location-service";
 import type { SpeechTranscribeClient } from "@client/services/speech-transcribe-client";
 import type { VoiceRecorder } from "@client/features/voice/browser-voice-recorder";
 import type { VoiceAvailability } from "@client/features/voice/voice-capability";
@@ -211,7 +211,7 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
   ): Promise<void> {
     const state = store.getState();
     if (!state.coords && !state.filters.stopId) {
-      await refreshNearbyDepartures();
+      await loadNearbyFromDevice(readCoarseDevicePosition);
       return;
     }
 
@@ -243,21 +243,33 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     }
   }
 
-  async function refreshNearbyDepartures(): Promise<void> {
-    const { abortController, requestId } = createRequestToken();
-    store.startLoading(LOADING_MESSAGE);
-    let locationResult = await locationService.getCurrentPosition();
-
-    if (!locationResult.ok && locationResult.code === "unavailable") {
-      locationResult = await locationService.getCurrentPosition({
+  function readCoarseDevicePosition(): Promise<LocationResult> {
+    return locationService.getCurrentPosition().then((coarse) => {
+      if (coarse.ok || coarse.code !== "unavailable") {
+        return coarse;
+      }
+      return locationService.getCurrentPosition({
         enableHighAccuracy: true,
       });
+    });
+  }
+
+  function readFreshDevicePosition(): Promise<LocationResult> {
+    return locationService.getCurrentPosition({
+      enableHighAccuracy: true,
+      maximumAge: 0,
+    });
+  }
+
+  async function loadNearbyFromDevice(readPosition: () => Promise<LocationResult>): Promise<void> {
+    const { abortController, requestId } = createRequestToken();
+    store.startLoading(LOADING_MESSAGE);
+    const locationResult = await readPosition();
+    if (requestId !== activeRequestId) {
+      return;
     }
 
     if (!locationResult.ok) {
-      if (requestId !== activeRequestId) {
-        return;
-      }
       if (locationResult.code === "permission-denied") {
         store.setLocationDenied(LOCATION_DENIED_MESSAGE);
         return;
@@ -506,10 +518,10 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
         await loadDeparturesForCurrentState();
         return;
       }
-      await refreshNearbyDepartures();
+      await loadNearbyFromDevice(readCoarseDevicePosition);
     },
     async refreshNearbyDepartures() {
-      await refreshNearbyDepartures();
+      await loadNearbyFromDevice(readFreshDevicePosition);
     },
     setMode(mode) {
       store.setMode(mode);

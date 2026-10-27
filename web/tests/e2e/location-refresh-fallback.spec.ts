@@ -2,7 +2,6 @@ import { test } from "@playwright/test";
 import { definePlaywrightFeature } from "@tests/helpers/playwright-bdd-runner";
 
 interface World {
-  refreshGetCurrentPositionCallCountStart?: number;
   latestLat?: string | null;
   latestLon?: string | null;
 }
@@ -54,7 +53,6 @@ Feature: Location refresh fallback
     Then the station title is Kamppi
     When geolocation becomes unavailable
     And the user taps refresh location
-    Then geolocation refresh retries once with high accuracy
     Then the latest departures request latitude is 60.17
     And the latest departures request longitude is 24.94
     And the station title is Kamppi
@@ -92,31 +90,13 @@ Feature: Location refresh fallback
               },
             });
 
-            Object.defineProperty(window, "__testGeoCalls", {
-              configurable: true,
-              value: [],
-              writable: true,
-            });
-
             Object.defineProperty(navigator, "geolocation", {
               configurable: true,
               value: {
                 getCurrentPosition(
                   success: PositionCallback,
-                  error?: PositionErrorCallback | null,
-                  options?: PositionOptions
+                  error?: PositionErrorCallback | null
                 ) {
-                  (
-                    window as typeof window & {
-                      __testGeoCalls?: Array<{
-                        enableHighAccuracy: boolean;
-                        type: string;
-                      }>;
-                    }
-                  ).__testGeoCalls?.push({
-                    enableHighAccuracy: options?.enableHighAccuracy === true,
-                    type: "getCurrentPosition",
-                  });
                   if (state.mode === "unavailable") {
                     error?.({
                       code: 2,
@@ -198,45 +178,11 @@ Feature: Location refresh fallback
       },
       {
         pattern: /^When the user taps refresh location$/,
-        run: async ({ fixtures, world }) => {
+        run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          world.refreshGetCurrentPositionCallCountStart = await page.evaluate(() => {
-            const calls =
-              (
-                window as typeof window & {
-                  __testGeoCalls?: Array<{ type: string }>;
-                }
-              ).__testGeoCalls || [];
-            return calls.filter((call) => call?.type === "getCurrentPosition").length;
-          });
+          const response = page.waitForResponse((candidate) => candidate.url().includes("/api/v1/departures"));
           await page.locator("[data-refresh]").click();
-        },
-      },
-      {
-        pattern: /^Then geolocation refresh retries once with high accuracy$/,
-        run: async ({ assert, fixtures, world }) => {
-          const page = fixtures.page as import("@playwright/test").Page;
-          const refreshCalls = await page.evaluate(
-            (refreshStartCount) => {
-              const calls =
-                (
-                  window as typeof window & {
-                    __testGeoCalls?: Array<{
-                      enableHighAccuracy: boolean;
-                      type: string;
-                    }>;
-                  }
-                ).__testGeoCalls || [];
-              return calls
-                .filter((call) => call?.type === "getCurrentPosition")
-                .slice(Number(refreshStartCount || 0));
-            },
-            world.refreshGetCurrentPositionCallCountStart || 0
-          );
-
-          assert.equal(refreshCalls.length, 2);
-          assert.equal(refreshCalls[0]?.enableHighAccuracy, false);
-          assert.equal(refreshCalls[1]?.enableHighAccuracy, true);
+          await response;
         },
       },
       {

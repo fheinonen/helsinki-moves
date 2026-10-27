@@ -8,6 +8,17 @@ export type LocationResult =
 
 export interface GetCurrentPositionOptions {
   enableHighAccuracy?: boolean;
+  maximumAge?: number;
+}
+
+function toPositionOptions(options: GetCurrentPositionOptions): PositionOptions {
+  const positionOptions: PositionOptions = {
+    enableHighAccuracy: options.enableHighAccuracy === true,
+  };
+  if (typeof options.maximumAge === "number") {
+    positionOptions.maximumAge = options.maximumAge;
+  }
+  return positionOptions;
 }
 
 export interface LocationService {
@@ -43,9 +54,7 @@ export function createBrowserLocationService(input: {
             }
             resolve({ code: "unavailable", ok: false });
           },
-          {
-            enableHighAccuracy: options.enableHighAccuracy === true,
-          }
+          toPositionOptions(options)
         );
       });
     },

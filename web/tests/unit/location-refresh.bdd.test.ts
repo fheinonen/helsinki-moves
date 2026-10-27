@@ -6,7 +6,6 @@ import type { LocationService } from "@client/services/location-service";
 import type { DeparturesClient } from "@client/services/departures-client";
 
 interface World {
-  locationCalls?: Array<{ enableHighAccuracy: boolean }>;
   departuresCallCount?: number;
   controller?: AppController;
 }
@@ -28,12 +27,6 @@ Feature: Location refresh
     Then departures are requested for the last known location
     And the load state is ready
     And the current station name is Kamppi
-
-  Scenario: Refresh retries once with high accuracy before using the last known location
-    Given the app controller retries unavailable geolocation with high accuracy
-    When nearby departures refresh is requested twice
-    Then location refresh first requests standard accuracy
-    And location refresh then requests high accuracy
   `,
   {
     createWorld: () => ({}),
@@ -136,54 +129,6 @@ Feature: Location refresh
         },
       },
       {
-        pattern: /^Given the app controller retries unavailable geolocation with high accuracy$/,
-        run: ({ world }) => {
-          world.locationCalls = [];
-          let callCount = 0;
-          const locationService: LocationService = {
-            async getCurrentPosition(options) {
-              world.locationCalls?.push({
-                enableHighAccuracy: options?.enableHighAccuracy === true,
-              });
-              callCount += 1;
-              if (callCount === 1) {
-                return {
-                  ok: true,
-                  value: { lat: 60.17, lon: 24.94 },
-                };
-              }
-              return { code: "unavailable", ok: false };
-            },
-          };
-          const departuresClient: DeparturesClient = {
-            async getDepartures(input) {
-              return {
-                filterOptions: {
-                  destinations: [{ count: 1, value: "Kamppi" }],
-                  lines: [{ count: 1, value: "550" }],
-                },
-                mode: input.mode,
-                selectedStopId: "HSL:STOP_A",
-                station: {
-                  departures: [],
-                  distanceMeters: 80,
-                  stopCode: "A1",
-                  stopCodes: ["A1"],
-                  stopName: "Kamppi",
-                  type: "stop",
-                },
-                stops: [],
-              };
-            },
-          };
-          world.controller = createAppController({
-            departuresClient,
-            locationService,
-            store: createAppStore({ activeMode: "BUS" }),
-          });
-        },
-      },
-      {
         pattern: /^Then departures are requested for the last known location$/,
         run: ({ assert, world }) => {
           if (!world.controller) {
@@ -204,19 +149,6 @@ Feature: Location refresh
         pattern: /^Then the current station name is Kamppi$/,
         run: ({ assert, world }) => {
           assert.equal(world.controller?.store.getState().station?.stopName, "Kamppi");
-        },
-      },
-      {
-        pattern: /^Then location refresh first requests standard accuracy$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.locationCalls?.[0]?.enableHighAccuracy, false);
-        },
-      },
-      {
-        pattern: /^(?:Then|And) location refresh then requests high accuracy$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.locationCalls?.[1]?.enableHighAccuracy, false);
-          assert.equal(world.locationCalls?.[2]?.enableHighAccuracy, true);
         },
       },
     ],

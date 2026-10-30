@@ -1,4 +1,8 @@
-import { paintDepartureTime, renderDepartureCard } from "@client/features/departures/departure-card-view";
+import {
+  paintDepartureClock,
+  paintDepartureTime,
+  renderDepartureCard,
+} from "@client/features/departures/departure-card-view";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
 import { renderModeSelector } from "@client/features/mode/mode-view";
 import { createStopSelectorView } from "@client/features/stops/stop-selector-view";
@@ -89,12 +93,55 @@ function departureRowKey(departure: Departure): string {
   );
 }
 
+function hasLeftSinceOpen(departureIso: string, openedAtMs: number, nowMs: number): boolean {
+  const deadlineMs = Date.parse(departureIso);
+  return Number.isFinite(deadlineMs) && deadlineMs > openedAtMs && deadlineMs <= nowMs;
+}
+
+function prefersReducedMotion(documentRef: Document): boolean {
+  return documentRef.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function beginDepartureLeave(row: HTMLTableRowElement, documentRef: Document): void {
+  if (row.classList.contains("is-leaving") || !row.isConnected) {
+    return;
+  }
+  if (prefersReducedMotion(documentRef)) {
+    row.remove();
+    return;
+  }
+  row.classList.add("is-leaving");
+  row.addEventListener("animationend", (event) => {
+    if (!row.isConnected) {
+      return;
+    }
+    if ("animationName" in event && event.animationName && event.animationName !== "departure-leave") {
+      return;
+    }
+    row.remove();
+  });
+}
+
+function refreshDepartureClocks(departuresList: HTMLTableSectionElement): void {
+  for (const child of departuresList.children) {
+    if (!(child instanceof HTMLTableRowElement) || !child.classList.contains("departure-card")) {
+      continue;
+    }
+    if (child.classList.contains("is-leaving")) {
+      continue;
+    }
+    paintDepartureClock(child);
+  }
+}
+
 function reconcileDepartureRows(input: {
   departures: readonly Departure[];
   departuresList: HTMLTableSectionElement;
   destinationColor: (destination: string) => string;
   documentRef: Document;
   mode: AppState["activeMode"];
+  nowMs: number;
+  openedAtMs: number;
 }): void {
   const existing = new Map<string, HTMLTableRowElement>();
   for (const child of input.departuresList.children) {
@@ -128,18 +175,26 @@ function reconcileDepartureRows(input: {
   }
 
   for (const [key, row] of existing) {
-    if (!seen.has(key)) {
-      row.remove();
+    if (seen.has(key) || row.classList.contains("is-leaving")) {
+      continue;
     }
+    const departureIso = row.querySelector("time")?.getAttribute("datetime") ?? "";
+    if (hasLeftSinceOpen(departureIso, input.openedAtMs, input.nowMs)) {
+      beginDepartureLeave(row, input.documentRef);
+      continue;
+    }
+    row.remove();
   }
 }
 
-function buildDeparturesSignature(state: AppState): string {
+function departuresSignature(mode: AppState["activeMode"], departures: readonly Departure[]): string {
   return (
-    state.activeMode +
+    mode +
     "\u001f" +
-    (state.station?.departures || [])
-      .map((d) => `${d.line}:${d.destination}:${d.departureIso}:${d.track || ""}:${d.stopCode || ""}`)
+    departures
+      .map((departure) =>
+        `${departure.line}:${departure.destination}:${departure.departureIso}:${departure.track || ""}:${departure.stopCode || ""}`,
+      )
       .join("\u001f")
   );
 }
@@ -155,12 +210,15 @@ function formatClock(now: Date): string {
   return `${h}:${m}:${s}`;
 }
 
-function startClock(clockEl: HTMLElement): () => void {
-  const tick = () => {
+function startClock(clockEl: HTMLElement, onSecond: () => void): () => void {
+  const paint = () => {
     clockEl.textContent = formatClock(new Date(Date.now()));
   };
-  tick();
-  const intervalId = setInterval(tick, 1000);
+  paint();
+  const intervalId = setInterval(() => {
+    paint();
+    onSecond();
+  }, 1000);
   return () => {
     clearInterval(intervalId);
   };
@@ -317,6 +375,7 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
   head.appendChild(columnHeaders);
   element.append(head, departuresList);
   const destinationColors = createDestinationColorBook();
+  const openedAtMs = Date.now();
   let previousSignature = "";
 
   return {
@@ -329,17 +388,24 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
     },
     element,
     sync(state) {
-      const signature = buildDeparturesSignature(state);
+      const nowMs = Date.now();
+      const departures = (state.station?.departures || []).filter(
+        (departure) => !hasLeftSinceOpen(departure.departureIso, openedAtMs, nowMs),
+      );
+      const signature = departuresSignature(state.activeMode, departures);
       if (signature === previousSignature) {
+        refreshDepartureClocks(departuresList);
         return;
       }
       previousSignature = signature;
       reconcileDepartureRows({
-        departures: state.station?.departures || [],
+        departures,
         departuresList,
         destinationColor: (destination) => destinationColors.colorFor(destination),
         documentRef,
         mode: state.activeMode,
+        nowMs,
+        openedAtMs,
       });
     },
   };
@@ -362,7 +428,10 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
 
   const clock = documentRef.createElement("time");
   clock.className = "app-shell__clock";
-  const stopClock = startClock(clock);
+  let releaseDeparted = () => {};
+  const stopClock = startClock(clock, () => {
+    releaseDeparted();
+  });
 
   topbar.append(title, clock);
 
@@ -443,6 +512,11 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.hidden = true;
 
   const departuresTableView = createDeparturesTableView(documentRef);
+  releaseDeparted = () => {
+    if (store.getState().loadState === "ready") {
+      departuresTableView.sync(store.getState());
+    }
+  };
   departuresTableView.element.setAttribute("aria-live", "polite");
   departuresTableView.element.setAttribute("aria-relevant", "additions removals");
 

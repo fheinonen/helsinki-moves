@@ -96,6 +96,22 @@ export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTa
   return item;
 }
 
+export function paintDepartureClock(row: HTMLTableRowElement): void {
+  const timeCell = row.querySelector<HTMLTableCellElement>(".departure-card__time");
+  const time = timeCell?.querySelector("time");
+  const departureIso = time?.getAttribute("datetime");
+  if (!timeCell || !time || !departureIso) {
+    return;
+  }
+  const relative = formatRelativeDepartureTime(departureIso);
+  if (time.textContent !== relative.text) {
+    time.textContent = relative.text;
+  }
+  if (timeCell.dataset.urgency !== relative.urgency) {
+    timeCell.dataset.urgency = relative.urgency;
+  }
+}
+
 export function paintDepartureTime(row: HTMLTableRowElement, departure: Departure): void {
   const timeCell = row.querySelector<HTMLTableCellElement>(".departure-card__time");
   const time = timeCell?.querySelector("time");

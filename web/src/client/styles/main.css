@@ -703,9 +703,67 @@ button {
   }
 }
 
+.departure-card.is-leaving {
+  pointer-events: none;
+  animation: departure-leave-border 740ms ease-out forwards;
+}
+
+.departure-card.is-leaving .departure-card__time {
+  position: relative;
+}
+
+.departure-card.is-leaving td {
+  animation: departure-leave 740ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.departure-card.is-leaving .departure-card__time::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0.62rem;
+  width: 1.7rem;
+  height: 1px;
+  background: var(--interactive);
+  transform-origin: right center;
+  pointer-events: none;
+  animation: departure-time-rule 740ms ease-out both;
+}
+
+@keyframes departure-leave {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+    padding-top: 0.98rem;
+    padding-bottom: 0.98rem;
+  }
+
+  40% {
+    opacity: 0;
+    transform: translateY(-0.35em);
+    padding-top: 0.98rem;
+    padding-bottom: 0.98rem;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-0.35em);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+@keyframes departure-leave-border {
+  to {
+    border-top-color: transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .departure-card__time.is-live time,
-  .departure-card__time.is-live::after {
+  .departure-card__time.is-live::after,
+  .departure-card.is-leaving,
+  .departure-card.is-leaving td,
+  .departure-card.is-leaving .departure-card__time::after {
     animation: none;
   }
 }

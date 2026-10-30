@@ -72,14 +72,14 @@ Feature: JavaScript language level
     Then the server language target is "ES2025"
     And the server language libraries are "ES2025"
 
-  Scenario: The browser bundle stays on ES2022
+  Scenario: The browser bundle targets ES2024
     Given the client TypeScript config
     And the Vite config
     When the client language target and libraries are read
     And the Vite client build target is read
-    Then the client language target is "ES2022"
-    And the client language libraries are "ES2022,DOM,DOM.Iterable"
-    And the Vite client build target is "es2022"
+    Then the client language target is "ES2024"
+    And the client language libraries are "ES2024,DOM,DOM.Iterable"
+    And the Vite client build target is "es2024"
 
   Scenario: Node compiles unit tests as ES2025
     Given the test TypeScript config

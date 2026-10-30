@@ -24,11 +24,8 @@
     }
   },
   "include": [
-    "api/**/*.ts",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "tests/**/*.ts",
-    "tests/**/*.d.ts",
+    "src/client/**/*.ts",
+    "src/shared/**/*.ts",
     "tools/**/*.d.ts",
     "vite.config.ts",
     "vitest.config.ts",

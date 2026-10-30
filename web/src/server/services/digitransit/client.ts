@@ -87,6 +87,7 @@ function buildMultiStopDeparturesQuery(stopIds: string[], fetchWindow: Departure
             platformCode
           }
           trip {
+            gtfsId
             route {
               mode
               shortName
@@ -151,6 +152,7 @@ function parseDeparture(
       platformCode?: string;
     };
     trip?: {
+      gtfsId?: string;
       route?: {
         mode?: string;
         shortName?: string;
@@ -191,6 +193,7 @@ function parseDeparture(
     stopId: item.stop?.gtfsId?.trim() || null,
     stopName: item.stop?.name?.trim() || null,
     track: item.stop?.platformCode?.trim() || input.fallbackTrack,
+    tripId: item.trip?.gtfsId?.trim() || null,
   };
 }
 
@@ -203,7 +206,8 @@ function dedupeDepartures(departures: Departure[]): Departure[] {
           candidate.destination === departure.destination &&
           candidate.departureIso === departure.departureIso &&
           candidate.track === departure.track &&
-          candidate.stopId === departure.stopId
+          candidate.stopId === departure.stopId &&
+          candidate.tripId === departure.tripId
         );
       }) === index
     );

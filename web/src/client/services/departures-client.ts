@@ -22,6 +22,32 @@ function isErrorPayload(value: unknown): value is ErrorPayload {
   return typeof value === "object" && value !== null && "error" in value;
 }
 
+export function buildDeparturesSearchParams(input: {
+  coords: Coordinates | null;
+  destinations: readonly string[];
+  lines: readonly string[];
+  mode: Mode;
+  stopId: string | null;
+}): URLSearchParams {
+  const searchParams = new URLSearchParams({
+    mode: input.mode,
+  });
+  if (input.coords) {
+    searchParams.set("lat", String(input.coords.lat));
+    searchParams.set("lon", String(input.coords.lon));
+  }
+  if (input.stopId) {
+    searchParams.set("stopId", input.stopId);
+  }
+  if (input.lines.length > 0) {
+    searchParams.set("line", input.lines.join(","));
+  }
+  if (input.destinations.length > 0) {
+    searchParams.set("dest", input.destinations.join(","));
+  }
+  return searchParams;
+}
+
 export function createBrowserDeparturesClient(input: {
   fetchImpl?: typeof fetch;
 } = {}): DeparturesClient {
@@ -29,22 +55,13 @@ export function createBrowserDeparturesClient(input: {
 
   return {
     async getDepartures({ coords, destinations, lineIntent = false, lines, mode, signal, stopId }) {
-      const searchParams = new URLSearchParams({
+      const searchParams = buildDeparturesSearchParams({
+        coords,
+        destinations,
+        lines,
         mode,
+        stopId,
       });
-      if (coords) {
-        searchParams.set("lat", String(coords.lat));
-        searchParams.set("lon", String(coords.lon));
-      }
-      if (stopId) {
-        searchParams.set("stopId", stopId);
-      }
-      if (lines.length > 0) {
-        searchParams.set("line", lines.join(","));
-      }
-      if (destinations.length > 0) {
-        searchParams.set("dest", destinations.join(","));
-      }
       if (lineIntent) {
         searchParams.set("lineIntent", "1");
       }

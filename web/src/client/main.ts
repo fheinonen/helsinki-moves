@@ -5,6 +5,7 @@ import { createBrowserVoiceRecorder } from "@client/features/voice/browser-voice
 import { detectVoiceCapability } from "@client/features/voice/voice-capability";
 import { createBrowserVoiceTypedFallbackPrompt } from "@client/features/voice/voice-typed-fallback";
 import { bootstrapApp } from "@client/app/bootstrap";
+import { watchDepartureTimes } from "@client/services/departure-live-client";
 import { createBrowserDeparturesClient } from "@client/services/departures-client";
 import { createBrowserGeocodeClient } from "@client/services/geocode-client";
 import { createBrowserLocationService } from "@client/services/location-service";
@@ -48,6 +49,8 @@ const controller = createAppController({
     promptImpl: typeof window.prompt === "function" ? window.prompt.bind(window) : null,
   }),
 });
+
+watchDepartureTimes({ store });
 
 bootstrapApp({
   controller,

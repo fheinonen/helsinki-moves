@@ -95,3 +95,23 @@ export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTa
   item.append(line, destination, time);
   return item;
 }
+
+export function paintDepartureTime(row: HTMLTableRowElement, departure: Departure): void {
+  const timeCell = row.querySelector<HTMLTableCellElement>(".departure-card__time");
+  const time = timeCell?.querySelector("time");
+  if (!timeCell || !time) {
+    return;
+  }
+  const relative = formatRelativeDepartureTime(departure.departureIso);
+  const changed = time.getAttribute("datetime") !== departure.departureIso;
+  time.setAttribute("datetime", departure.departureIso);
+  time.textContent = relative.text;
+  timeCell.dataset.urgency = relative.urgency;
+  if (!changed) {
+    timeCell.classList.remove("is-live");
+    return;
+  }
+  timeCell.classList.remove("is-live");
+  void timeCell.offsetWidth;
+  timeCell.classList.add("is-live");
+}

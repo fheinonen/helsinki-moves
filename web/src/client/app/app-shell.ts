@@ -1,4 +1,4 @@
-import { renderDepartureCard } from "@client/features/departures/departure-card-view";
+import { paintDepartureTime, renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
 import { renderModeSelector } from "@client/features/mode/mode-view";
 import { createStopSelectorView } from "@client/features/stops/stop-selector-view";
@@ -6,6 +6,7 @@ import { getVoiceActionLabel } from "@client/features/voice/voice-capability";
 import type { AppState } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
 import { createDestinationColorBook } from "@shared/domain/destination-color";
+import type { Departure } from "@shared/domain/departure";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
@@ -75,6 +76,62 @@ function cleanupRoot(root: HTMLElement): void {
 
 function buildVoiceChoicesSignature(state: AppState): string {
   return state.voice.choices.map((choice) => choice.label).join("\u001f");
+}
+
+function departureRowKey(departure: Departure): string {
+  const tripId = departure.tripId?.trim();
+  const stopId = departure.stopId?.trim() || "";
+  if (tripId) {
+    return `${tripId}\u001f${stopId}`;
+  }
+  return [departure.line, departure.destination, departure.departureIso, departure.track || "", stopId].join(
+    "\u001f",
+  );
+}
+
+function reconcileDepartureRows(input: {
+  departures: readonly Departure[];
+  departuresList: HTMLTableSectionElement;
+  destinationColor: (destination: string) => string;
+  documentRef: Document;
+  mode: AppState["activeMode"];
+}): void {
+  const existing = new Map<string, HTMLTableRowElement>();
+  for (const child of input.departuresList.children) {
+    if (!(child instanceof HTMLTableRowElement) || !child.classList.contains("departure-card")) {
+      continue;
+    }
+    const key = child.dataset.departureKey;
+    if (key) {
+      existing.set(key, child);
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const departure of input.departures) {
+    const key = departureRowKey(departure);
+    seen.add(key);
+    const current = existing.get(key);
+    const row =
+      current ??
+      renderDepartureCard({
+        departure,
+        destinationColor: input.destinationColor(departure.destination),
+        documentRef: input.documentRef,
+        mode: input.mode,
+      });
+    row.dataset.departureKey = key;
+    if (current) {
+      paintDepartureTime(row, departure);
+    }
+    input.departuresList.appendChild(row);
+  }
+
+  for (const [key, row] of existing) {
+    if (!seen.has(key)) {
+      row.remove();
+    }
+  }
 }
 
 function buildDeparturesSignature(state: AppState): string {
@@ -277,18 +334,13 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
         return;
       }
       previousSignature = signature;
-      departuresList.replaceChildren();
-
-      for (const departure of state.station?.departures || []) {
-        departuresList.appendChild(
-          renderDepartureCard({
-            departure,
-            destinationColor: destinationColors.colorFor(departure.destination),
-            documentRef,
-            mode: state.activeMode,
-          })
-        );
-      }
+      reconcileDepartureRows({
+        departures: state.station?.departures || [],
+        departuresList,
+        destinationColor: (destination) => destinationColors.colorFor(destination),
+        documentRef,
+        mode: state.activeMode,
+      });
     },
   };
 }

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2025",
+    "lib": ["ES2025"]
+  },
+  "include": [
+    "api/**/*.ts",
+    "src/server/**/*.ts",
+    "src/shared/**/*.ts"
+  ]
+}

@@ -6,7 +6,7 @@
   },
   "scripts": {
     "build": "vite build",
-    "check:syntax": "tsc --noEmit --pretty false",
+    "check:syntax": "npm run typecheck",
     "ci": "npm run ci:syntax && npm run ci:unit && npm run ci:coverage && npm run ci:e2e",
     "ci:coverage": "npm run test:coverage",
     "ci:e2e": "npm run test:e2e:chromium",
@@ -34,7 +34,7 @@
     "ui:flicker": "playwright test tests/e2e/light-theme-controls-stability.spec.ts --project=chromium",
     "ui:geometry": "playwright test tests/e2e/ui-geometry-contracts.spec.ts --project=chromium",
     "ui:perf": "playwright test tests/e2e/mode-switch-responsiveness.spec.ts --project=chromium",
-    "typecheck": "tsc --noEmit --pretty false"
+    "typecheck": "tsc --noEmit --pretty false -p tsconfig.json && tsc --noEmit --pretty false -p tsconfig.server.json && tsc --noEmit --pretty false -p tsconfig.tests.json"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

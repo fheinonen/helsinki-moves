@@ -114,26 +114,67 @@ function followingDepartureRows(row: HTMLTableRowElement): HTMLTableRowElement[]
   return followers;
 }
 
-function slideRowsIntoGap(rows: readonly HTMLTableRowElement[], height: number, documentRef: Document): void {
-  const shift = `translateY(${height}px)`;
-  for (const follower of rows) {
-    follower.style.transition = "none";
-    follower.style.transform = shift;
+function bezierCoordinate(progress: number, start: number, end: number): number {
+  const rest = 1 - progress;
+  return 3 * rest * rest * progress * start + 3 * rest * progress * progress * end + progress ** 3;
+}
+
+function bezierSlope(progress: number, start: number, end: number): number {
+  const rest = 1 - progress;
+  return 3 * rest * rest * start + 6 * rest * progress * (end - start) + 3 * progress * progress * (1 - end);
+}
+
+function easeSlide(progress: number): number {
+  let guess = progress;
+  for (let step = 0; step < 4; step += 1) {
+    const slope = bezierSlope(guess, 0.45, 0.2);
+    if (Math.abs(slope) < 1e-4) {
+      break;
+    }
+    const next = guess - (bezierCoordinate(guess, 0.45, 0.2) - progress) / slope;
+    guess = Math.min(1, Math.max(0, next));
   }
-  void rows[0]?.offsetHeight;
+  return bezierCoordinate(guess, 0.05, 1);
+}
+
+function slideRowsIntoGap(rows: readonly HTMLTableRowElement[], height: number, documentRef: Document): void {
+  const list = rows[0]?.parentElement;
+  const view = documentRef.defaultView;
+  if (!(list instanceof HTMLTableSectionElement) || !view) {
+    return;
+  }
+  const tail = documentRef.createElement("tbody");
+  for (const row of rows) {
+    tail.appendChild(row);
+  }
+  list.after(tail);
+  const distance = Math.round(height);
+  const started = view.performance.now();
   const finish = () => {
-    for (const follower of rows) {
-      follower.style.transition = "";
-      follower.style.transform = "";
+    if (!tail.isConnected) {
+      return;
     }
+    tail.style.transform = "";
+    for (const row of [...tail.rows]) {
+      list.appendChild(row);
+    }
+    tail.remove();
   };
-  documentRef.defaultView?.requestAnimationFrame(() => {
-    for (const follower of rows) {
-      follower.style.transition = "transform 480ms cubic-bezier(0.45, 0.05, 0.2, 1)";
-      follower.style.transform = "translateY(0)";
+  const tick = (now: number) => {
+    if (!tail.isConnected) {
+      return;
     }
-    rows[0]?.addEventListener("transitionend", finish, { once: true });
-  });
+    const progress = Math.min(1, (now - started) / 480);
+    const offset = Math.round(distance * (1 - easeSlide(progress)));
+    tail.style.transform = offset === 0 ? "" : `translateY(${offset}px)`;
+    if (progress < 1) {
+      view.requestAnimationFrame(tick);
+      return;
+    }
+    finish();
+  };
+  tail.style.transform = `translateY(${distance}px)`;
+  view.requestAnimationFrame(tick);
 }
 
 function mountDepartureGhost(row: HTMLTableRowElement, documentRef: Document): HTMLTableElement {

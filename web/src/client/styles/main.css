@@ -604,11 +604,24 @@ button {
 }
 
 .departure-card__line {
-  box-shadow: inset 0.18rem 0 0 var(--destination-color, transparent);
+  position: relative;
+  z-index: 1;
   color: var(--text-primary);
   font-size: var(--departure-line-font-size);
   font-weight: 700;
   letter-spacing: -0.03em;
+}
+
+.departure-card__line::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  top: -1px;
+  bottom: -1px;
+  width: 0.18rem;
+  background: var(--destination-color, transparent);
+  pointer-events: none;
 }
 
 .departure-card__destination {

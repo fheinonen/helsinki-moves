@@ -39,8 +39,7 @@ export function buildGeocodeTextVariants(text: string): string[] {
 
   const tokens = hyphenAsSpace.split(" ").filter(Boolean);
   for (let index = 0; index < tokens.length - 1 && variants.length < MAX_GEOCODE_TEXT_VARIANTS; index += 1) {
-    const merged = [...tokens];
-    merged.splice(index, 2, `${tokens[index]}${tokens[index + 1]}`);
+    const merged = tokens.toSpliced(index, 2, `${tokens[index]}${tokens[index + 1]}`);
     addVariant(variants, merged.join(" "));
   }
 

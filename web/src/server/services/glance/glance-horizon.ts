@@ -42,7 +42,7 @@ export function selectGlanceDepartures(input: {
   nowMs: number;
 }): Departure[] {
   const policy = GLANCE_POLICIES[input.mode];
-  const sorted = [...input.departures].sort(compareDeparturesByTime);
+  const sorted = input.departures.toSorted(compareDeparturesByTime);
   const horizonMinutes = resolveHorizonMinutes(policy, sorted, input.nowMs);
   const windowed = departuresInHorizon(sorted, input.nowMs, horizonMinutes, policy.maxHorizonMinutes);
   return windowed.slice(0, policy.maxRows);

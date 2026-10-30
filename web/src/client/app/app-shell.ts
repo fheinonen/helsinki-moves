@@ -102,6 +102,68 @@ function prefersReducedMotion(documentRef: Document): boolean {
   return documentRef.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
+function followingDepartureRows(row: HTMLTableRowElement): HTMLTableRowElement[] {
+  const followers: HTMLTableRowElement[] = [];
+  let sibling = row.nextElementSibling;
+  while (sibling) {
+    if (sibling instanceof HTMLTableRowElement && sibling.classList.contains("departure-card")) {
+      followers.push(sibling);
+    }
+    sibling = sibling.nextElementSibling;
+  }
+  return followers;
+}
+
+function slideRowsIntoGap(rows: readonly HTMLTableRowElement[], height: number, documentRef: Document): void {
+  const shift = `translateY(${height}px)`;
+  for (const follower of rows) {
+    follower.style.transition = "none";
+    follower.style.transform = shift;
+  }
+  void rows[0]?.offsetHeight;
+  const finish = () => {
+    for (const follower of rows) {
+      follower.style.transition = "";
+      follower.style.transform = "";
+    }
+  };
+  documentRef.defaultView?.requestAnimationFrame(() => {
+    for (const follower of rows) {
+      follower.style.transition = "transform 480ms cubic-bezier(0.45, 0.05, 0.2, 1)";
+      follower.style.transform = "translateY(0)";
+    }
+    rows[0]?.addEventListener("transitionend", finish, { once: true });
+  });
+}
+
+function mountDepartureGhost(row: HTMLTableRowElement, documentRef: Document): HTMLTableElement {
+  const rect = row.getBoundingClientRect();
+  const ghost = documentRef.createElement("table");
+  ghost.className = "departure-leave-ghost";
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.width = `${rect.width}px`;
+  const body = documentRef.createElement("tbody");
+  const clone = row.cloneNode(true) as HTMLTableRowElement;
+  clone.classList.add("is-leaving");
+  for (const [index, cell] of [...clone.cells].entries()) {
+    cell.style.width = `${row.cells[index]?.getBoundingClientRect().width ?? 0}px`;
+  }
+  body.appendChild(clone);
+  ghost.appendChild(body);
+  (row.closest(".app-shell") ?? documentRef.body).appendChild(ghost);
+  return ghost;
+}
+
+function releaseDepartureRow(row: HTMLTableRowElement, ghost: HTMLTableElement | null): void {
+  if (row.dataset.leaveClosed === "1") {
+    return;
+  }
+  row.dataset.leaveClosed = "1";
+  ghost?.remove();
+  row.remove();
+}
+
 function beginDepartureLeave(row: HTMLTableRowElement, documentRef: Document): void {
   if (row.classList.contains("is-leaving") || !row.isConnected) {
     return;
@@ -110,16 +172,21 @@ function beginDepartureLeave(row: HTMLTableRowElement, documentRef: Document): v
     row.remove();
     return;
   }
-  row.classList.add("is-leaving");
-  row.addEventListener("animationend", (event) => {
-    if (!row.isConnected) {
-      return;
-    }
+  const height = row.getBoundingClientRect().height;
+  const followers = followingDepartureRows(row);
+  const ghost = height >= 1 ? mountDepartureGhost(row, documentRef) : null;
+  row.classList.add("is-leaving", "is-leave-hold");
+  if (height >= 1 && followers.length > 0) {
+    slideRowsIntoGap(followers, height, documentRef);
+  }
+  const close = (event: Event) => {
     if ("animationName" in event && event.animationName && event.animationName !== "departure-leave") {
       return;
     }
-    row.remove();
-  });
+    releaseDepartureRow(row, ghost);
+  };
+  ghost?.addEventListener("animationend", close);
+  row.addEventListener("animationend", close);
 }
 
 function refreshDepartureClocks(departuresList: HTMLTableSectionElement): void {

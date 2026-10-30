@@ -200,7 +200,7 @@ function pasilaRow(world: World): Element | null {
 }
 
 function timeText(row: Element | null): string {
-  return row?.querySelector(".departure-card__time")?.textContent ?? "";
+  return row?.querySelector("time")?.textContent ?? "";
 }
 
 function liveQuery(): DepartureLiveQuery {
@@ -353,6 +353,8 @@ Feature: Live departure times
         run: ({ assert, world }) => {
           const time = pasilaRow(world)?.querySelector(".departure-card__time");
           assert.equal(time?.classList.contains("is-live"), true);
+          assert.equal(time?.querySelector("time")?.textContent, "5m");
+          assert.equal(time?.querySelector(".departure-card__time-previous")?.textContent, "20m");
         },
       },
       {

@@ -232,6 +232,11 @@ Feature: Departed lines leave the board
         pattern: /^Then that row is not leaving$/,
         run: ({ assert, world }) => {
           assert.equal(world.laterRow?.classList.contains("is-leaving"), false);
+          assert.equal(world.laterRow?.querySelector(".departure-card__time-previous"), null);
+          assert.equal(
+            world.laterRow?.querySelector(".departure-card__time")?.classList.contains("is-live"),
+            false,
+          );
         },
       },
       {

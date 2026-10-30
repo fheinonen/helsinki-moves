@@ -104,12 +104,67 @@ export function paintDepartureClock(row: HTMLTableRowElement): void {
     return;
   }
   const relative = formatRelativeDepartureTime(departureIso);
+  paintRelativeLabel(timeCell, time, relative);
+}
+
+function paintRelativeLabel(
+  timeCell: HTMLTableCellElement,
+  time: HTMLTimeElement,
+  relative: RelativeDeparture,
+): void {
   if (time.textContent !== relative.text) {
     time.textContent = relative.text;
   }
   if (timeCell.dataset.urgency !== relative.urgency) {
     timeCell.dataset.urgency = relative.urgency;
   }
+}
+
+function prefersReducedMotion(node: Node): boolean {
+  const view = node.ownerDocument?.defaultView;
+  return view?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function holdPreviousEstimate(
+  timeCell: HTMLTableCellElement,
+  previous: string,
+  urgency: string,
+): void {
+  timeCell.querySelector(".departure-card__time-previous")?.remove();
+  if (!previous || prefersReducedMotion(timeCell)) {
+    return;
+  }
+  const outgoing = timeCell.ownerDocument.createElement("span");
+  outgoing.className = "departure-card__time-previous";
+  outgoing.setAttribute("aria-hidden", "true");
+  if (urgency) {
+    outgoing.dataset.urgency = urgency;
+  }
+  outgoing.textContent = previous;
+  timeCell.appendChild(outgoing);
+  outgoing.addEventListener("animationend", () => outgoing.remove(), { once: true });
+}
+
+const liveRuleWatchers = new WeakMap<HTMLTableCellElement, (event: AnimationEvent) => void>();
+
+function armLiveTime(timeCell: HTMLTableCellElement): void {
+  const prior = liveRuleWatchers.get(timeCell);
+  if (prior) {
+    timeCell.removeEventListener("animationend", prior);
+  }
+  const watch = (event: AnimationEvent) => {
+    if (event.animationName !== "departure-time-rule") {
+      return;
+    }
+    timeCell.classList.remove("is-live");
+    timeCell.removeEventListener("animationend", watch);
+    liveRuleWatchers.delete(timeCell);
+  };
+  liveRuleWatchers.set(timeCell, watch);
+  timeCell.addEventListener("animationend", watch);
+  timeCell.classList.remove("is-live");
+  void timeCell.offsetWidth;
+  timeCell.classList.add("is-live");
 }
 
 export function paintDepartureTime(row: HTMLTableRowElement, departure: Departure): void {
@@ -119,15 +174,16 @@ export function paintDepartureTime(row: HTMLTableRowElement, departure: Departur
     return;
   }
   const relative = formatRelativeDepartureTime(departure.departureIso);
-  const changed = time.getAttribute("datetime") !== departure.departureIso;
-  time.setAttribute("datetime", departure.departureIso);
-  time.textContent = relative.text;
-  timeCell.dataset.urgency = relative.urgency;
-  if (!changed) {
-    timeCell.classList.remove("is-live");
+  if (time.getAttribute("datetime") === departure.departureIso) {
+    paintRelativeLabel(timeCell, time, relative);
     return;
   }
-  timeCell.classList.remove("is-live");
-  void timeCell.offsetWidth;
-  timeCell.classList.add("is-live");
+  const previous = time.textContent ?? "";
+  const previousUrgency = timeCell.dataset.urgency ?? "";
+  time.setAttribute("datetime", departure.departureIso);
+  paintRelativeLabel(timeCell, time, relative);
+  if (previous !== relative.text) {
+    holdPreviousEstimate(timeCell, previous, previousUrgency);
+  }
+  armLiveTime(timeCell);
 }

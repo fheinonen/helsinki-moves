@@ -66,7 +66,7 @@ Deploy from `web/`:
 
 Runtime target:
 
-- Node.js `24.x` (see `web/package.json`)
+- Node.js `26.x` (see `web/package.json`)
 
 Primary production domain is aliased to:
 

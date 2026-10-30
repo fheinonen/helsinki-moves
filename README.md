@@ -18,7 +18,7 @@ From `web/`:
 
 Voice transcription needs `SPEECH_TRANSCRIBE_API_KEY` and `SPEECH_TRANSCRIBE_MODEL` as well. `npm run env:check` treats `DIGITRANSIT_API_KEY`, `SPEECH_TRANSCRIBE_API_KEY`, and `SPEECH_TRANSCRIBE_MODEL` as required. `.env.example` sets `SPEECH_TRANSCRIBE_API_URL` and `SPEECH_TRANSCRIBE_LANGUAGE` too. When `SPEECH_TRANSCRIBE_API_URL` is unset, the server calls `https://api.openai.com/v1/audio/transcriptions`. When `SPEECH_TRANSCRIBE_LANGUAGE` is unset, the server uses `fi`. `OPENAI_API_KEY` is a speech auth fallback when `SPEECH_TRANSCRIBE_API_KEY` is empty. `.env.example` omits `OPENAI_API_KEY`.
 
-`web/package.json` sets the Node.js runtime to `24.x`.
+`web/package.json` sets the Node.js runtime to `26.x`.
 
 ## Deploy
 

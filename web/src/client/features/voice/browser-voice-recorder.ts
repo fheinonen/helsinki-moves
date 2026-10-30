@@ -30,6 +30,15 @@ export interface VoiceRecorder {
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 
+function scheduleTimer(callback: () => void, delay: number): TimeoutHandle {
+  // DOM and Node both declare setTimeout, so the call returns their union.
+  return setTimeout(callback, delay) as TimeoutHandle;
+}
+
+function cancelTimer(timeoutId: TimeoutHandle): void {
+  clearTimeout(timeoutId);
+}
+
 interface CreateBrowserVoiceRecorderOptions {
   captureDurationMs?: number;
   clearTimeoutImpl?: (timeoutId: TimeoutHandle) => void;
@@ -137,12 +146,12 @@ export function createBrowserVoiceRecorder(
 ): VoiceRecorder {
   const {
     captureDurationMs = DEFAULT_CAPTURE_DURATION_MS,
-    clearTimeoutImpl = clearTimeout,
+    clearTimeoutImpl = cancelTimer,
     fileName,
     MediaRecorderCtor,
     mediaDevices,
     preferredMimeTypes = DEFAULT_PREFERRED_MIME_TYPES,
-    setTimeoutImpl = setTimeout,
+    setTimeoutImpl = scheduleTimer,
   } = options;
 
   return {

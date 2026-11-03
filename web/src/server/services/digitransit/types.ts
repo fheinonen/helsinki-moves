@@ -16,6 +16,8 @@ export interface NearbyStopNode {
 
 export interface DigitransitService {
   getStopPoint?(stopId: string): Promise<{ lat: number; lon: number } | null>;
+  getTripShape?(tripId: string): Promise<Array<{ lat: number; lon: number }>>;
+  getVehicleFix?(tripId: string): Promise<{ lat: number; lon: number } | null>;
   getDeparturesForStopIds(
     stopIds: string[],
     options: {

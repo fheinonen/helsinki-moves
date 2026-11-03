@@ -60,6 +60,13 @@ export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTa
   const model = buildDepartureCardModel(departure, mode);
   const item = documentRef.createElement("tr");
   item.className = "departure-card";
+  item.dataset.destination = model.destination;
+  item.dataset.line = model.line;
+  item.dataset.stopId = departure.stopId || "";
+  item.dataset.tripId = departure.tripId || "";
+  if (departure.tripId && departure.stopId) {
+    item.dataset.vehicleSpan = "true";
+  }
 
   const line = documentRef.createElement("td");
   line.className = "departure-card__line";

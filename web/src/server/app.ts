@@ -3,6 +3,8 @@ import { registerClientErrorRoute } from "./routes/client-error.js";
 import { registerDeparturesRoute } from "./routes/departures.js";
 import { registerGeocodeRoute } from "./routes/geocode.js";
 import { registerSpeechTranscribeRoute } from "./routes/speech-transcribe.js";
+import { registerMapTileRoute } from "./routes/map-tile.js";
+import { registerVehicleSpanRoute } from "./routes/vehicle-span.js";
 import { createDigitransitService } from "./services/digitransit/client.js";
 import type { DigitransitService } from "./services/digitransit/types.js";
 import type { GeocodeService } from "./services/geocode/geocode-service.js";
@@ -14,7 +16,11 @@ interface AppOptions {
   geocodeService?: GeocodeService;
   logClientPayload?: (payload: ClientErrorPayload) => void;
   now?: () => number;
+  getApiKey?: () => string | undefined;
+  liveVehicleFetch?: typeof fetch;
+  mapTileFetch?: typeof fetch;
   speechTranscriptionService?: SpeechTranscriptionService | null;
+  vehicleSpanSleep?: (ms: number) => Promise<void>;
 }
 
 export function createApp(options: AppOptions = {}): Hono {
@@ -33,6 +39,16 @@ export function createApp(options: AppOptions = {}): Hono {
   });
   registerSpeechTranscribeRoute(app, {
     speechTranscriptionService: options.speechTranscriptionService,
+  });
+  registerVehicleSpanRoute(app, {
+    digitransitService,
+    liveVehicleFetch: options.liveVehicleFetch,
+    now: options.now,
+    sleep: options.vehicleSpanSleep,
+  });
+  registerMapTileRoute(app, {
+    fetchImpl: options.mapTileFetch,
+    getApiKey: options.getApiKey,
   });
 
   app.notFound((context) => context.json({ error: "not found" }, 404));

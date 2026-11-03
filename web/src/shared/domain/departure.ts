@@ -6,4 +6,5 @@ export interface Departure {
   stopId?: string | null;
   stopName?: string | null;
   track?: string | null;
+  tripId?: string | null;
 }

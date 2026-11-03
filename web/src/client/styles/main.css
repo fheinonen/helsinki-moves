@@ -652,6 +652,164 @@ button {
   color: var(--urgency-soon);
 }
 
+.departure-card[data-vehicle-span="true"] {
+  cursor: pointer;
+}
+
+.vehicle-span {
+  margin: 0.85rem var(--departures-edge-inset) 0;
+}
+
+.vehicle-span__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.45rem;
+}
+
+.vehicle-span__identity {
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.vehicle-span__line {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.vehicle-span__destination {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vehicle-span__close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vehicle-span__glass {
+  position: relative;
+  container-type: size;
+  display: grid;
+  place-items: center;
+  height: 16.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(222, 193, 136, 0.32);
+  border-radius: 1.15rem;
+  background: #e7e1d4;
+  box-shadow: var(--shadow-soft), var(--shadow-edge);
+}
+
+.vehicle-span__canvas {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--map-aspect, 1)));
+  aspect-ratio: var(--map-aspect, 1);
+}
+
+.vehicle-span__tile {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.vehicle-span__route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.vehicle-span__route polyline {
+  fill: none;
+  stroke: #1d4ed8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.vehicle-span__stop,
+.vehicle-span__vehicle {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+}
+
+.vehicle-span__stop {
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid #161616;
+  border-radius: 50%;
+  background: #f7f1e4;
+  box-shadow: 0 0 0 0.18rem rgba(247, 241, 228, 0.92);
+}
+
+.vehicle-span__stop::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 50%;
+  background: #161616;
+  transform: translate(-50%, -50%);
+}
+
+.vehicle-span__vehicle {
+  z-index: 3;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid #f6edd8;
+  border-radius: 50%;
+  background: var(--destination-color, var(--interactive));
+  box-shadow: 0 0 0 0.28rem rgba(29, 78, 216, 0.22);
+}
+
+.vehicle-span__credit {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.28rem;
+  z-index: 2;
+  margin: 0;
+  color: #243044;
+  font-size: 0.58rem;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 2px #fff;
+}
+
+.vehicle-span__status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: #243044;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.vehicle-span__glass[data-south] .vehicle-span__vehicle:not([data-lat]),
+.vehicle-span__glass[data-south] .vehicle-span__status,
+.vehicle-span__glass:not([data-south]) .vehicle-span__stop,
+.vehicle-span__glass:not([data-south]) .vehicle-span__vehicle,
+.vehicle-span__glass:not([data-south]) .vehicle-span__credit {
+  display: none;
+}
+
 @media (min-width: 640px) {
   body {
     padding: 0 1.2rem;

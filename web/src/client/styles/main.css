@@ -782,6 +782,24 @@ button {
   text-shadow: 0 0 2px #fff;
 }
 
+.vehicle-span__status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: #243044;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.vehicle-span__glass[data-south] .vehicle-span__status,
+.vehicle-span__glass:not([data-south]) .vehicle-span__stop,
+.vehicle-span__glass:not([data-south]) .vehicle-span__vehicle,
+.vehicle-span__glass:not([data-south]) .vehicle-span__credit {
+  display: none;
+}
+
 @media (min-width: 640px) {
   body {
     padding: 0 1.2rem;

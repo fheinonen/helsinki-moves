@@ -351,7 +351,13 @@ function createVehicleSpanSession(input: {
         line: card.dataset.line || "",
         onClose: close,
       });
-      input.root.appendChild(nextMap.element);
+      const table = input.root.querySelector(".app-shell__departures-table");
+      if (table) {
+        table.before(nextMap.element);
+      } else {
+        input.root.append(nextMap.element);
+      }
+      nextMap.element.scrollIntoView?.({ block: "start" });
       map = nextMap;
       stopStream = openVehicleSpan({
         onEvent(event) {

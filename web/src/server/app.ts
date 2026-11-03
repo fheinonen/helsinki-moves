@@ -17,6 +17,7 @@ interface AppOptions {
   logClientPayload?: (payload: ClientErrorPayload) => void;
   now?: () => number;
   getApiKey?: () => string | undefined;
+  liveVehicleFetch?: typeof fetch;
   mapTileFetch?: typeof fetch;
   speechTranscriptionService?: SpeechTranscriptionService | null;
   vehicleSpanSleep?: (ms: number) => Promise<void>;
@@ -41,6 +42,8 @@ export function createApp(options: AppOptions = {}): Hono {
   });
   registerVehicleSpanRoute(app, {
     digitransitService,
+    liveVehicleFetch: options.liveVehicleFetch,
+    now: options.now,
     sleep: options.vehicleSpanSleep,
   });
   registerMapTileRoute(app, {

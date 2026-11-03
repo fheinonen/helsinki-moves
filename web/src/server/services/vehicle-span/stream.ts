@@ -17,13 +17,27 @@ function samePoint(left: GeoPoint, right: GeoPoint): boolean {
   return left.lat === right.lat && left.lon === right.lon;
 }
 
+async function waitForVehicle(input: VehicleSpanRead): Promise<GeoPoint | null> {
+  while (input.isActive()) {
+    const point = await input.readVehicle();
+    if (point) {
+      return point;
+    }
+    await input.sleep(input.intervalMs);
+  }
+  return null;
+}
+
 export async function* readVehicleSpan(input: VehicleSpanRead): AsyncGenerator<VehicleSpanEvent> {
   if (!input.isActive()) {
     return;
   }
   const stop = await input.readStop();
-  const opened = await input.readVehicle();
-  if (!stop || !opened) {
+  if (!stop) {
+    return;
+  }
+  const opened = await waitForVehicle(input);
+  if (!opened) {
     return;
   }
 

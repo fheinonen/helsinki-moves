@@ -29,16 +29,33 @@ interface ScriptedSource {
   url: string;
 }
 
+interface LiveFeedVehicle {
+  canceled?: boolean;
+  directionId: number;
+  lat: number;
+  lon: number;
+  routeId: string;
+  startDate: string;
+  startTime: string;
+}
+
 interface World {
+  blankVehicle?: boolean;
   documentRef?: Document;
+  graphDown?: boolean;
+  failLiveOnce?: boolean;
   generator?: AsyncGenerator<VehicleSpanEvent>;
   lineRest?: GeoPoint;
+  liveBody?: Uint8Array;
+  liveHeader?: string | null;
+  liveRequests: string[];
   lockedFrame?: string;
   nextVehicle?: GeoPoint;
   spanVia?: GeoPoint;
   openedVehicle: GeoPoint;
   releaseSleep?: () => void;
   root?: HTMLElement;
+  serverBodies?: string[];
   serverBody?: string;
   source?: ScriptedSource;
   tileBody?: string;
@@ -92,6 +109,87 @@ function readStreetTiles(glass: HTMLElement | null | undefined): StreetTileBox[]
   });
 }
 
+function varint(value: number): number[] {
+  const bytes: number[] = [];
+  let rest = value;
+  while (rest > 127) {
+    bytes.push((rest & 0x7f) | 0x80);
+    rest = Math.floor(rest / 128);
+  }
+  bytes.push(rest);
+  return bytes;
+}
+
+function protoKey(field: number, wire: number): number[] {
+  return varint((field << 3) | wire);
+}
+
+function protoMessage(field: number, body: number[]): number[] {
+  return [...protoKey(field, 2), ...varint(body.length), ...body];
+}
+
+function protoString(field: number, value: string): number[] {
+  const text = [...new TextEncoder().encode(value)];
+  return [...protoKey(field, 2), ...varint(text.length), ...text];
+}
+
+function protoFloat(field: number, value: number): number[] {
+  const buffer = new ArrayBuffer(4);
+  new DataView(buffer).setFloat32(0, value, true);
+  return [...protoKey(field, 5), ...new Uint8Array(buffer)];
+}
+
+function liveFeedBytes(chosen: LiveFeedVehicle): Uint8Array {
+  const same = {
+    directionId: chosen.directionId,
+    routeId: chosen.routeId,
+    startTime: chosen.startTime,
+  };
+  const vehicles: LiveFeedVehicle[] = [
+    { ...same, lat: 62.5, lon: 25.5, startDate: "20261102" },
+    { ...same, canceled: true, lat: 61.5, lon: 25.5, startDate: chosen.startDate },
+    chosen,
+    { ...same, lat: 59.5, lon: 23.5, routeId: "9999", startDate: chosen.startDate },
+  ];
+  const parts = [protoMessage(1, protoString(1, "2.0"))];
+  for (const vehicle of vehicles) {
+    const trip = [
+      ...protoString(2, vehicle.startTime),
+      ...protoString(3, vehicle.startDate),
+      ...(vehicle.canceled ? [...protoKey(4, 0), 3] : []),
+      ...protoString(5, vehicle.routeId),
+      ...protoKey(6, 0),
+      vehicle.directionId,
+    ];
+    const position = [...protoFloat(1, vehicle.lat), ...protoFloat(2, vehicle.lon)];
+    const body = [...protoMessage(1, trip), ...protoMessage(2, position), ...protoKey(5, 1), 0, 0, 0, 0, 0, 0, 0, 0];
+    parts.push(protoMessage(2, [...protoString(1, "bus"), ...protoMessage(4, body)]));
+  }
+  const partialTrip = protoMessage(1, protoString(2, "13:15:00"));
+  const partialPosition = protoMessage(2, protoFloat(2, 24.9));
+  parts.push(protoMessage(2, [...protoString(1, "partial"), ...protoMessage(4, [...partialTrip, ...partialPosition])]));
+  parts.push(protoMessage(2, [...protoString(1, "empty"), ...protoMessage(4, protoMessage(1, protoString(5, "1")))]));
+  return Uint8Array.from([...parts.flat(), 0x80]);
+}
+
+function feedBody(bytes: Uint8Array): ArrayBuffer {
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return copy;
+}
+
+function readSpanVehicle(body: string): GeoPoint | null {
+  const line = body.split("\n").find((item) => item.startsWith("data: "));
+  if (!line) {
+    return null;
+  }
+  const event = JSON.parse(line.slice(6)) as { vehicle?: GeoPoint };
+  if (typeof event.vehicle?.lat !== "number" || typeof event.vehicle.lon !== "number") {
+    return null;
+  }
+  return event.vehicle;
+}
+
 function cornerCovered(tiles: StreetTileBox[], lat: number, lon: number): boolean {
   const epsilon = 1e-8;
   return tiles.some(
@@ -124,6 +222,83 @@ class ScriptedEventSource implements ScriptedSource {
   emit(type: string, data: string): void {
     this.listeners.get(type)?.({ data });
   }
+}
+
+async function requestVehicleSpan(world: World): Promise<void> {
+  const service = createDigitransitService({
+    fetchImpl: async (_url, init) => {
+      const headers = new Headers(init?.headers);
+      world.upstreamKeys.push(headers.get("digitransit-subscription-key") || "");
+      const body = JSON.parse(String(init?.body || "{}")) as { query?: string };
+      const query = body.query || "";
+      if (world.graphDown && query.includes("VehicleFix")) {
+        throw new Error("digitransit down");
+      }
+      if (query.includes("StopPoint")) {
+        return Response.json({
+          data: { stop: { lat: world.stopPoint.lat, lon: world.stopPoint.lon } },
+        });
+      }
+      if (query.includes("TripShape")) {
+        if (!world.spanVia && !world.lineRest) {
+          return Response.json({
+            data: { trip: { pattern: { geometry: null } } },
+          });
+        }
+        const geometry = [world.stopPoint];
+        if (world.spanVia) {
+          geometry.push(world.spanVia);
+        }
+        geometry.push(world.openedVehicle);
+        if (world.lineRest) {
+          geometry.push(world.lineRest);
+        }
+        return Response.json({
+          data: { trip: { pattern: { geometry } } },
+        });
+      }
+      if (!query.includes("VehicleFix")) {
+        throw new Error("Unexpected Digitransit query");
+      }
+      return Response.json({
+        data: {
+          trip: {
+            pattern: {
+              vehiclePositions: [
+                {
+                  lat: world.blankVehicle ? null : world.openedVehicle.lat,
+                  lon: world.blankVehicle ? null : world.openedVehicle.lon,
+                  trip: { gtfsId: world.tripId },
+                },
+              ],
+            },
+          },
+        },
+      });
+    },
+    getApiKey: () => API_KEY,
+  });
+  let liveAttempts = 0;
+  const app = createApp({
+    digitransitService: service,
+    liveVehicleFetch: async (url, init) => {
+      liveAttempts += 1;
+      world.liveRequests.push(String(url));
+      world.liveHeader = new Headers(init?.headers).get("digitransit-subscription-key");
+      if (world.failLiveOnce && liveAttempts === 1) {
+        throw new Error("live feed missed");
+      }
+      if (!world.liveBody) {
+        return new Response(null, { status: 404 });
+      }
+      return new Response(feedBody(world.liveBody));
+    },
+    now: () => Date.parse("2026-11-03T11:00:00.000Z"),
+    vehicleSpanSleep: async () => {},
+  });
+  const requestUrl = new URL(vehicleSpanUrl(world.tripId, world.stopId), "http://localhost");
+  const response = await app.request(requestUrl);
+  world.serverBody = await response.text();
 }
 
 function renderBoard(world: World): void {
@@ -287,6 +462,70 @@ Feature: Vehicle span map
     Then the vehicle map is open
     And the map closes when the close control is pressed
 
+  Scenario: Pressing a departure card shows the map before the vehicle is found
+    Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    When the departure card is pressed before the vehicle arrives
+    Then the vehicle map is open
+    And the street map is still waiting for the vehicle
+
+  Scenario: A press opens the span from the live vehicle feed
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.171 and longitude 24.939
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the departure trip is HSL:1040_20261102_Ti_1_1315
+    And Digitransit has no coordinates for that vehicle
+    And the live feed places route 1040 direction 0 starting at 13:15:00 on 20261103
+    When the browser requests the vehicle span
+    Then the span response places the opening vehicle
+    And the live feed request leaves the Digitransit API key on the server
+
+  Scenario: A press follows the return direction on the live feed
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.186 and longitude 24.920
+    And the chosen stop is at latitude 60.190 and longitude 24.930
+    And the departure trip is HSL:4400_20261102_Ti_2_1227
+    And Digitransit has no coordinates for that vehicle
+    And the live feed places route 4400 direction 1 starting at 12:27:00 on 20261103
+    When the browser requests the vehicle span
+    Then the span response places the opening vehicle
+
+  Scenario: A live feed that misses once still opens the span
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.171 and longitude 24.939
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the departure trip is HSL:1040_20261102_Ti_1_1315
+    And Digitransit has no coordinates for that vehicle
+    And the live feed fails once then places route 1040 direction 0 starting at 13:15:00 on 20261103
+    When the browser requests the vehicle span
+    Then the span response places the opening vehicle
+
+  Scenario: A press does not invent a vehicle the live feed cannot find
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.171 and longitude 24.939
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the departure trip is HSL:1040_20261102_Ti_1_1315
+    And Digitransit has no coordinates for that vehicle
+    When the browser requests the vehicle span
+    Then the span response does not invent a vehicle
+
+  Scenario: A press still opens the span when Digitransit does not answer
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.171 and longitude 24.939
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the departure trip is HSL:1040_20261102_Ti_1_1315
+    And Digitransit has no answer for that vehicle
+    And the live feed places route 1040 direction 0 starting at 13:15:00 on 20261103
+    When the browser requests the vehicle span
+    Then the span response places the opening vehicle
+
+  Scenario: A press does not invent a vehicle for a trip the feed cannot match
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.171 and longitude 24.939
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And Digitransit has no coordinates for that vehicle
+    When the browser requests unmatched trips HSL:TRIP1, HSL:1040_20261102_Ti_9_1315, and HSL:1040_20261102_Ti_1_131
+    Then none of the span responses invent a vehicle
+
   Scenario: The map frame fits the opening vehicle and the chosen stop
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
     And the vehicle opens at latitude 60.170 and longitude 24.940
@@ -348,6 +587,7 @@ Feature: Vehicle span map
   `,
   {
     createWorld: () => ({
+      liveRequests: [],
       openedVehicle: { lat: 60.17, lon: 24.94 },
       stopId: "HSL:STOP1",
       stopPoint: { lat: 60.18, lon: 24.95 },
@@ -404,6 +644,58 @@ Feature: Vehicle span map
         },
       },
       {
+        pattern: /^When the departure card is pressed before the vehicle arrives$/,
+        run: ({ world }) => {
+          const card = world.root?.querySelector<HTMLElement>("[data-vehicle-span='true']");
+          card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        },
+      },
+      {
+        pattern: /^Given the departure trip is (\S+)$/,
+        run: ({ args, world }) => {
+          world.tripId = args[0];
+        },
+      },
+      {
+        pattern: /^Given Digitransit has no coordinates for that vehicle$/,
+        run: ({ world }) => {
+          world.blankVehicle = true;
+        },
+      },
+      {
+        pattern: /^Given Digitransit has no answer for that vehicle$/,
+        run: ({ world }) => {
+          world.graphDown = true;
+        },
+      },
+      {
+        pattern: /^Given the live feed places route ([A-Za-z0-9]+) direction ([01]) starting at (\d{2}:\d{2}:\d{2}) on (\d{8})$/,
+        run: ({ args, world }) => {
+          world.liveBody = liveFeedBytes({
+            directionId: Number(args[1]),
+            lat: world.openedVehicle.lat,
+            lon: world.openedVehicle.lon,
+            routeId: args[0],
+            startDate: args[3],
+            startTime: args[2],
+          });
+        },
+      },
+      {
+        pattern: /^Given the live feed fails once then places route ([A-Za-z0-9]+) direction ([01]) starting at (\d{2}:\d{2}:\d{2}) on (\d{8})$/,
+        run: ({ args, world }) => {
+          world.failLiveOnce = true;
+          world.liveBody = liveFeedBytes({
+            directionId: Number(args[1]),
+            lat: world.openedVehicle.lat,
+            lon: world.openedVehicle.lon,
+            routeId: args[0],
+            startDate: args[3],
+            startTime: args[2],
+          });
+        },
+      },
+      {
         pattern: /^When a newer vehicle position arrives at latitude (-?\d+\.\d+) and longitude (-?\d+\.\d+)$/,
         run: async ({ args, world }) => {
           world.nextVehicle = parsePoint(args[0], args[1]);
@@ -443,63 +735,18 @@ Feature: Vehicle span map
       {
         pattern: /^When the browser requests the vehicle span$/,
         run: async ({ world }) => {
-          const service = createDigitransitService({
-            fetchImpl: async (_url, init) => {
-              const headers = new Headers(init?.headers);
-              world.upstreamKeys.push(headers.get("digitransit-subscription-key") || "");
-              const body = JSON.parse(String(init?.body || "{}")) as { query?: string };
-              const query = body.query || "";
-              if (query.includes("StopPoint")) {
-                return Response.json({
-                  data: { stop: { lat: world.stopPoint.lat, lon: world.stopPoint.lon } },
-                });
-              }
-              if (query.includes("TripShape")) {
-                if (!world.spanVia && !world.lineRest) {
-                  return Response.json({
-                    data: { trip: { pattern: { geometry: null } } },
-                  });
-                }
-                const geometry = [world.stopPoint];
-                if (world.spanVia) {
-                  geometry.push(world.spanVia);
-                }
-                geometry.push(world.openedVehicle);
-                if (world.lineRest) {
-                  geometry.push(world.lineRest);
-                }
-                return Response.json({
-                  data: { trip: { pattern: { geometry } } },
-                });
-              }
-              if (!query.includes("VehicleFix")) {
-                throw new Error("Unexpected Digitransit query");
-              }
-              return Response.json({
-                data: {
-                  trip: {
-                    pattern: {
-                      vehiclePositions: [
-                        {
-                          lat: world.openedVehicle.lat,
-                          lon: world.openedVehicle.lon,
-                          trip: { gtfsId: world.tripId },
-                        },
-                      ],
-                    },
-                  },
-                },
-              });
-            },
-            getApiKey: () => API_KEY,
-          });
-          const app = createApp({
-            digitransitService: service,
-            vehicleSpanSleep: async () => {},
-          });
-          const requestUrl = new URL(vehicleSpanUrl(world.tripId, world.stopId), "http://localhost");
-          const response = await app.request(requestUrl);
-          world.serverBody = await response.text();
+          await requestVehicleSpan(world);
+        },
+      },
+      {
+        pattern: /^When the browser requests unmatched trips (\S+), (\S+), and (\S+)$/,
+        run: async ({ args, world }) => {
+          world.serverBodies = [];
+          for (const tripId of args) {
+            world.tripId = tripId;
+            await requestVehicleSpan(world);
+            world.serverBodies.push(world.serverBody || "");
+          }
         },
       },
       {
@@ -507,6 +754,59 @@ Feature: Vehicle span map
         run: ({ assert, world }) => {
           const map = world.root?.querySelector<HTMLElement>("[data-vehicle-map]");
           assert.equal(map?.hidden, false);
+        },
+      },
+      {
+        pattern: /^Then the street map is still waiting for the vehicle$/,
+        run: ({ assert, world }) => {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const status = world.root?.querySelector("[data-vehicle-status]");
+          const markup = world.root?.innerHTML ?? "";
+          assert.equal(glass?.querySelector("[data-street-tile]"), null);
+          assert.equal(status?.textContent, "Finding the vehicle");
+          assert.equal(glass?.dataset.south, undefined);
+          assert.equal(markup.indexOf("data-vehicle-map") < markup.indexOf("app-shell__departures-table"), true);
+        },
+      },
+      {
+        pattern: /^Then the span response places the opening vehicle$/,
+        run: ({ assert, world }) => {
+          const vehicle = readSpanVehicle(world.serverBody || "");
+          assert.equal(vehicle ? vehicle.lat.toFixed(3) : "", world.openedVehicle.lat.toFixed(3));
+          assert.equal(vehicle ? vehicle.lon.toFixed(3) : "", world.openedVehicle.lon.toFixed(3));
+          assert.equal(world.serverBody?.includes("59.5"), false);
+          assert.equal(world.serverBody?.includes(API_KEY), false);
+        },
+      },
+      {
+        pattern: /^Then the live feed request leaves the Digitransit API key on the server$/,
+        run: ({ assert, world }) => {
+          const source = readClientSource();
+          assert.equal(world.liveRequests.length, 1);
+          assert.equal(world.liveRequests.some((url) => url.includes(API_KEY) || url.includes("digitransit")), false);
+          assert.equal(world.liveRequests[0]?.includes("realtime.hsl.fi/realtime/vehicle-positions/v2/hsl"), true);
+          assert.equal(world.liveHeader, null);
+          assert.equal(source.includes("realtime.hsl.fi"), false);
+          assert.equal(source.includes(API_KEY), false);
+        },
+      },
+      {
+        pattern: /^Then none of the span responses invent a vehicle$/,
+        run: ({ assert, world }) => {
+          const bodies = world.serverBodies || [];
+          assert.equal(bodies.length, 3);
+          assert.equal(bodies.every((body) => !body.includes('"type":"span"')), true);
+          assert.equal(world.liveRequests.length > 0, true);
+          assert.equal(bodies.every((body) => !body.includes(API_KEY)), true);
+        },
+      },
+      {
+        pattern: /^Then the span response does not invent a vehicle$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.serverBody?.includes('"type":"span"'), false);
+          assert.equal(world.liveRequests.length > 0, true);
+          assert.equal(world.serverBody?.includes(API_KEY), false);
+          assert.equal(world.liveHeader, null);
         },
       },
       {

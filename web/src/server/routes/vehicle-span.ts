@@ -1,5 +1,7 @@
 import { streamSSE } from "hono/streaming";
 import type { Hono } from "hono";
+import type { GeoPoint } from "../../shared/domain/vehicle-span.js";
+import { createLiveVehicleReader } from "../services/hsl-realtime/vehicle-feed.js";
 import { readVehicleSpan } from "../services/vehicle-span/stream.js";
 import type { DigitransitService } from "../services/digitransit/types.js";
 
@@ -7,7 +9,31 @@ const SPAN_POLL_MS = 3000;
 
 interface VehicleSpanRouteOptions {
   digitransitService: DigitransitService;
+  liveVehicleFetch?: typeof fetch;
+  now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+}
+
+async function graphPoint(
+  readGraph: ((tripId: string) => Promise<GeoPoint | null>) | undefined,
+  tripId: string,
+): Promise<GeoPoint | null> {
+  if (!readGraph) {
+    return null;
+  }
+  try {
+    return await readGraph(tripId);
+  } catch {
+    return null;
+  }
+}
+
+async function readVehicleFix(
+  readGraph: ((tripId: string) => Promise<GeoPoint | null>) | undefined,
+  readLive: (tripId: string) => Promise<GeoPoint | null>,
+  tripId: string,
+): Promise<GeoPoint | null> {
+  return (await graphPoint(readGraph, tripId)) ?? readLive(tripId);
 }
 
 function delay(ms: number): Promise<void> {
@@ -18,6 +44,10 @@ function delay(ms: number): Promise<void> {
 
 export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOptions): void {
   const { digitransitService, sleep } = options;
+  const readLive = createLiveVehicleReader({
+    fetchImpl: options.liveVehicleFetch,
+    now: options.now,
+  });
 
   app.get("/api/v1/vehicle-span", (context) => {
     const readStop = digitransitService.getStopPoint;
@@ -35,6 +65,7 @@ export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOpt
     }
 
     let active = true;
+    let polls = 0;
     const signal = context.req.raw.signal;
     return streamSSE(context, async (stream) => {
       const events = readVehicleSpan({
@@ -42,10 +73,13 @@ export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOpt
         isActive: () => active && !signal.aborted,
         readRoute: () => (readShape ? readShape(tripId) : Promise.resolve([])),
         readStop: () => readStop(stopId),
-        readVehicle: () => readVehicle(tripId),
+        readVehicle: () => readVehicleFix(readVehicle, readLive, tripId),
         sleep: async (ms) => {
           if (sleep) {
-            active = false;
+            polls += 1;
+            if (polls > 1) {
+              active = false;
+            }
             await sleep(ms);
             return;
           }

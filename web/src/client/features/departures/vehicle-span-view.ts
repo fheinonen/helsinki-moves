@@ -94,7 +94,6 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.vehicleMap = "true";
-  element.hidden = true;
   element.setAttribute("aria-label", `${line} to ${destination}`);
 
   const head = documentRef.createElement("div");
@@ -119,6 +118,10 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   const glass = documentRef.createElement("div");
   glass.className = "vehicle-span__glass";
   glass.dataset.vehicleGlass = "true";
+  const status = documentRef.createElement("p");
+  status.className = "vehicle-span__status";
+  status.dataset.vehicleStatus = "true";
+  status.textContent = "Finding the vehicle";
   const stopMarker = documentRef.createElement("span");
   stopMarker.className = "vehicle-span__stop";
   stopMarker.dataset.stopMarker = "true";
@@ -132,7 +135,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
   credit.textContent = "© OpenStreetMap, HSL";
-  glass.append(stopMarker, vehicleMarker, credit);
+  glass.append(status, stopMarker, vehicleMarker, credit);
   element.append(head, glass);
 
   let view = closedVehicleSpan();

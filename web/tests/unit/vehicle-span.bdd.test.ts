@@ -14,6 +14,7 @@ import vehicleSpanRoute from "../../api/v1/vehicle-span";
 import { createApp } from "@server/app";
 import { createDigitransitService } from "@server/services/digitransit/client";
 import { readVehicleSpan } from "@server/services/vehicle-span/stream";
+import type { Stop } from "@shared/domain/stop";
 import type { VehicleSpanEvent } from "@shared/domain/vehicle-span";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -53,6 +54,7 @@ interface World {
   liveHeader?: string | null;
   liveRequests: string[];
   lockedFrame?: string;
+  nearbyStops?: Stop[];
   nextVehicle?: GeoPoint;
   spanVia?: GeoPoint;
   openedVehicle: GeoPoint;
@@ -343,7 +345,7 @@ function renderBoard(world: World): void {
       stopName: "Kamppi",
       type: "stop",
     },
-    stops: [],
+    stops: world.nearbyStops ?? [],
   });
   const documentRef = document.implementation.createHTMLDocument("vehicle-span");
   documentRef.body.innerHTML = "<div id='root'></div>";
@@ -483,6 +485,14 @@ Feature: Vehicle span map
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
     And the map is open on the vehicle
     When the user changes mode to RAIL
+    Then the vehicle map is gone
+    And the vehicle stream is closed
+
+  Scenario: Changing the active stop closes the open vehicle map
+    Given another nearby stop HSL:STOP2 named Sörnäinen
+    And a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    And the map is open on the vehicle
+    When the user chooses stop HSL:STOP2
     Then the vehicle map is gone
     And the vehicle stream is closed
 
@@ -641,6 +651,29 @@ Feature: Vehicle span map
     }),
     stepDefinitions: [
       {
+        pattern: /^Given another nearby stop HSL:STOP2 named Sörnäinen$/,
+        run: ({ world }) => {
+          world.nearbyStops = [
+            {
+              code: "A1",
+              distanceMeters: 80,
+              id: world.stopId,
+              memberStopIds: [],
+              name: "Kamppi",
+              stopCodes: ["A1"],
+            },
+            {
+              code: "B2",
+              distanceMeters: 240,
+              id: "HSL:STOP2",
+              memberStopIds: [],
+              name: "Sörnäinen",
+              stopCodes: ["B2"],
+            },
+          ];
+        },
+      },
+      {
         pattern: /^Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1$/,
         run: ({ world }) => {
           renderBoard(world);
@@ -680,6 +713,16 @@ Feature: Vehicle span map
         pattern: /^Given a Digitransit key is configured on the server$/,
         run: ({ world }) => {
           world.upstreamKeys = [];
+        },
+      },
+      {
+        pattern: /^When the user chooses stop HSL:STOP2$/,
+        run: ({ world }) => {
+          const option = world.root?.querySelector<HTMLButtonElement>("[data-stop-option='HSL:STOP2']");
+          if (!option) {
+            throw new Error("Expected stop HSL:STOP2");
+          }
+          option.click();
         },
       },
       {

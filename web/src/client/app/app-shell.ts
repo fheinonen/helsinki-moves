@@ -12,6 +12,10 @@ import { createDestinationColorBook } from "@shared/domain/destination-color";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
+function shownStopId(state: AppState): string {
+  return state.filters.stopId || state.selectedStopId || "";
+}
+
 interface VehicleSpanOpener {
   (input: {
     onEvent: (event: VehicleSpanEvent) => void;
@@ -377,6 +381,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   root.innerHTML = "";
   root.className = "app-shell";
   let previousMode = store.getState().activeMode;
+  let previousStopId = shownStopId(store.getState());
 
   const topbar = documentRef.createElement("header");
   topbar.className = "app-shell__topbar";
@@ -483,6 +488,11 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
       setFilterPanelOpen(filterPanelControls, false);
       vehicleSpan.close();
       previousMode = state.activeMode;
+    }
+    const stopId = shownStopId(state);
+    if (stopId !== previousStopId) {
+      vehicleSpan.close();
+      previousStopId = stopId;
     }
 
     stationTitle.textContent = state.station?.stopName || "";

@@ -41,6 +41,19 @@ const vehicleFixQuery = `
   }
 `;
 
+const tripShapeQuery = `
+  query TripShape($tripId: String!) {
+    trip(id: $tripId) {
+      pattern {
+        geometry {
+          lat
+          lon
+        }
+      }
+    }
+  }
+`;
+
 const nearbyStopsQuery = `
   query NearbyStops($lat: Float!, $lon: Float!, $radius: Int!) {
     stopsByRadius(lat: $lat, lon: $lon, radius: $radius) {
@@ -250,6 +263,22 @@ function normalizeNearbyStops(data: Record<string, unknown>): NearbyStopNode[] {
     .filter((node): node is NearbyStopNode => Boolean(node?.stop?.gtfsId));
 }
 
+function isGeoPoint(value: { lat?: number; lon?: number }): value is { lat: number; lon: number } {
+  return typeof value.lat === "number" && typeof value.lon === "number" && Number.isFinite(value.lat) && Number.isFinite(value.lon);
+}
+
+function readTripShape(data: Record<string, unknown>): Array<{ lat: number; lon: number }> {
+  const trip = data.trip as
+    | { pattern?: { geometry?: Array<{ lat?: number; lon?: number }> } }
+    | null
+    | undefined;
+  const geometry = trip?.pattern?.geometry;
+  if (!geometry) {
+    return [];
+  }
+  return geometry.filter(isGeoPoint);
+}
+
 function readVehicleFix(data: Record<string, unknown>, tripId: string): { lat: number; lon: number } | null {
   const trip = data.trip as
     | {
@@ -333,6 +362,19 @@ export function createDigitransitService(input: {
   const nearbyStopsCache = new Map<string, NearbyStopsCacheEntry>();
 
   return {
+    async getTripShape(tripId) {
+      const data = await graphqlRequest({
+        body: {
+          query: tripShapeQuery,
+          variables: { tripId },
+        },
+        endpoint,
+        fetchImpl,
+        getApiKey,
+        timeoutMs,
+      });
+      return readTripShape(data);
+    },
     async getVehicleFix(tripId) {
       const data = await graphqlRequest({
         body: {

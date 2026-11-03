@@ -24,6 +24,7 @@ interface GeoPoint {
 
 interface ScriptedSource {
   close(): void;
+  closed: boolean;
   emit(type: string, data: string): void;
   url: string;
 }
@@ -34,11 +35,16 @@ interface World {
   lineRest?: GeoPoint;
   lockedFrame?: string;
   nextVehicle?: GeoPoint;
+  spanVia?: GeoPoint;
   openedVehicle: GeoPoint;
   releaseSleep?: () => void;
   root?: HTMLElement;
   serverBody?: string;
   source?: ScriptedSource;
+  tileBody?: string;
+  tileStatus?: number;
+  tileType?: string | null;
+  tileUpstream?: string;
   stopId: string;
   stopPoint: GeoPoint;
   tripId: string;
@@ -52,6 +58,49 @@ function coord(value: number): string {
 
 function parsePoint(lat: string, lon: string): GeoPoint {
   return { lat: Number(lat), lon: Number(lon) };
+}
+
+function inverseMercator(t: number): number {
+  return (Math.atan(Math.sinh(Math.PI * (1 - 2 * t))) * 180) / Math.PI;
+}
+
+interface StreetTileBox {
+  east: number;
+  north: number;
+  south: number;
+  src: string;
+  west: number;
+}
+
+function readStreetTiles(glass: HTMLElement | null | undefined): StreetTileBox[] {
+  if (!glass) {
+    return [];
+  }
+  return [...glass.querySelectorAll<HTMLImageElement>("[data-street-tile]")].map((tile) => {
+    const url = new URL(tile.getAttribute("src") || "", "http://localhost");
+    const zoom = Number(url.searchParams.get("z"));
+    const x = Number(url.searchParams.get("x"));
+    const y = Number(url.searchParams.get("y"));
+    const scale = 2 ** zoom;
+    return {
+      east: ((x + 1) / scale) * 360 - 180,
+      north: inverseMercator(y / scale),
+      south: inverseMercator((y + 1) / scale),
+      src: `${url.pathname}${url.search}`,
+      west: (x / scale) * 360 - 180,
+    };
+  });
+}
+
+function cornerCovered(tiles: StreetTileBox[], lat: number, lon: number): boolean {
+  const epsilon = 1e-8;
+  return tiles.some(
+    (tile) =>
+      lat <= tile.north + epsilon &&
+      lat >= tile.south - epsilon &&
+      lon >= tile.west - epsilon &&
+      lon <= tile.east + epsilon,
+  );
 }
 
 class ScriptedEventSource implements ScriptedSource {
@@ -144,6 +193,22 @@ function renderBoard(world: World): void {
   world.root = root;
 }
 
+function routeLine(world: World): GeoPoint[] {
+  if (!world.lineRest && !world.spanVia) {
+    return [];
+  }
+  const line: GeoPoint[] = [];
+  if (world.lineRest) {
+    line.push(world.lineRest);
+  }
+  line.push(world.openedVehicle);
+  if (world.spanVia) {
+    line.push(world.spanVia);
+  }
+  line.push(world.stopPoint);
+  return line;
+}
+
 function armGenerator(world: World): void {
   let sleepCount = 0;
   let release = () => {};
@@ -156,6 +221,7 @@ function armGenerator(world: World): void {
   world.generator = readVehicleSpan({
     intervalMs: 1,
     isActive: () => sleepCount < 2,
+    readRoute: async () => routeLine(world),
     readStop: async () => world.stopPoint,
     readVehicle: async () => (sleepCount === 0 ? world.openedVehicle : (world.nextVehicle ?? world.openedVehicle)),
     sleep: async () => {
@@ -225,11 +291,33 @@ Feature: Vehicle span map
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
     And the vehicle opens at latitude 60.170 and longitude 24.940
     And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the vehicle line passes through latitude 60.175 and longitude 24.945
     And the rest of the line includes latitude 60.250 and longitude 25.050
     When the card is pressed
     Then the frame contains the opening vehicle position
     And the frame contains the chosen stop
     And the frame does not contain the rest of the line
+
+  Scenario: The map shows streets for the opening span
+    Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    And the vehicle opens at latitude 60.170 and longitude 24.940
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the vehicle line passes through latitude 60.175 and longitude 24.945
+    And the rest of the line includes latitude 60.250 and longitude 25.050
+    When the card is pressed
+    Then the map shows street tiles for that span
+    And the drawn line keeps the vehicle line and leaves out the rest
+    And the chosen stop is marked
+
+  Scenario: The stream sends the span of the line and not the rest
+    Given a Digitransit key is configured on the server
+    And the vehicle opens at latitude 60.170 and longitude 24.940
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    And the vehicle line passes through latitude 60.176 and longitude 24.955
+    And the rest of the line includes latitude 60.250 and longitude 25.050
+    When the browser requests the vehicle span
+    Then the span response keeps the vehicle line
+    And the span response leaves out the rest of the line
 
   Scenario: The vehicle marker moves when a newer position arrives
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
@@ -246,6 +334,17 @@ Feature: Vehicle span map
     Then the browser request does not carry the Digitransit API key
     And the browser response does not carry the Digitransit API key
     And the client source does not contain the Digitransit API key
+
+  Scenario: A street tile stays on our server
+    Given a Digitransit key is configured on the server
+    When the browser requests a street tile
+    Then the street tile image is returned
+    And the street tile leaves the Digitransit API key on the server
+
+  Scenario: A street tile the map cannot serve stays empty
+    Given a Digitransit key is configured on the server
+    When the browser requests a street tile the map cannot serve
+    Then the empty tile response does not carry the Digitransit API key
   `,
   {
     createWorld: () => ({
@@ -278,6 +377,12 @@ Feature: Vehicle span map
         pattern: /^Given the rest of the line includes latitude (-?\d+\.\d+) and longitude (-?\d+\.\d+)$/,
         run: ({ args, world }) => {
           world.lineRest = parsePoint(args[0], args[1]);
+        },
+      },
+      {
+        pattern: /^Given the vehicle line passes through latitude (-?\d+\.\d+) and longitude (-?\d+\.\d+)$/,
+        run: ({ args, world }) => {
+          world.spanVia = parsePoint(args[0], args[1]);
         },
       },
       {
@@ -315,6 +420,27 @@ Feature: Vehicle span map
         },
       },
       {
+        pattern: /^When the browser requests a street tile$/,
+        run: async ({ world }) => {
+          world.upstreamKeys = [];
+          const app = createApp({
+            getApiKey: () => API_KEY,
+            mapTileFetch: async (url, init) => {
+              const headers = new Headers(init?.headers);
+              world.upstreamKeys.push(headers.get("digitransit-subscription-key") || "");
+              world.tileUpstream = String(url);
+              return new Response(Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), {
+                headers: { "content-type": "image/png" },
+              });
+            },
+          });
+          const response = await app.request("http://localhost/api/v1/map-tile?z=16&x=37309&y=18967");
+          world.tileStatus = response.status;
+          world.tileType = response.headers.get("content-type");
+          world.tileBody = await response.text();
+        },
+      },
+      {
         pattern: /^When the browser requests the vehicle span$/,
         run: async ({ world }) => {
           const service = createDigitransitService({
@@ -326,6 +452,24 @@ Feature: Vehicle span map
               if (query.includes("StopPoint")) {
                 return Response.json({
                   data: { stop: { lat: world.stopPoint.lat, lon: world.stopPoint.lon } },
+                });
+              }
+              if (query.includes("TripShape")) {
+                if (!world.spanVia && !world.lineRest) {
+                  return Response.json({
+                    data: { trip: { pattern: { geometry: null } } },
+                  });
+                }
+                const geometry = [world.stopPoint];
+                if (world.spanVia) {
+                  geometry.push(world.spanVia);
+                }
+                geometry.push(world.openedVehicle);
+                if (world.lineRest) {
+                  geometry.push(world.lineRest);
+                }
+                return Response.json({
+                  data: { trip: { pattern: { geometry } } },
                 });
               }
               if (!query.includes("VehicleFix")) {
@@ -404,7 +548,94 @@ Feature: Vehicle span map
           const east = Number(glass.dataset.east);
           const inside = rest.lat >= south && rest.lat <= north && rest.lon >= west && rest.lon <= east;
           assert.equal(inside, false);
-          assert.equal(glass.querySelectorAll("[data-route-line], polyline, path").length, 0);
+          const drawn = glass.querySelector("[data-route-span]")?.getAttribute("data-route-span") || "";
+          assert.equal(drawn.includes(coord(rest.lat)), false);
+          assert.equal(drawn.includes(coord(world.openedVehicle.lat)), true);
+          assert.equal(drawn.includes(coord(world.stopPoint.lat)), true);
+          if (world.spanVia) {
+            assert.equal(drawn.includes(coord(world.spanVia.lat)), true);
+          }
+        },
+      },
+      {
+        pattern: /^Then the map shows street tiles for that span$/,
+        run: ({ assert, world }) => {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const css = fs.readFileSync(path.join(webRoot, "src/client/styles/main.css"), "utf8");
+          const glassRule = css.slice(css.indexOf(".vehicle-span__glass"), css.indexOf(".vehicle-span__stop"));
+          const tiles = readStreetTiles(glass);
+          const south = Number(glass?.dataset.south);
+          const west = Number(glass?.dataset.west);
+          const north = Number(glass?.dataset.north);
+          const east = Number(glass?.dataset.east);
+          const frameWidth = Math.max(east - west, 0.001);
+          const tileWidth = tiles.length > 0 ? tiles[0].east - tiles[0].west : 0;
+          assert.equal(glassRule.includes("repeating-linear-gradient"), false);
+          assert.equal(tiles.length > 0, true);
+          assert.equal(tiles.length <= 16, true);
+          assert.equal(tiles.every((tile) => tile.src.startsWith("/api/v1/map-tile?")), true);
+          assert.equal(
+            tiles.some((tile) => tile.src.includes(API_KEY) || tile.src.includes("digitransit")),
+            false,
+          );
+          assert.equal(tileWidth <= frameWidth * 4, true);
+          assert.equal(tileWidth >= frameWidth / 8, true);
+          assert.equal(cornerCovered(tiles, south, west), true);
+          assert.equal(cornerCovered(tiles, south, east), true);
+          assert.equal(cornerCovered(tiles, north, west), true);
+          assert.equal(cornerCovered(tiles, north, east), true);
+        },
+      },
+      {
+        pattern: /^Then the drawn line keeps the vehicle line and leaves out the rest$/,
+        run: ({ assert, world }) => {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const drawn = glass?.querySelector("[data-route-span]")?.getAttribute("data-route-span") || "";
+          const via = world.spanVia;
+          const rest = world.lineRest;
+          if (!via || !rest) {
+            throw new Error("Expected the vehicle line and the rest of the line");
+          }
+          assert.equal((glass?.querySelector("[data-route-span]")?.getAttribute("points") || "").length > 0, true);
+          assert.equal(drawn.includes(coord(world.openedVehicle.lat)), true);
+          assert.equal(drawn.includes(coord(world.openedVehicle.lon)), true);
+          assert.equal(drawn.includes(coord(world.stopPoint.lat)), true);
+          assert.equal(drawn.includes(coord(world.stopPoint.lon)), true);
+          assert.equal(drawn.includes(coord(via.lat)), true);
+          assert.equal(drawn.includes(coord(via.lon)), true);
+          assert.equal(drawn.includes(coord(rest.lat)), false);
+          assert.equal(drawn.includes(coord(rest.lon)), false);
+        },
+      },
+      {
+        pattern: /^Then the chosen stop is marked$/,
+        run: ({ assert, world }) => {
+          const stop = world.root?.querySelector<HTMLElement>("[data-stop-marker]");
+          assert.equal(stop instanceof HTMLElement, true);
+          assert.equal(stop?.hidden, false);
+        },
+      },
+      {
+        pattern: /^Then the span response keeps the vehicle line$/,
+        run: ({ assert, world }) => {
+          const via = world.spanVia;
+          if (!via) {
+            throw new Error("Expected a point on the vehicle line");
+          }
+          assert.equal(world.serverBody?.includes(via.lon.toString()), true);
+          assert.equal(world.serverBody?.includes(world.openedVehicle.lat.toString()), true);
+          assert.equal(world.serverBody?.includes(world.stopPoint.lat.toString()), true);
+        },
+      },
+      {
+        pattern: /^Then the span response leaves out the rest of the line$/,
+        run: ({ assert, world }) => {
+          const rest = world.lineRest;
+          if (!rest) {
+            throw new Error("Expected the rest of the line");
+          }
+          assert.equal(world.serverBody?.includes(rest.lat.toString()), false);
+          assert.equal(world.serverBody?.includes(rest.lon.toString()), false);
         },
       },
       {
@@ -444,6 +675,69 @@ Feature: Vehicle span map
         run: ({ assert, world }) => {
           assert.equal(world.serverBody?.includes(API_KEY), false);
           assert.equal(world.serverBody?.includes('"type":"span"'), true);
+        },
+      },
+      {
+        pattern: /^When the browser requests a street tile the map cannot serve$/,
+        run: async ({ world }) => {
+          world.upstreamKeys = [];
+          const bodies: string[] = [];
+          const refused = async (app: ReturnType<typeof createApp>, path: string) => {
+            const response = await app.request(`http://localhost${path}`);
+            bodies.push(`${response.status}:${await response.text()}`);
+          };
+          const keyed = createApp({
+            getApiKey: () => API_KEY,
+            mapTileFetch: async (url, init) => {
+              const headers = new Headers(init?.headers);
+              world.upstreamKeys.push(headers.get("digitransit-subscription-key") || "");
+              world.tileUpstream = String(url);
+              const address = String(url);
+              if (address.endsWith("/1/0/0.png")) {
+                return new Response("nope", { status: 500, headers: { "content-type": "text/plain" } });
+              }
+              if (address.endsWith("/1/1/0.png")) {
+                return new Response("nope", { status: 200, headers: { "content-type": "text/plain" } });
+              }
+              throw new Error("tile upstream failed");
+            },
+          });
+          await refused(keyed, "/api/v1/map-tile?z=99&x=0&y=0");
+          await refused(keyed, "/api/v1/map-tile?z=16&x=999999&y=0");
+          await refused(keyed, "/api/v1/map-tile?z=no&x=1&y=1");
+          await refused(keyed, "/api/v1/map-tile?z=1&x=0&y=0");
+          await refused(keyed, "/api/v1/map-tile?z=1&x=1&y=0");
+          await refused(keyed, "/api/v1/map-tile?z=1&x=0&y=1");
+          await refused(createApp({ getApiKey: () => undefined }), "/api/v1/map-tile?z=1&x=1&y=1");
+          world.tileBody = bodies.join("\n");
+        },
+      },
+      {
+        pattern: /^Then the empty tile response does not carry the Digitransit API key$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.tileBody?.includes("200:"), false);
+          assert.equal(world.tileBody?.includes(API_KEY), false);
+          assert.equal(world.tileBody?.includes("DIGITRANSIT_API_KEY"), false);
+          assert.equal(world.tileUpstream?.includes(API_KEY), false);
+          assert.equal(world.upstreamKeys.every((value) => value === API_KEY), true);
+        },
+      },
+      {
+        pattern: /^Then the street tile image is returned$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.tileStatus, 200);
+          assert.equal(world.tileType, "image/png");
+          assert.equal(world.tileBody?.includes(API_KEY), false);
+          assert.equal(world.tileBody?.includes("DIGITRANSIT_API_KEY"), false);
+        },
+      },
+      {
+        pattern: /^Then the street tile leaves the Digitransit API key on the server$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.tileUpstream?.includes(API_KEY), false);
+          assert.equal(world.tileUpstream?.includes("/map/v3/hsl-map/16/37309/18967.png"), true);
+          assert.equal(world.upstreamKeys.length, 1);
+          assert.equal(world.upstreamKeys[0], API_KEY);
         },
       },
       {

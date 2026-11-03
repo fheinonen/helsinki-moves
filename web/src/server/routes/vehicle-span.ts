@@ -21,6 +21,7 @@ export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOpt
 
   app.get("/api/v1/vehicle-span", (context) => {
     const readStop = digitransitService.getStopPoint;
+    const readShape = digitransitService.getTripShape;
     const readVehicle = digitransitService.getVehicleFix;
     if (!readStop || !readVehicle) {
       return context.json({ error: "Vehicle position is not available." }, 404);
@@ -39,6 +40,7 @@ export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOpt
       const events = readVehicleSpan({
         intervalMs: SPAN_POLL_MS,
         isActive: () => active && !signal.aborted,
+        readRoute: () => (readShape ? readShape(tripId) : Promise.resolve([])),
         readStop: () => readStop(stopId),
         readVehicle: () => readVehicle(tripId),
         sleep: async (ms) => {

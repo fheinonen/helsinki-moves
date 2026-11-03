@@ -7,6 +7,7 @@ export interface VehicleSpanFrame {
   readonly east: number;
   readonly north: number;
   readonly openedVehicle: GeoPoint;
+  readonly route: readonly GeoPoint[];
   readonly south: number;
   readonly stop: GeoPoint;
   readonly west: number;
@@ -28,14 +29,67 @@ export type VehicleSpanEvent =
       readonly vehicle: GeoPoint;
     };
 
-export function frameVehicleSpan(openedVehicle: GeoPoint, stop: GeoPoint): VehicleSpanFrame {
+function nearestIndex(line: readonly GeoPoint[], point: GeoPoint): number {
+  let best = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < line.length; index += 1) {
+    const lat = line[index].lat - point.lat;
+    const lon = line[index].lon - point.lon;
+    const distance = lat * lat + lon * lon;
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function dedupePoints(points: readonly GeoPoint[]): GeoPoint[] {
+  const result: GeoPoint[] = [];
+  for (const point of points) {
+    const previous = result[result.length - 1];
+    if (!previous || previous.lat !== point.lat || previous.lon !== point.lon) {
+      result.push(point);
+    }
+  }
+  return result;
+}
+
+function spanBounds(points: readonly GeoPoint[]): Pick<VehicleSpanFrame, "east" | "north" | "south" | "west"> {
+  let east = points[0].lon;
+  let north = points[0].lat;
+  let south = points[0].lat;
+  let west = points[0].lon;
+  for (const point of points) {
+    east = Math.max(east, point.lon);
+    north = Math.max(north, point.lat);
+    south = Math.min(south, point.lat);
+    west = Math.min(west, point.lon);
+  }
+  return { east, north, south, west };
+}
+
+export function clipLineToSpan(line: readonly GeoPoint[], opened: GeoPoint, stop: GeoPoint): readonly GeoPoint[] {
+  if (line.length < 2) {
+    return [opened, stop];
+  }
+  const from = nearestIndex(line, opened);
+  const to = nearestIndex(line, stop);
+  const slice = from <= to ? line.slice(from, to + 1) : line.slice(to, from + 1).reverse();
+  return dedupePoints([opened, ...slice, stop]);
+}
+
+export function frameVehicleSpan(
+  openedVehicle: GeoPoint,
+  stop: GeoPoint,
+  line: readonly GeoPoint[] = [],
+): VehicleSpanFrame {
+  const route = clipLineToSpan(line, openedVehicle, stop);
   return {
-    east: Math.max(openedVehicle.lon, stop.lon),
-    north: Math.max(openedVehicle.lat, stop.lat),
+    ...spanBounds(route),
     openedVehicle,
-    south: Math.min(openedVehicle.lat, stop.lat),
+    route,
     stop,
-    west: Math.min(openedVehicle.lon, stop.lon),
   };
 }
 

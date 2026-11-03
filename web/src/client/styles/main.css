@@ -706,45 +706,80 @@ button {
   overflow: hidden;
   border: 1px solid rgba(222, 193, 136, 0.32);
   border-radius: 1.15rem;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(222, 193, 136, 0.16), transparent 28%),
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 27px,
-      rgba(222, 193, 136, 0.08) 28px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 27px,
-      rgba(222, 193, 136, 0.08) 28px
-    ),
-    linear-gradient(180deg, #12100c 0%, #070706 100%);
+  background: #e7e1d4;
   box-shadow: var(--shadow-soft), var(--shadow-edge);
+}
+
+.vehicle-span__tile {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.vehicle-span__route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.vehicle-span__route polyline {
+  fill: none;
+  stroke: #1d4ed8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .vehicle-span__stop,
 .vehicle-span__vehicle {
   position: absolute;
+  z-index: 2;
   transform: translate(-50%, -50%);
 }
 
 .vehicle-span__stop {
-  width: 0.55rem;
-  height: 0.55rem;
-  border: 1px solid var(--interactive-strong);
-  background: #050505;
-  border-radius: 1px;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid #161616;
+  border-radius: 50%;
+  background: #f7f1e4;
+  box-shadow: 0 0 0 0.18rem rgba(247, 241, 228, 0.92);
+}
+
+.vehicle-span__stop::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 50%;
+  background: #161616;
+  transform: translate(-50%, -50%);
 }
 
 .vehicle-span__vehicle {
-  width: 0.85rem;
-  height: 0.85rem;
+  z-index: 3;
+  width: 0.9rem;
+  height: 0.9rem;
   border: 2px solid #f6edd8;
   border-radius: 50%;
   background: var(--destination-color, var(--interactive));
-  box-shadow: 0 0 0 0.35rem rgba(222, 193, 136, 0.16);
+  box-shadow: 0 0 0 0.28rem rgba(29, 78, 216, 0.22);
+}
+
+.vehicle-span__credit {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.28rem;
+  z-index: 2;
+  margin: 0;
+  color: #243044;
+  font-size: 0.58rem;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 2px #fff;
 }
 
 @media (min-width: 640px) {

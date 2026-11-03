@@ -3,6 +3,7 @@ import { registerClientErrorRoute } from "./routes/client-error.js";
 import { registerDeparturesRoute } from "./routes/departures.js";
 import { registerGeocodeRoute } from "./routes/geocode.js";
 import { registerSpeechTranscribeRoute } from "./routes/speech-transcribe.js";
+import { registerMapTileRoute } from "./routes/map-tile.js";
 import { registerVehicleSpanRoute } from "./routes/vehicle-span.js";
 import { createDigitransitService } from "./services/digitransit/client.js";
 import type { DigitransitService } from "./services/digitransit/types.js";
@@ -15,6 +16,8 @@ interface AppOptions {
   geocodeService?: GeocodeService;
   logClientPayload?: (payload: ClientErrorPayload) => void;
   now?: () => number;
+  getApiKey?: () => string | undefined;
+  mapTileFetch?: typeof fetch;
   speechTranscriptionService?: SpeechTranscriptionService | null;
   vehicleSpanSleep?: (ms: number) => Promise<void>;
 }
@@ -39,6 +42,10 @@ export function createApp(options: AppOptions = {}): Hono {
   registerVehicleSpanRoute(app, {
     digitransitService,
     sleep: options.vehicleSpanSleep,
+  });
+  registerMapTileRoute(app, {
+    fetchImpl: options.mapTileFetch,
+    getApiKey: options.getApiKey,
   });
 
   app.notFound((context) => context.json({ error: "not found" }, 404));

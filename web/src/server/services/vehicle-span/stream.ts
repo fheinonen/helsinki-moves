@@ -7,6 +7,7 @@ import {
 export interface VehicleSpanRead {
   intervalMs: number;
   isActive: () => boolean;
+  readRoute?: () => Promise<readonly GeoPoint[]>;
   readStop: () => Promise<GeoPoint | null>;
   readVehicle: () => Promise<GeoPoint | null>;
   sleep: (ms: number) => Promise<void>;
@@ -27,7 +28,8 @@ export async function* readVehicleSpan(input: VehicleSpanRead): AsyncGenerator<V
   }
 
   let vehicle = opened;
-  yield { frame: frameVehicleSpan(opened, stop), type: "span", vehicle: opened };
+  const line = input.readRoute ? await input.readRoute() : [];
+  yield { frame: frameVehicleSpan(opened, stop, line), type: "span", vehicle: opened };
 
   while (input.isActive()) {
     await input.sleep(input.intervalMs);

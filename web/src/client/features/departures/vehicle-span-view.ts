@@ -1,4 +1,4 @@
-import { placeOnMap, streetTilesForFrame } from "@shared/domain/street-map";
+import { frameAspect, placeOnMap, streetTilesForFrame } from "@shared/domain/street-map";
 import {
   applyVehicleSpanEvent,
   closedVehicleSpan,
@@ -60,14 +60,21 @@ function clearStreets(glass: HTMLElement): void {
   }
 }
 
+function fitCanvas(canvas: HTMLElement, frame: VehicleSpanFrame): void {
+  const aspect = frameAspect(frame);
+  canvas.style.aspectRatio = String(aspect);
+  canvas.style.setProperty("--map-aspect", String(aspect));
+}
+
 function mountStreets(input: {
+  canvas: HTMLElement;
   destinationColor?: string;
   documentRef: Document;
   frame: VehicleSpanFrame;
-  glass: HTMLElement;
   stopMarker: HTMLElement;
 }): void {
-  const { destinationColor, documentRef, frame, glass, stopMarker } = input;
+  const { canvas, destinationColor, documentRef, frame, stopMarker } = input;
+  fitCanvas(canvas, frame);
   for (const tile of streetTilesForFrame(frame)) {
     const image = documentRef.createElement("img");
     image.alt = "";
@@ -79,7 +86,7 @@ function mountStreets(input: {
     image.style.left = tile.left;
     image.style.top = tile.top;
     image.style.width = tile.width;
-    glass.insertBefore(image, stopMarker);
+    canvas.insertBefore(image, stopMarker);
   }
 
   const svg = documentRef.createElementNS(SVG_NS, "svg");
@@ -93,7 +100,7 @@ function mountStreets(input: {
     line.style.stroke = destinationColor;
   }
   svg.append(line);
-  glass.insertBefore(svg, stopMarker);
+  canvas.insertBefore(svg, stopMarker);
 }
 
 export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpanMap {
@@ -142,7 +149,11 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
   credit.textContent = "© OpenStreetMap, HSL";
-  glass.append(status, stopMarker, vehicleMarker, credit);
+  const canvas = documentRef.createElement("div");
+  canvas.className = "vehicle-span__canvas";
+  canvas.dataset.vehicleCanvas = "true";
+  canvas.append(stopMarker, vehicleMarker);
+  glass.append(status, canvas, credit);
   element.append(head, glass);
 
   let view = closedVehicleSpan();
@@ -151,7 +162,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     const frame = frameVehicleSpan(stop, stop);
     clearStreets(glass);
     writeFrame(glass, frame);
-    mountStreets({ destinationColor, documentRef, frame, glass, stopMarker });
+    mountStreets({ canvas, destinationColor, documentRef, frame, stopMarker });
     place(stopMarker, frame, stop);
     delete vehicleMarker.dataset.lat;
     delete vehicleMarker.dataset.lon;
@@ -172,7 +183,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
       if (!hadFrame) {
         clearStreets(glass);
         writeFrame(glass, view.frame);
-        mountStreets({ destinationColor, documentRef, frame: view.frame, glass, stopMarker });
+        mountStreets({ canvas, destinationColor, documentRef, frame: view.frame, stopMarker });
         place(stopMarker, view.frame, view.frame.stop);
       }
       place(vehicleMarker, view.frame, view.vehicle);

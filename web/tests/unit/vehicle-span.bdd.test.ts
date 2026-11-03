@@ -193,6 +193,21 @@ function readSpanVehicle(body: string): GeoPoint | null {
   return event.vehicle;
 }
 
+function mercatorAspect(south: number, north: number, west: number, east: number): number {
+  const latSpan = Math.max(north - south, 0.001);
+  const lonSpan = Math.max(east - west, 0.001);
+  const pad = 0.1;
+  const latPad = (latSpan * pad) / (1 - pad * 2);
+  const lonPad = (lonSpan * pad) / (1 - pad * 2);
+  const mercator = (lat: number) => {
+    const sine = Math.sin((lat * Math.PI) / 180);
+    return 0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI);
+  };
+  const width = (lonSpan + lonPad * 2) / 360;
+  const height = mercator(south - latPad) - mercator(north + latPad);
+  return width / height;
+}
+
 function cornerCovered(tiles: StreetTileBox[], lat: number, lon: number): boolean {
   const epsilon = 1e-8;
   return tiles.some(
@@ -548,6 +563,13 @@ Feature: Vehicle span map
     Then the frame contains the opening vehicle position
     And the frame contains the chosen stop
     And the frame does not contain the rest of the line
+
+  Scenario: Street tiles keep their shape in the dropdown
+    Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    And the vehicle opens at latitude 60.170 and longitude 24.940
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    When the card is pressed
+    Then the street tiles stay square in the dropdown
 
   Scenario: The map shows streets for the opening span
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
@@ -927,6 +949,37 @@ Feature: Vehicle span map
           if (world.spanVia) {
             assert.equal(drawn.includes(coord(world.spanVia.lat)), true);
           }
+        },
+      },
+      {
+        pattern: /^Then the street tiles stay square in the dropdown$/,
+        run: ({ assert, world }) => {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const canvas = glass?.querySelector<HTMLElement>("[data-vehicle-canvas]");
+          const css = fs.readFileSync(path.join(webRoot, "src/client/styles/main.css"), "utf8");
+          const canvasRule = css.slice(css.indexOf(".vehicle-span__canvas"), css.indexOf(".vehicle-span__tile"));
+          const aspect = Number(canvas?.style.getPropertyValue("--map-aspect"));
+          const expected = mercatorAspect(
+            Number(glass?.dataset.south),
+            Number(glass?.dataset.north),
+            Number(glass?.dataset.west),
+            Number(glass?.dataset.east),
+          );
+          const tiles = [...(canvas?.querySelectorAll<HTMLImageElement>("[data-street-tile]") ?? [])];
+          assert.equal(canvas instanceof HTMLElement, true);
+          assert.equal(canvasRule.includes("100cqw"), true);
+          assert.equal(canvasRule.includes("100cqh"), true);
+          assert.equal(Math.abs(aspect - expected) < 0.001, true);
+          assert.equal(tiles.length > 0, true);
+          const square = tiles.every((tile) => {
+            const width = Number.parseFloat(tile.style.width) * aspect;
+            const height = Number.parseFloat(tile.style.height);
+            return Math.abs(width - height) < 0.05;
+          });
+          assert.equal(square, true);
+          assert.equal(glass?.querySelector("[data-stop-marker]")?.parentElement, canvas);
+          assert.equal(glass?.querySelector("[data-vehicle-marker]")?.parentElement, canvas);
+          assert.equal(glass?.querySelector("[data-route-span]")?.parentElement?.parentElement, canvas);
         },
       },
       {

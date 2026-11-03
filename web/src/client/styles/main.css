@@ -702,12 +702,21 @@ button {
 
 .vehicle-span__glass {
   position: relative;
+  container-type: size;
+  display: grid;
+  place-items: center;
   height: 16.5rem;
   overflow: hidden;
   border: 1px solid rgba(222, 193, 136, 0.32);
   border-radius: 1.15rem;
   background: #e7e1d4;
   box-shadow: var(--shadow-soft), var(--shadow-edge);
+}
+
+.vehicle-span__canvas {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--map-aspect, 1)));
+  aspect-ratio: var(--map-aspect, 1);
 }
 
 .vehicle-span__tile {

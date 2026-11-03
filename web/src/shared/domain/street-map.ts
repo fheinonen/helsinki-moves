@@ -76,6 +76,13 @@ function tileBox(window: MapWindow, zoom: number, x: number, y: number): StreetT
   };
 }
 
+export function frameAspect(frame: VehicleSpanFrame): number {
+  const window = mapWindow(frame);
+  const width = (window.east - window.west) / 360;
+  const height = window.southT - window.northT;
+  return width / height;
+}
+
 export function placeOnMap(frame: VehicleSpanFrame, point: GeoPoint): { left: string; top: string } {
   const window = mapWindow(frame);
   const westT = (window.west + 180) / 360;

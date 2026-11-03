@@ -479,6 +479,13 @@ Feature: Vehicle span map
     Then the vehicle map is open
     And the map closes when the close control is pressed
 
+  Scenario: Changing mode closes the open vehicle map
+    Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    And the map is open on the vehicle
+    When the user changes mode to RAIL
+    Then the vehicle map is gone
+    And the vehicle stream is closed
+
   Scenario: Pressing a departure card shows the map before the vehicle is found
     Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
     When the departure card is pressed before the vehicle arrives
@@ -676,6 +683,16 @@ Feature: Vehicle span map
         },
       },
       {
+        pattern: /^When the user changes mode to RAIL$/,
+        run: ({ world }) => {
+          const button = world.root?.querySelector<HTMLButtonElement>('[data-mode="RAIL"]');
+          if (!button) {
+            throw new Error("Expected RAIL mode button");
+          }
+          button.click();
+        },
+      },
+      {
         pattern: /^When the card is pressed$/,
         run: async ({ world }) => {
           await emitOpening(world);
@@ -811,6 +828,18 @@ Feature: Vehicle span map
             await requestVehicleSpan(world);
             world.serverBodies.push(world.serverBody || "");
           }
+        },
+      },
+      {
+        pattern: /^Then the vehicle map is gone$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.root?.querySelector("[data-vehicle-map]"), null);
+        },
+      },
+      {
+        pattern: /^Then the vehicle stream is closed$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.source?.closed, true);
         },
       },
       {

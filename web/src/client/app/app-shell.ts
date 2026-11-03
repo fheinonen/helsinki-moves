@@ -481,6 +481,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   const syncView = (state: AppState) => {
     if (state.activeMode !== previousMode) {
       setFilterPanelOpen(filterPanelControls, false);
+      vehicleSpan.close();
       previousMode = state.activeMode;
     }
 

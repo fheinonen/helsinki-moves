@@ -25,6 +25,22 @@ const stopPointQuery = `
   }
 `;
 
+const vehicleFixQuery = `
+  query VehicleFix($tripId: String!) {
+    trip(id: $tripId) {
+      pattern {
+        vehiclePositions {
+          lat
+          lon
+          trip {
+            gtfsId
+          }
+        }
+      }
+    }
+  }
+`;
+
 const nearbyStopsQuery = `
   query NearbyStops($lat: Float!, $lon: Float!, $radius: Int!) {
     stopsByRadius(lat: $lat, lon: $lon, radius: $radius) {
@@ -87,6 +103,7 @@ function buildMultiStopDeparturesQuery(stopIds: string[], fetchWindow: Departure
             platformCode
           }
           trip {
+            gtfsId
             route {
               mode
               shortName
@@ -151,6 +168,7 @@ function parseDeparture(
       platformCode?: string;
     };
     trip?: {
+      gtfsId?: string;
       route?: {
         mode?: string;
         shortName?: string;
@@ -191,6 +209,7 @@ function parseDeparture(
     stopId: item.stop?.gtfsId?.trim() || null,
     stopName: item.stop?.name?.trim() || null,
     track: item.stop?.platformCode?.trim() || input.fallbackTrack,
+    tripId: item.trip?.gtfsId?.trim() || null,
   };
 }
 
@@ -229,6 +248,25 @@ function normalizeNearbyStops(data: Record<string, unknown>): NearbyStopNode[] {
   return (edges || [])
     .map((edge) => edge.node)
     .filter((node): node is NearbyStopNode => Boolean(node?.stop?.gtfsId));
+}
+
+function readVehicleFix(data: Record<string, unknown>, tripId: string): { lat: number; lon: number } | null {
+  const trip = data.trip as
+    | {
+        pattern?: {
+          vehiclePositions?: Array<{ lat?: number; lon?: number; trip?: { gtfsId?: string } }>;
+        };
+      }
+    | null
+    | undefined;
+  const positions = trip?.pattern?.vehiclePositions || [];
+  const match = positions.find((position) => position.trip?.gtfsId === tripId);
+  const lat = match?.lat;
+  const lon = match?.lon;
+  if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+  return { lat, lon };
 }
 
 async function graphqlRequest(input: {
@@ -295,6 +333,19 @@ export function createDigitransitService(input: {
   const nearbyStopsCache = new Map<string, NearbyStopsCacheEntry>();
 
   return {
+    async getVehicleFix(tripId) {
+      const data = await graphqlRequest({
+        body: {
+          query: vehicleFixQuery,
+          variables: { tripId },
+        },
+        endpoint,
+        fetchImpl,
+        getApiKey,
+        timeoutMs,
+      });
+      return readVehicleFix(data, tripId);
+    },
     async getStopPoint(stopId) {
       const data = await graphqlRequest({
         body: {

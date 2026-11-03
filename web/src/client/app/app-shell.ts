@@ -1,4 +1,7 @@
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
+import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
+import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
+import type { VehicleSpanEvent } from "@shared/domain/vehicle-span";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
 import { renderModeSelector } from "@client/features/mode/mode-view";
 import { createStopSelectorView } from "@client/features/stops/stop-selector-view";
@@ -9,9 +12,18 @@ import { createDestinationColorBook } from "@shared/domain/destination-color";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
+interface VehicleSpanOpener {
+  (input: {
+    onEvent: (event: VehicleSpanEvent) => void;
+    stopId: string;
+    tripId: string;
+  }): () => void;
+}
+
 interface RenderAppShellOptions {
   controller: AppController;
   documentRef: Document;
+  openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
 }
 
@@ -82,7 +94,7 @@ function buildDeparturesSignature(state: AppState): string {
     state.activeMode +
     "\u001f" +
     (state.station?.departures || [])
-      .map((d) => `${d.line}:${d.destination}:${d.departureIso}:${d.track || ""}:${d.stopCode || ""}`)
+      .map((d) => `${d.line}:${d.destination}:${d.departureIso}:${d.track || ""}:${d.stopCode || ""}:${d.tripId || ""}`)
       .join("\u001f")
   );
 }
@@ -237,7 +249,10 @@ function createVoiceChoicesView(
   };
 }
 
-function createDeparturesTableView(documentRef: Document): DeparturesTableView {
+function createDeparturesTableView(
+  documentRef: Document,
+  onPress: (card: HTMLTableRowElement) => void
+): DeparturesTableView {
   const element = documentRef.createElement("table");
   element.className = "app-shell__departures-table";
   element.hidden = true;
@@ -259,6 +274,17 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
   departuresList.className = "app-shell__departures";
   head.appendChild(columnHeaders);
   element.append(head, departuresList);
+  departuresList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const card = target.closest("tr");
+    if (!(card instanceof HTMLTableRowElement) || card.dataset.vehicleSpan !== "true") {
+      return;
+    }
+    onPress(card);
+  });
   const destinationColors = createDestinationColorBook();
   let previousSignature = "";
 
@@ -289,6 +315,51 @@ function createDeparturesTableView(documentRef: Document): DeparturesTableView {
           })
         );
       }
+    },
+  };
+}
+
+function createVehicleSpanSession(input: {
+  documentRef: Document;
+  openVehicleSpan?: VehicleSpanOpener;
+  root: HTMLElement;
+}): { close(): void; press(card: HTMLTableRowElement): void } {
+  let map: VehicleSpanMap | null = null;
+  let stopStream: (() => void) | null = null;
+  const openVehicleSpan = input.openVehicleSpan ?? openVehicleSpanStream;
+
+  const close = () => {
+    stopStream?.();
+    stopStream = null;
+    map?.close();
+    map = null;
+  };
+
+  return {
+    close,
+    press(card) {
+      const tripId = card.dataset.tripId || "";
+      const stopId = card.dataset.stopId || "";
+      if (!tripId || !stopId) {
+        return;
+      }
+      close();
+      const nextMap = createVehicleSpanMap({
+        destination: card.dataset.destination || "",
+        destinationColor: card.style.getPropertyValue("--destination-color") || undefined,
+        documentRef: input.documentRef,
+        line: card.dataset.line || "",
+        onClose: close,
+      });
+      input.root.appendChild(nextMap.element);
+      map = nextMap;
+      stopStream = openVehicleSpan({
+        onEvent(event) {
+          nextMap.apply(event);
+        },
+        stopId,
+        tripId,
+      });
     },
   };
 }
@@ -390,7 +461,14 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.dataset.stationTitle = "true";
   stationTitle.hidden = true;
 
-  const departuresTableView = createDeparturesTableView(documentRef);
+  const vehicleSpan = createVehicleSpanSession({
+    documentRef,
+    openVehicleSpan: options.openVehicleSpan,
+    root,
+  });
+  const departuresTableView = createDeparturesTableView(documentRef, (card) => {
+    vehicleSpan.press(card);
+  });
   departuresTableView.element.setAttribute("aria-live", "polite");
   departuresTableView.element.setAttribute("aria-relevant", "additions removals");
 
@@ -431,6 +509,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   syncView(store.getState());
   const unsubscribeStore = store.subscribe(syncView);
   const cleanup = () => {
+    vehicleSpan.close();
     unsubscribeModeSelector();
     unsubscribeStore();
     stopSelectorView.cleanup();

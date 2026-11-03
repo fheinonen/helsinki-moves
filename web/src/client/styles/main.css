@@ -652,6 +652,101 @@ button {
   color: var(--urgency-soon);
 }
 
+.departure-card[data-vehicle-span="true"] {
+  cursor: pointer;
+}
+
+.vehicle-span {
+  margin: 0.85rem var(--departures-edge-inset) 0;
+}
+
+.vehicle-span__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.45rem;
+}
+
+.vehicle-span__identity {
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.vehicle-span__line {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.vehicle-span__destination {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vehicle-span__close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vehicle-span__glass {
+  position: relative;
+  height: 16.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(222, 193, 136, 0.32);
+  border-radius: 1.15rem;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(222, 193, 136, 0.16), transparent 28%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      rgba(222, 193, 136, 0.08) 28px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 27px,
+      rgba(222, 193, 136, 0.08) 28px
+    ),
+    linear-gradient(180deg, #12100c 0%, #070706 100%);
+  box-shadow: var(--shadow-soft), var(--shadow-edge);
+}
+
+.vehicle-span__stop,
+.vehicle-span__vehicle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.vehicle-span__stop {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid var(--interactive-strong);
+  background: #050505;
+  border-radius: 1px;
+}
+
+.vehicle-span__vehicle {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid #f6edd8;
+  border-radius: 50%;
+  background: var(--destination-color, var(--interactive));
+  box-shadow: 0 0 0 0.35rem rgba(222, 193, 136, 0.16);
+}
+
 @media (min-width: 640px) {
   body {
     padding: 0 1.2rem;

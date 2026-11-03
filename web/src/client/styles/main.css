@@ -793,6 +793,7 @@ button {
   font-weight: 600;
 }
 
+.vehicle-span__glass[data-south] .vehicle-span__vehicle:not([data-lat]),
 .vehicle-span__glass[data-south] .vehicle-span__status,
 .vehicle-span__glass:not([data-south]) .vehicle-span__stop,
 .vehicle-span__glass:not([data-south]) .vehicle-span__vehicle,

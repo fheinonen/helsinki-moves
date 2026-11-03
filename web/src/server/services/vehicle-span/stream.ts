@@ -17,9 +17,17 @@ function samePoint(left: GeoPoint, right: GeoPoint): boolean {
   return left.lat === right.lat && left.lon === right.lon;
 }
 
+async function readOrNull(read: () => Promise<GeoPoint | null>): Promise<GeoPoint | null> {
+  try {
+    return await read();
+  } catch {
+    return null;
+  }
+}
+
 async function waitForVehicle(input: VehicleSpanRead): Promise<GeoPoint | null> {
   while (input.isActive()) {
-    const point = await input.readVehicle();
+    const point = await readOrNull(input.readVehicle);
     if (point) {
       return point;
     }
@@ -28,21 +36,36 @@ async function waitForVehicle(input: VehicleSpanRead): Promise<GeoPoint | null> 
   return null;
 }
 
+async function readLine(input: VehicleSpanRead): Promise<readonly GeoPoint[]> {
+  if (!input.readRoute) {
+    return [];
+  }
+  try {
+    return await input.readRoute();
+  } catch {
+    return [];
+  }
+}
+
 export async function* readVehicleSpan(input: VehicleSpanRead): AsyncGenerator<VehicleSpanEvent> {
   if (!input.isActive()) {
     return;
   }
-  const stop = await input.readStop();
+  const stop = await readOrNull(input.readStop);
   if (!stop) {
     return;
   }
-  const opened = await waitForVehicle(input);
+  let opened = await readOrNull(input.readVehicle);
   if (!opened) {
-    return;
+    yield { stop, type: "place" };
+    opened = await waitForVehicle(input);
+    if (!opened) {
+      return;
+    }
   }
 
   let vehicle = opened;
-  const line = input.readRoute ? await input.readRoute() : [];
+  const line = await readLine(input);
   yield { frame: frameVehicleSpan(opened, stop, line), type: "span", vehicle: opened };
 
   while (input.isActive()) {

@@ -2,6 +2,7 @@ import { placeOnMap, streetTilesForFrame } from "@shared/domain/street-map";
 import {
   applyVehicleSpanEvent,
   closedVehicleSpan,
+  frameVehicleSpan,
   type GeoPoint,
   type VehicleSpanEvent,
   type VehicleSpanFrame,
@@ -51,6 +52,12 @@ function routePoints(frame: VehicleSpanFrame): string {
       return `${Number.parseFloat(spot.left)},${Number.parseFloat(spot.top)}`;
     })
     .join(" ");
+}
+
+function clearStreets(glass: HTMLElement): void {
+  for (const node of glass.querySelectorAll("[data-street-tile], .vehicle-span__route")) {
+    node.remove();
+  }
 }
 
 function mountStreets(input: {
@@ -140,14 +147,30 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
 
   let view = closedVehicleSpan();
 
+  const showStop = (stop: GeoPoint) => {
+    const frame = frameVehicleSpan(stop, stop);
+    clearStreets(glass);
+    writeFrame(glass, frame);
+    mountStreets({ destinationColor, documentRef, frame, glass, stopMarker });
+    place(stopMarker, frame, stop);
+    delete vehicleMarker.dataset.lat;
+    delete vehicleMarker.dataset.lon;
+    element.hidden = false;
+  };
+
   const map: VehicleSpanMap = {
     apply(event) {
+      if (event.type === "place") {
+        showStop(event.stop);
+        return;
+      }
       const hadFrame = view.frame !== null;
       view = applyVehicleSpanEvent(view, event);
       if (!view.frame || !view.vehicle) {
         return;
       }
       if (!hadFrame) {
+        clearStreets(glass);
         writeFrame(glass, view.frame);
         mountStreets({ destinationColor, documentRef, frame: view.frame, glass, stopMarker });
         place(stopMarker, view.frame, view.frame.stop);

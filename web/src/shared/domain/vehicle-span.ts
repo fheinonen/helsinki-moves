@@ -27,6 +27,10 @@ export type VehicleSpanEvent =
   | {
       readonly type: "position";
       readonly vehicle: GeoPoint;
+    }
+  | {
+      readonly stop: GeoPoint;
+      readonly type: "place";
     };
 
 function nearestIndex(line: readonly GeoPoint[], point: GeoPoint): number {
@@ -109,6 +113,8 @@ export function applyVehicleSpanEvent(view: VehicleSpanView, event: VehicleSpanE
         return view;
       }
       return { frame: view.frame, vehicle: event.vehicle };
+    case "place":
+      return view;
     default: {
       const unreachable: never = event;
       return unreachable;

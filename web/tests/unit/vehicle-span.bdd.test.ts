@@ -9,6 +9,8 @@ import { createAppController } from "@client/app/app-controller";
 import { openVehicleSpanStream, vehicleSpanUrl } from "@client/services/vehicle-span-client";
 import type { DeparturesClient } from "@client/services/departures-client";
 import type { LocationService } from "@client/services/location-service";
+import mapTileRoute from "../../api/v1/map-tile";
+import vehicleSpanRoute from "../../api/v1/vehicle-span";
 import { createApp } from "@server/app";
 import { createDigitransitService } from "@server/services/digitransit/client";
 import { readVehicleSpan } from "@server/services/vehicle-span/stream";
@@ -44,6 +46,7 @@ interface World {
   documentRef?: Document;
   graphDown?: boolean;
   failLiveOnce?: boolean;
+  liveAttempts?: number;
   generator?: AsyncGenerator<VehicleSpanEvent>;
   lineRest?: GeoPoint;
   liveBody?: Uint8Array;
@@ -278,14 +281,13 @@ async function requestVehicleSpan(world: World): Promise<void> {
     },
     getApiKey: () => API_KEY,
   });
-  let liveAttempts = 0;
   const app = createApp({
     digitransitService: service,
     liveVehicleFetch: async (url, init) => {
-      liveAttempts += 1;
+      world.liveAttempts = (world.liveAttempts ?? 0) + 1;
       world.liveRequests.push(String(url));
       world.liveHeader = new Headers(init?.headers).get("digitransit-subscription-key");
-      if (world.failLiveOnce && liveAttempts === 1) {
+      if (world.failLiveOnce && world.liveAttempts === 1) {
         throw new Error("live feed missed");
       }
       if (!world.liveBody) {
@@ -497,6 +499,8 @@ Feature: Vehicle span map
     And Digitransit has no coordinates for that vehicle
     And the live feed fails once then places route 1040 direction 0 starting at 13:15:00 on 20261103
     When the browser requests the vehicle span
+    Then the span response places the chosen stop
+    When the browser requests the vehicle span
     Then the span response places the opening vehicle
 
   Scenario: A press does not invent a vehicle the live feed cannot find
@@ -506,7 +510,15 @@ Feature: Vehicle span map
     And the departure trip is HSL:1040_20261102_Ti_1_1315
     And Digitransit has no coordinates for that vehicle
     When the browser requests the vehicle span
-    Then the span response does not invent a vehicle
+    Then the span response places the chosen stop
+    And the span response does not invent a vehicle
+
+  Scenario: The stop map appears before the vehicle is found
+    Given a departure card for line 550 to Kamppi on trip HSL:TRIP1 at stop HSL:STOP1
+    And the chosen stop is at latitude 60.180 and longitude 24.950
+    When the chosen stop arrives before the vehicle
+    Then the map shows the chosen stop on street tiles
+    And the vehicle marker is still waiting
 
   Scenario: A press still opens the span when Digitransit does not answer
     Given a Digitransit key is configured on the server
@@ -573,6 +585,10 @@ Feature: Vehicle span map
     Then the browser request does not carry the Digitransit API key
     And the browser response does not carry the Digitransit API key
     And the client source does not contain the Digitransit API key
+
+  Scenario: The vehicle span and street tiles are served with the other API routes
+    When the deployed vehicle span and street tile routes are requested
+    Then those routes answer from the application
 
   Scenario: A street tile stays on our server
     Given a Digitransit key is configured on the server
@@ -651,6 +667,14 @@ Feature: Vehicle span map
         },
       },
       {
+        pattern: /^When the chosen stop arrives before the vehicle$/,
+        run: ({ world }) => {
+          const card = world.root?.querySelector<HTMLElement>("[data-vehicle-span='true']");
+          card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          world.source?.emit("place", JSON.stringify({ stop: world.stopPoint, type: "place" }));
+        },
+      },
+      {
         pattern: /^Given the departure trip is (\S+)$/,
         run: ({ args, world }) => {
           world.tripId = args[0];
@@ -709,6 +733,24 @@ Feature: Vehicle span map
             throw new Error("Expected a newer vehicle position");
           }
           world.source.emit("position", JSON.stringify(step.value));
+        },
+      },
+      {
+        pattern: /^When the deployed vehicle span and street tile routes are requested$/,
+        run: async ({ world }) => {
+          const span = await vehicleSpanRoute.request("http://localhost/api/v1/vehicle-span");
+          const tile = await mapTileRoute.request("http://localhost/api/v1/map-tile");
+          world.serverBodies = [`${span.status}:${await span.text()}`, `${tile.status}:${await tile.text()}`];
+        },
+      },
+      {
+        pattern: /^Then those routes answer from the application$/,
+        run: ({ assert, world }) => {
+          const bodies = world.serverBodies || [];
+          assert.equal(bodies[0]?.startsWith("400:"), true);
+          assert.equal(bodies[1]?.startsWith("404:"), true);
+          assert.equal(bodies.join("\n").includes("The page could not be found"), false);
+          assert.equal(bodies[1]?.includes("not found"), true);
         },
       },
       {
@@ -798,6 +840,36 @@ Feature: Vehicle span map
           assert.equal(bodies.every((body) => !body.includes('"type":"span"')), true);
           assert.equal(world.liveRequests.length > 0, true);
           assert.equal(bodies.every((body) => !body.includes(API_KEY)), true);
+        },
+      },
+      {
+        pattern: /^Then the span response places the chosen stop$/,
+        run: ({ assert, world }) => {
+          assert.equal(world.serverBody?.includes('"type":"place"'), true);
+          assert.equal(world.serverBody?.includes(world.stopPoint.lat.toString()), true);
+          assert.equal(world.serverBody?.includes('"type":"span"'), false);
+          assert.equal(world.serverBody?.includes(API_KEY), false);
+        },
+      },
+      {
+        pattern: /^Then the map shows the chosen stop on street tiles$/,
+        run: ({ assert, world }) => {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const tiles = glass?.querySelectorAll("[data-street-tile]") ?? [];
+          const stop = world.root?.querySelector<HTMLElement>("[data-stop-marker]");
+          assert.equal(tiles.length > 0, true);
+          assert.equal(glass?.dataset.south != null && glass.dataset.south !== "", true);
+          assert.equal(Number(glass?.dataset.south) <= world.stopPoint.lat, true);
+          assert.equal(Number(glass?.dataset.north) >= world.stopPoint.lat, true);
+          assert.equal(stop?.hidden, false);
+        },
+      },
+      {
+        pattern: /^Then the vehicle marker is still waiting$/,
+        run: ({ assert, world }) => {
+          const marker = world.root?.querySelector<HTMLElement>("[data-vehicle-marker]");
+          assert.equal(marker?.dataset.lat, undefined);
+          assert.equal(world.root?.querySelector("[data-vehicle-status]")?.textContent, "Finding the vehicle");
         },
       },
       {

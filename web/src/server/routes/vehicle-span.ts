@@ -86,9 +86,15 @@ export function registerVehicleSpanRoute(app: Hono, options: VehicleSpanRouteOpt
           await delay(ms);
         },
       });
-      for await (const event of events) {
-        await stream.writeSSE({ data: JSON.stringify(event), event: event.type });
+      const first = await events.next();
+      if (!first.done) {
+        await stream.writeSSE({
+          data: JSON.stringify(first.value),
+          event: first.value.type,
+          retry: SPAN_POLL_MS,
+        });
       }
+      await events.return(undefined);
     });
   });
 }

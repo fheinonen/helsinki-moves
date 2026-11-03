@@ -27,6 +27,7 @@ export function openVehicleSpanStream(input: {
   };
   source.addEventListener("span", publish);
   source.addEventListener("position", publish);
+  source.addEventListener("place", publish);
   return () => {
     source.close();
   };

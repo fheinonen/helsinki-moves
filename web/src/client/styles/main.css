@@ -527,7 +527,8 @@ button {
 }
 
 .app-shell__voice-choices:empty,
-.app-shell__status:empty {
+.app-shell__status:empty,
+.app-shell__footer:empty {
   display: none;
 }
 
@@ -537,11 +538,35 @@ button {
   text-transform: none;
 }
 
+.voice-choices__odbl {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--column-header-font-size);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.voice-choices__odbl a {
+  color: inherit;
+}
+
 .app-shell__status {
   margin: 0;
   padding: 0.8rem 0 0;
   color: var(--text-muted);
   font-size: 0.84rem;
+}
+
+.app-shell__footer {
+  margin: 0.85rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-muted);
+  font-size: var(--column-header-font-size);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  text-transform: none;
 }
 
 .app-shell__departures-table {
@@ -789,6 +814,10 @@ button {
   font-size: 0.58rem;
   letter-spacing: 0.01em;
   text-shadow: 0 0 2px #fff;
+}
+
+.vehicle-span__credit a {
+  color: inherit;
 }
 
 .vehicle-span__status {

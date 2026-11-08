@@ -1,3 +1,5 @@
+import { formatDigitransitCredit } from "@client/app/digitransit-credit";
+import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-credit";
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
 import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
@@ -105,6 +107,10 @@ function buildDeparturesSignature(state: AppState): string {
 
 function countActiveFilters(state: AppState): number {
   return state.filters.lines.length + state.filters.destinations.length;
+}
+
+function syncAttribution(attribution: HTMLElement, receivedAtIso: string | null): void {
+  attribution.textContent = receivedAtIso ? formatDigitransitCredit(receivedAtIso) : "";
 }
 
 function formatClock(now: Date): string {
@@ -249,6 +255,15 @@ function createVoiceChoicesView(
         button.textContent = choice.label;
         element.appendChild(button);
       }
+
+      if (state.voice.choices.length === 0) {
+        return;
+      }
+
+      const notice = documentRef.createElement("p");
+      notice.className = "voice-choices__odbl";
+      appendOsmCredit(notice, documentRef, OSM_ADDRESS_CREDIT);
+      element.appendChild(notice);
     },
   };
 }
@@ -483,6 +498,9 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   departuresTableView.element.setAttribute("aria-live", "polite");
   departuresTableView.element.setAttribute("aria-relevant", "additions removals");
 
+  const attribution = documentRef.createElement("footer");
+  attribution.className = "app-shell__footer";
+
   const syncView = (state: AppState) => {
     if (state.activeMode !== previousMode) {
       setFilterPanelOpen(filterPanelControls, false);
@@ -497,6 +515,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
 
     stationTitle.textContent = state.station?.stopName || "";
     status.textContent = state.statusMessage || "";
+    syncAttribution(attribution, state.dataReceivedAtIso);
     voiceLabel.textContent = getVoiceActionLabel(state.voice);
     voiceButton.disabled =
       state.voice.availability === "checking" ||
@@ -544,7 +563,8 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     voiceChoicesView.element,
     status,
     stationTitle,
-    departuresTableView.element
+    departuresTableView.element,
+    attribution
   );
   return cleanup;
 }

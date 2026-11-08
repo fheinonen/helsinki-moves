@@ -20,6 +20,7 @@ function createBaseState(): AppState {
   return {
     activeMode: "BUS",
     coords: null,
+    dataReceivedAtIso: null,
     filters: {
       destinations: [" Kamppi ", "", "Pasila"],
       lines: [" 550 ", ""],

@@ -28,6 +28,7 @@ export interface Coordinates {
 export interface AppState {
   activeMode: Mode;
   coords: Coordinates | null;
+  dataReceivedAtIso: string | null;
   filters: FilterState;
   filterOptions: {
     destinations: FilterOption[];
@@ -91,6 +92,7 @@ function createInitialState(): AppState {
   return {
     activeMode: "RAIL",
     coords: null,
+    dataReceivedAtIso: null,
     filters: createEmptyFilterState(),
     filterOptions: {
       destinations: [],
@@ -159,6 +161,7 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
           availableStopIds: response.stops.map((stop) => stop.id),
           selectedStopId: response.selectedStopId,
         }),
+        dataReceivedAtIso: new Date(Date.now()).toISOString(),
         filterOptions: response.filterOptions,
         loadState: "ready",
         selectedStopId: response.selectedStopId,

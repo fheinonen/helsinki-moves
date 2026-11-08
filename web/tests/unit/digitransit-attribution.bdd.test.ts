@@ -54,10 +54,10 @@ defineFeature<World>(
   `
 Feature: Digitransit data attribution
 
-  Scenario: The departure board footer credits Digitransit and the time the data was received
+  Scenario: The departure board footer attributes the data to Digitransit
     Given the board received Digitransit departures at 2026-03-07T12:32:07.000Z
     When the rider opens the departure board
-    Then the footer reads "© Digitransit 2026. Data received 2026-03-07 14:32:07."
+    Then the footer reads "Data © Digitransit 2026, received 2026-03-07 14:32:07."
   `,
   {
     createWorld: () => ({}),

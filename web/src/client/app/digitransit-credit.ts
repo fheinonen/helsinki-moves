@@ -18,5 +18,5 @@ export function formatDigitransitCredit(receivedAtIso: string): string {
   const hour = String(value.hour);
   const minute = String(value.minute);
   const second = String(value.second);
-  return `© Digitransit ${year}. Data received ${year}-${month}-${day} ${hour}:${minute}:${second}.`;
+  return `Data © Digitransit ${year}, received ${year}-${month}-${day} ${hour}:${minute}:${second}.`;
 }

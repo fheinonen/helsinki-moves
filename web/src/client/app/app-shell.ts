@@ -1,4 +1,5 @@
 import { formatDigitransitCredit } from "@client/app/digitransit-credit";
+import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-credit";
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
 import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
@@ -254,6 +255,15 @@ function createVoiceChoicesView(
         button.textContent = choice.label;
         element.appendChild(button);
       }
+
+      if (state.voice.choices.length === 0) {
+        return;
+      }
+
+      const notice = documentRef.createElement("p");
+      notice.className = "voice-choices__odbl";
+      appendOsmCredit(notice, documentRef, OSM_ADDRESS_CREDIT);
+      element.appendChild(notice);
     },
   };
 }

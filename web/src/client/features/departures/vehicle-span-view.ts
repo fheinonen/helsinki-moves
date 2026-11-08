@@ -1,3 +1,4 @@
+import { appendOsmCredit, OSM_MAP_CREDIT } from "@client/features/map/osm-credit";
 import { frameAspect, placeOnMap, streetTilesForFrame } from "@shared/domain/street-map";
 import {
   applyVehicleSpanEvent,
@@ -148,7 +149,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   }
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
-  credit.textContent = "© OpenStreetMap, HSL";
+  appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
   const canvas = documentRef.createElement("div");
   canvas.className = "vehicle-span__canvas";
   canvas.dataset.vehicleCanvas = "true";

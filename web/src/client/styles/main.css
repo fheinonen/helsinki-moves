@@ -538,6 +538,18 @@ button {
   text-transform: none;
 }
 
+.voice-choices__odbl {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--column-header-font-size);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.voice-choices__odbl a {
+  color: inherit;
+}
+
 .app-shell__status {
   margin: 0;
   padding: 0.8rem 0 0;
@@ -802,6 +814,10 @@ button {
   font-size: 0.58rem;
   letter-spacing: 0.01em;
   text-shadow: 0 0 2px #fff;
+}
+
+.vehicle-span__credit a {
+  color: inherit;
 }
 
 .vehicle-span__status {

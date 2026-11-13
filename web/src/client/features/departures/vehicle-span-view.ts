@@ -69,6 +69,7 @@ function fitCanvas(canvas: HTMLElement, frame: VehicleSpanFrame): void {
 
 function mountStreets(input: {
   canvas: HTMLElement;
+  destination: string;
   destinationColor?: string;
   documentRef: Document;
   frame: VehicleSpanFrame;
@@ -92,6 +93,8 @@ function mountStreets(input: {
 
   const svg = documentRef.createElementNS(SVG_NS, "svg");
   svg.setAttribute("class", "vehicle-span__route");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Route to ${input.destination}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
   const line = documentRef.createElementNS(SVG_NS, "polyline");
@@ -140,10 +143,12 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   const stopMarker = documentRef.createElement("span");
   stopMarker.className = "vehicle-span__stop";
   stopMarker.dataset.stopMarker = "true";
+  stopMarker.setAttribute("role", "img");
   stopMarker.setAttribute("aria-label", destination);
   const vehicleMarker = documentRef.createElement("span");
   vehicleMarker.className = "vehicle-span__vehicle";
   vehicleMarker.dataset.vehicleMarker = "true";
+  vehicleMarker.setAttribute("aria-hidden", "true");
   if (destinationColor) {
     vehicleMarker.style.background = destinationColor;
   }
@@ -163,7 +168,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     const frame = frameVehicleSpan(stop, stop);
     clearStreets(glass);
     writeFrame(glass, frame);
-    mountStreets({ canvas, destinationColor, documentRef, frame, stopMarker });
+    mountStreets({ canvas, destination, destinationColor, documentRef, frame, stopMarker });
     place(stopMarker, frame, stop);
     delete vehicleMarker.dataset.lat;
     delete vehicleMarker.dataset.lon;
@@ -184,7 +189,14 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
       if (!hadFrame) {
         clearStreets(glass);
         writeFrame(glass, view.frame);
-        mountStreets({ canvas, destinationColor, documentRef, frame: view.frame, stopMarker });
+        mountStreets({
+          canvas,
+          destination,
+          destinationColor,
+          documentRef,
+          frame: view.frame,
+          stopMarker,
+        });
         place(stopMarker, view.frame, view.frame.stop);
       }
       place(vehicleMarker, view.frame, view.vehicle);

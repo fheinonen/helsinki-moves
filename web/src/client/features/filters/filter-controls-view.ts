@@ -67,9 +67,11 @@ function createButtonGroupRenderer(input: {
           buttonsByValue.set(option.value, button);
         }
 
+        const pressed = activeValueSet.has(option.value);
         button.dataset[dataAttribute] = option.value;
         button.textContent = `${option.value} (${option.count})`;
-        button.classList.toggle("is-active", activeValueSet.has(option.value));
+        button.setAttribute("aria-pressed", pressed ? "true" : "false");
+        button.classList.toggle("is-active", pressed);
         container.appendChild(button);
         renderedValues.add(option.value);
       }

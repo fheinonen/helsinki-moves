@@ -291,8 +291,11 @@ function createDeparturesTableView(
 
   const departuresList = documentRef.createElement("tbody");
   departuresList.className = "app-shell__departures";
+  const caption = documentRef.createElement("caption");
+  caption.className = "visually-hidden";
+  caption.textContent = "Departures";
   head.appendChild(columnHeaders);
-  element.append(head, departuresList);
+  element.append(caption, head, departuresList);
   departuresList.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
@@ -556,15 +559,16 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   };
   rootCleanupMap.set(root, cleanup);
 
-  root.append(
-    topbar,
+  const board = documentRef.createElement("main");
+  board.className = "app-shell__board";
+  board.append(
     modeRow,
     stopSection,
     voiceChoicesView.element,
     status,
     stationTitle,
     departuresTableView.element,
-    attribution
   );
+  root.append(topbar, board, attribution);
   return cleanup;
 }

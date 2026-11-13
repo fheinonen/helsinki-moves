@@ -27,6 +27,18 @@
   display: none !important;
 }
 
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
 html {
   color-scheme: dark;
 }
@@ -168,6 +180,15 @@ button {
 }
 
 .app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-shell__board {
+  display: contents;
+}
+
+.app-shell__board > * {
   position: relative;
   z-index: 1;
 }
@@ -453,7 +474,6 @@ button {
 .stop-selector__option:focus-visible {
   border-color: rgba(240, 210, 154, 0.22);
   background: rgba(255, 255, 255, 0.03);
-  outline: none;
 }
 
 .stop-selector__option.is-selected {
@@ -667,6 +687,19 @@ button {
   font-weight: 600;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+}
+
+.departure-card__open {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  cursor: inherit;
 }
 
 .departure-card__time[data-urgency="now"] {

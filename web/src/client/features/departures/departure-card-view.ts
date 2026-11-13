@@ -97,7 +97,19 @@ export function renderDepartureCard(options: RenderDepartureCardOptions): HTMLTa
   const timeValue = documentRef.createElement("time");
   timeValue.setAttribute("datetime", departure.departureIso);
   timeValue.textContent = model.relativeDeparture.text;
-  time.appendChild(timeValue);
+  if (departure.tripId && departure.stopId) {
+    const open = documentRef.createElement("button");
+    open.type = "button";
+    open.className = "departure-card__open";
+    open.setAttribute(
+      "aria-label",
+      `${model.line} to ${model.destination}, ${model.relativeDeparture.text}`,
+    );
+    open.append(timeValue);
+    time.appendChild(open);
+  } else {
+    time.appendChild(timeValue);
+  }
 
   item.append(line, destination, time);
   return item;

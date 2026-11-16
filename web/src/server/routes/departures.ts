@@ -22,7 +22,20 @@ export function registerDeparturesRoute(app: Hono, options: DeparturesRouteOptio
       return context.json(payload, 400);
     }
 
-    const payload: DeparturesSuccessResponse = await departuresService.execute(validationResult.value);
-    return context.json(payload, 200);
+    const parsed = validationResult.value;
+    switch (parsed.kind) {
+      case "glance": {
+        const payload: DeparturesSuccessResponse = await departuresService.execute(parsed.request);
+        return context.json(payload, 200);
+      }
+      case "later": {
+        const payload = await departuresService.executeLater(parsed.request, parsed.after);
+        return context.json(payload, 200);
+      }
+      default: {
+        const unreachable: never = parsed;
+        return unreachable;
+      }
+    }
   });
 }

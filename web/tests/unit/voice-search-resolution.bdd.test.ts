@@ -36,6 +36,9 @@ Feature: Voice search resolution
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures(input) {
               return {
                 filterOptions: {

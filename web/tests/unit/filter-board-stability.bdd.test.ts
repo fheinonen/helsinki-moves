@@ -123,6 +123,9 @@ Feature: Departure board during filters
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               return reload.promise;
             },

@@ -1,4 +1,6 @@
 import type { DeparturesSuccessResponse, StopStation } from "@shared/contracts/departures-contract";
+import type { Departure } from "@shared/domain/departure";
+import { mergeLaterDepartures } from "@shared/domain/board-rank";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
 import type { Mode } from "@shared/domain/mode";
 import type { Stop } from "@shared/domain/stop";
@@ -55,6 +57,7 @@ interface AppStateStore {
 }
 
 export interface AppStore extends AppStateStore {
+  appendLaterDepartures(suffix: readonly Departure[]): void;
   applyDeparturesResponse(response: DeparturesSuccessResponse): void;
   clearVoiceChoices(): void;
   clearVoiceQuery(): void;
@@ -150,6 +153,20 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
 
   return {
     ...store,
+    appendLaterDepartures(suffix) {
+      store.setState((state) => {
+        if (!state.station) {
+          return state;
+        }
+        return {
+          ...state,
+          station: {
+            ...state.station,
+            departures: [...mergeLaterDepartures(state.station.departures, suffix)],
+          },
+        };
+      });
+    },
     applyDeparturesResponse(response) {
       store.setState((state) => ({
         ...state,

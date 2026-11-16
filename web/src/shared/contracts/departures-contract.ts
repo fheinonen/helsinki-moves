@@ -25,6 +25,10 @@ export interface StopStation {
   type: "stop";
 }
 
+export interface LaterDeparturesResponse {
+  departures: Departure[];
+}
+
 export interface DeparturesSuccessResponse {
   filterOptions: {
     destinations: FilterOption[];

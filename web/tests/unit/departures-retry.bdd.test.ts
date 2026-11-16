@@ -65,6 +65,9 @@ Feature: Departures retry
           };
 
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               world.callCount = (world.callCount || 0) + 1;
               if (world.callCount === 1) {

@@ -85,6 +85,9 @@ Feature: Stop selection
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures(input) {
               world.lastRequest = input;
               return createDeparturesResponse(input.stopId || "HSL:STOP_A");

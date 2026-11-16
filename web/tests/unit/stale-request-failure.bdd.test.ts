@@ -59,6 +59,9 @@ Feature: Stale request failure
           };
 
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               callCount += 1;
               return (callCount === 1 ? world.firstDeferred : world.secondDeferred)

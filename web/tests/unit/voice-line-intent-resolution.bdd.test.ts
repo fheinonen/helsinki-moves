@@ -71,6 +71,9 @@ Feature: Voice line intent resolution
           };
 
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures(input) {
               world.departuresCalls.push({
                 lineIntent: (input as typeof input & { lineIntent?: boolean }).lineIntent,

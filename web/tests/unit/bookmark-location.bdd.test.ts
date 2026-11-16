@@ -25,6 +25,9 @@ function createBookmarkController(
   locationService: LocationService
 ): AppController {
   const departuresClient: DeparturesClient = {
+    async getLaterDepartures() {
+      throw new Error("later departures are not part of this scenario");
+    },
     async getDepartures(input) {
       world.requests.push({
         coords: input.coords ? `${input.coords.lat}|${input.coords.lon}` : "",

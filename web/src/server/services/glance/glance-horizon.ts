@@ -1,5 +1,6 @@
 import type { Departure } from "../../../shared/domain/departure.js";
 import type { Mode } from "../../../shared/domain/mode.js";
+import { compareBoardOrder, isStrictlyAfter, type BoardCursor } from "../../../shared/domain/board-rank.js";
 
 const STRETCH_MINUTES = 15;
 const MINUTE_MS = 60_000;
@@ -36,20 +37,46 @@ export function departureFetchWindow(mode: Mode, nowMs: number): DepartureFetchW
   };
 }
 
+export function continuationFetchWindow(
+  mode: Mode,
+  nowMs: number,
+  after: BoardCursor
+): DepartureFetchWindow {
+  return {
+    [departureFetchWindowBrand]: "DepartureFetchWindow",
+    nowMs,
+    startTimeUnixSeconds: Math.floor(after.departureMs / 1000),
+    timeRangeSeconds: GLANCE_POLICIES[mode].maxHorizonMinutes * 60,
+  };
+}
+
 export function selectGlanceDepartures(input: {
   departures: readonly Departure[];
   mode: Mode;
   nowMs: number;
 }): Departure[] {
   const policy = GLANCE_POLICIES[input.mode];
-  const sorted = input.departures.toSorted(compareDeparturesByTime);
+  const sorted = input.departures.toSorted(compareBoardOrder);
   const horizonMinutes = resolveHorizonMinutes(policy, sorted, input.nowMs);
   const windowed = departuresInHorizon(sorted, input.nowMs, horizonMinutes, policy.maxHorizonMinutes);
   return windowed.slice(0, policy.maxRows);
 }
 
-function compareDeparturesByTime(left: Departure, right: Departure): number {
-  return departureTimeMs(left) - departureTimeMs(right);
+export function selectLaterDepartures(input: {
+  readonly departures: readonly Departure[];
+  readonly mode: Mode;
+  readonly nowMs: number;
+  readonly after: BoardCursor;
+}): Departure[] {
+  return input.departures
+    .filter((departure) => isLaterRow(departure, input.nowMs, input.after))
+    .toSorted(compareBoardOrder)
+    .slice(0, GLANCE_POLICIES[input.mode].maxRows);
+}
+
+function isLaterRow(departure: Departure, nowMs: number, after: BoardCursor): boolean {
+  const timeMs = departureTimeMs(departure);
+  return Number.isFinite(timeMs) && timeMs > nowMs && isStrictlyAfter(departure, after);
 }
 
 function departureTimeMs(departure: Departure): number {

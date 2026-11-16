@@ -11,6 +11,8 @@ import { getVoiceActionLabel } from "@client/features/voice/voice-capability";
 import type { AppState } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
 import { createDestinationColorBook } from "@shared/domain/destination-color";
+import type { Departure } from "@shared/domain/departure";
+import type { Mode } from "@shared/domain/mode";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
@@ -95,14 +97,23 @@ function buildVoiceChoicesSignature(state: AppState): string {
   return state.voice.choices.map((choice) => choice.label).join("\u001f");
 }
 
+function departurePaintKey(departure: Departure): string {
+  return `${departure.line}:${departure.destination}:${departure.departureIso}:${departure.track || ""}:${departure.stopCode || ""}:${departure.tripId || ""}`;
+}
+
 function buildDeparturesSignature(state: AppState): string {
   return (
     state.activeMode +
     "\u001f" +
-    (state.station?.departures || [])
-      .map((d) => `${d.line}:${d.destination}:${d.departureIso}:${d.track || ""}:${d.stopCode || ""}:${d.tripId || ""}`)
-      .join("\u001f")
+    (state.station?.departures || []).map((departure) => departurePaintKey(departure)).join("\u001f")
   );
+}
+
+function isStrictPaintPrefix(previous: readonly Departure[], next: readonly Departure[]): boolean {
+  if (next.length <= previous.length) {
+    return false;
+  }
+  return previous.every((departure, index) => departurePaintKey(departure) === departurePaintKey(next[index]));
 }
 
 function countActiveFilters(state: AppState): number {
@@ -309,6 +320,19 @@ function createDeparturesTableView(
   });
   const destinationColors = createDestinationColorBook();
   let previousSignature = "";
+  let previousDepartures: readonly Departure[] = [];
+  let previousPaintMode: Mode | null = null;
+
+  function paintDeparture(departure: Departure, mode: Mode): void {
+    departuresList.appendChild(
+      renderDepartureCard({
+        departure,
+        destinationColor: destinationColors.colorFor(departure.destination),
+        documentRef,
+        mode,
+      })
+    );
+  }
 
   return {
     clear() {
@@ -316,26 +340,28 @@ function createDeparturesTableView(
         return;
       }
       previousSignature = "";
+      previousDepartures = [];
+      previousPaintMode = null;
       departuresList.replaceChildren();
     },
     element,
     sync(state) {
+      const departures = state.station?.departures ?? [];
       const signature = buildDeparturesSignature(state);
       if (signature === previousSignature) {
         return;
       }
+      const prior = previousDepartures;
+      const replace = previousPaintMode !== state.activeMode || !isStrictPaintPrefix(prior, departures);
       previousSignature = signature;
-      departuresList.replaceChildren();
-
-      for (const departure of state.station?.departures || []) {
-        departuresList.appendChild(
-          renderDepartureCard({
-            departure,
-            destinationColor: destinationColors.colorFor(departure.destination),
-            documentRef,
-            mode: state.activeMode,
-          })
-        );
+      previousPaintMode = state.activeMode;
+      previousDepartures = departures;
+      if (replace) {
+        departuresList.replaceChildren();
+      }
+      const added = replace ? departures : departures.slice(prior.length);
+      for (const departure of added) {
+        paintDeparture(departure, state.activeMode);
       }
     },
   };
@@ -389,6 +415,77 @@ function createVehicleSpanSession(input: {
         tripId,
       });
     },
+  };
+}
+
+const EDITABLE_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA"]);
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return target.isContentEditable || EDITABLE_TAGS.has(target.tagName);
+}
+
+function isModifiedSpace(event: KeyboardEvent): boolean {
+  return event.key === " " && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+}
+
+function metricsOf(scrolling: Element): { clientHeight: number; scrollHeight: number; scrollTop: number } {
+  return {
+    clientHeight: scrolling.clientHeight,
+    scrollHeight: scrolling.scrollHeight,
+    scrollTop: scrolling.scrollTop,
+  };
+}
+
+function listenForScrollPushes(controller: AppController, documentRef: Document): () => void {
+  let lastTouchY: number | null = null;
+
+  const onWheel = (event: WheelEvent) => {
+    const scrolling = documentRef.scrollingElement;
+    if (!scrolling) {
+      return;
+    }
+    controller.noteScrollPush({ kind: "wheel", deltaY: event.deltaY }, metricsOf(scrolling));
+  };
+
+  const onTouchStart = (event: TouchEvent) => {
+    lastTouchY = event.touches[0]?.clientY ?? null;
+  };
+
+  const onTouchMove = (event: TouchEvent) => {
+    const clientY = event.touches[0]?.clientY;
+    const previousClientY = lastTouchY;
+    const scrolling = documentRef.scrollingElement;
+    if (clientY == null || previousClientY == null || !scrolling) {
+      return;
+    }
+    lastTouchY = clientY;
+    controller.noteScrollPush({ kind: "touch", previousClientY, clientY }, metricsOf(scrolling));
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (isEditableTarget(event.target) || isModifiedSpace(event)) {
+      return;
+    }
+    const scrolling = documentRef.scrollingElement;
+    if (!scrolling) {
+      return;
+    }
+    controller.noteScrollPush({ kind: "key", key: event.key }, metricsOf(scrolling));
+  };
+
+  documentRef.addEventListener("keydown", onKeyDown);
+  documentRef.addEventListener("touchmove", onTouchMove, { passive: true });
+  documentRef.addEventListener("touchstart", onTouchStart, { passive: true });
+  documentRef.addEventListener("wheel", onWheel, { passive: true });
+
+  return () => {
+    documentRef.removeEventListener("keydown", onKeyDown);
+    documentRef.removeEventListener("touchmove", onTouchMove);
+    documentRef.removeEventListener("touchstart", onTouchStart);
+    documentRef.removeEventListener("wheel", onWheel);
   };
 }
 
@@ -547,8 +644,10 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
 
   syncView(store.getState());
   const unsubscribeStore = store.subscribe(syncView);
+  const stopScrollPushes = listenForScrollPushes(controller, documentRef);
   const cleanup = () => {
     vehicleSpan.close();
+    stopScrollPushes();
     unsubscribeModeSelector();
     unsubscribeStore();
     stopSelectorView.cleanup();

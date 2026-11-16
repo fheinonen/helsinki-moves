@@ -79,6 +79,9 @@ Feature: App shell departure table semantics
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               throw new Error("Departures client should not be called");
             },

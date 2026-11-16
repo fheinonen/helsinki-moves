@@ -54,6 +54,9 @@ Feature: Voice search re-entry
           };
 
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               return {
                 filterOptions: { destinations: [], lines: [] },

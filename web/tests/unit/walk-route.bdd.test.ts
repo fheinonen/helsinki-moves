@@ -559,13 +559,13 @@ Feature: Walking route from a held departure
     Then the walking line keeps its color inside a dark edge
     And the walking time sits in a dark frame
 
-  Scenario: A walk you can finish before the departure shows its time in blue with a check on the middle of the line.
+  Scenario: A walk you can finish before the departure shows its time in green with a check on the middle of the line.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 20 minutes
     And the person is at latitude 60.1706 and longitude 24.9414
     And the walk takes 8 minutes
     When the card is held
     And the route arrives
-    Then the walking time is 8 min in blue with a check on the middle of the line
+    Then the walking time is 8 min in green with a check on the middle of the line
 
   Scenario: A walk that outlasts the departure shows its time in amber with a cross on the middle of the line.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 5 minutes
@@ -875,12 +875,12 @@ Feature: Walking route from a held departure
         },
       },
       {
-        pattern: /^Then the walking time is (\d+) min in (blue|amber) with a (check|cross) on the middle of the line$/,
+        pattern: /^Then the walking time is (\d+) min in (green|amber) with a (check|cross) on the middle of the line$/,
         run({ args, assert, world }) {
           const label = walkMap(world)?.querySelector<HTMLElement>("[data-walk-time]");
           const probe = world.documentRef?.createElement("span");
-          const onTime = args[1] === "blue";
-          const color = onTime ? "#0b4f9c" : "#9a4e00";
+          const onTime = args[1] === "green";
+          const color = onTime ? "#1b7f3a" : "#9a4e00";
           const mark = args[2] === "check" ? "✓" : "✕";
           if (probe) {
             probe.style.color = color;

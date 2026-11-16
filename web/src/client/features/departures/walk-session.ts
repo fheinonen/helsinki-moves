@@ -13,7 +13,7 @@ import {
 
 const HOLD_MS = 500;
 const HOLD_SLOP_PX = 12;
-const ON_TIME_COLOR = "#0b4f9c";
+const ON_TIME_COLOR = "#1b7f3a";
 const LATE_COLOR = "#9a4e00";
 const ON_TIME_MARK = "✓";
 const LATE_MARK = "✕";

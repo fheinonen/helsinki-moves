@@ -5,6 +5,7 @@ import { registerGeocodeRoute } from "./routes/geocode.js";
 import { registerSpeechTranscribeRoute } from "./routes/speech-transcribe.js";
 import { registerMapTileRoute } from "./routes/map-tile.js";
 import { registerVehicleSpanRoute } from "./routes/vehicle-span.js";
+import { registerWalkRoute } from "./routes/walk.js";
 import { createDigitransitService } from "./services/digitransit/client.js";
 import type { DigitransitService } from "./services/digitransit/types.js";
 import type { GeocodeService } from "./services/geocode/geocode-service.js";
@@ -46,6 +47,7 @@ export function createApp(options: AppOptions = {}): Hono {
     now: options.now,
     sleep: options.vehicleSpanSleep,
   });
+  registerWalkRoute(app, { digitransitService });
   registerMapTileRoute(app, {
     fetchImpl: options.mapTileFetch,
     getApiKey: options.getApiKey,

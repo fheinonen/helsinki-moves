@@ -24,6 +24,7 @@ export interface VehicleSpanMap {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const ROUTE_EDGE = "#161616";
 
 function coord(value: number): string {
   return value.toFixed(6);
@@ -97,13 +98,19 @@ function mountStreets(input: {
   svg.setAttribute("aria-label", `Route to ${input.destination}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
+  const points = routePoints(frame);
+  const edge = documentRef.createElementNS(SVG_NS, "polyline");
+  edge.setAttribute("data-route-casing", "true");
+  edge.setAttribute("points", points);
+  edge.style.stroke = ROUTE_EDGE;
+  edge.style.strokeWidth = "3.6";
   const line = documentRef.createElementNS(SVG_NS, "polyline");
   line.setAttribute("data-route-span", routeLabel(frame));
-  line.setAttribute("points", routePoints(frame));
+  line.setAttribute("points", points);
   if (destinationColor) {
     line.style.stroke = destinationColor;
   }
-  svg.append(line);
+  svg.append(edge, line);
   canvas.insertBefore(svg, stopMarker);
 }
 

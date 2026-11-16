@@ -2,6 +2,7 @@ import { formatDigitransitCredit } from "@client/app/digitransit-credit";
 import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-credit";
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
+import { createWalkSession, type HoldScheduler, type WalkSession } from "@client/features/departures/walk-session";
 import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
 import type { VehicleSpanEvent } from "@shared/domain/vehicle-span";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
@@ -13,6 +14,7 @@ import type { AppController } from "@client/app/app-controller";
 import { createDestinationColorBook } from "@shared/domain/destination-color";
 import type { Departure } from "@shared/domain/departure";
 import type { Mode } from "@shared/domain/mode";
+import type { WalkRequest, WalkRoute } from "@shared/domain/walk-route";
 
 const rootCleanupMap = new WeakMap<HTMLElement, () => void>();
 
@@ -31,8 +33,10 @@ interface VehicleSpanOpener {
 interface RenderAppShellOptions {
   controller: AppController;
   documentRef: Document;
+  fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
+  scheduleHold?: HoldScheduler;
 }
 
 interface FilterPanelControls {
@@ -592,9 +596,25 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     openVehicleSpan: options.openVehicleSpan,
     root,
   });
+  let walk!: WalkSession;
   const departuresTableView = createDeparturesTableView(documentRef, (card) => {
+    walk.close();
     vehicleSpan.press(card);
   });
+  walk = createWalkSession({
+    closeVehicle: () => {
+      vehicleSpan.close();
+    },
+    documentRef,
+    fetchWalk: options.fetchWalk,
+    readCoords: () => store.getState().coords,
+    scheduleHold: options.scheduleHold,
+    table: departuresTableView.element,
+  });
+  const closeMaps = () => {
+    walk.close();
+    vehicleSpan.close();
+  };
   departuresTableView.element.setAttribute("aria-live", "polite");
   departuresTableView.element.setAttribute("aria-relevant", "additions removals");
 
@@ -604,12 +624,12 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   const syncView = (state: AppState) => {
     if (state.activeMode !== previousMode) {
       setFilterPanelOpen(filterPanelControls, false);
-      vehicleSpan.close();
+      closeMaps();
       previousMode = state.activeMode;
     }
     const stopId = shownStopId(state);
     if (stopId !== previousStopId) {
-      vehicleSpan.close();
+      closeMaps();
       previousStopId = stopId;
     }
 
@@ -646,7 +666,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   const unsubscribeStore = store.subscribe(syncView);
   const stopScrollPushes = listenForScrollPushes(controller, documentRef);
   const cleanup = () => {
-    vehicleSpan.close();
+    closeMaps();
     stopScrollPushes();
     unsubscribeModeSelector();
     unsubscribeStore();

@@ -600,6 +600,7 @@ Feature: Vehicle span map
     When the card is pressed
     Then the map shows street tiles for that span
     And the drawn line keeps the vehicle line and leaves out the rest
+    And the route line has a dark edge
     And the chosen stop is marked
 
   Scenario: The stream sends the span of the line and not the rest
@@ -1084,6 +1085,21 @@ Feature: Vehicle span map
           assert.equal(cornerCovered(tiles, south, east), true);
           assert.equal(cornerCovered(tiles, north, west), true);
           assert.equal(cornerCovered(tiles, north, east), true);
+        },
+      },
+      {
+        pattern: /^Then the route line has a dark edge$/,
+        run({ assert, world }) {
+          const glass = world.root?.querySelector<HTMLElement>("[data-vehicle-glass]");
+          const span = glass?.querySelector<SVGPolylineElement>("[data-route-span]");
+          const edge = glass?.querySelector<SVGPolylineElement>("[data-route-casing]");
+          const probe = world.documentRef?.createElement("span");
+          if (probe) {
+            probe.style.color = "#161616";
+          }
+          assert.equal(edge?.style.stroke, probe?.style.color);
+          assert.equal(edge?.getAttribute("points"), span?.getAttribute("points") ?? null);
+          assert.equal(edge?.nextElementSibling, span ?? null);
         },
       },
       {

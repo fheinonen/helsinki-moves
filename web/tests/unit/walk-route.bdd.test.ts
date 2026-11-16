@@ -550,6 +550,15 @@ Feature: Walking route from a held departure
     Then the board says no walking route
     And the departure table stays in place
 
+  Scenario: A pale walking line keeps a dark edge and the walking time sits in a frame.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 20 minutes
+    And the person is at latitude 60.1706 and longitude 24.9414
+    And the walk takes 8 minutes
+    When the card is held
+    And the route arrives
+    Then the walking line keeps its color inside a dark edge
+    And the walking time sits in a dark frame
+
   Scenario: A walk you can finish before the departure shows its time in green on the middle of the line.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 20 minutes
     And the person is at latitude 60.1706 and longitude 24.9414
@@ -824,6 +833,45 @@ Feature: Walking route from a held departure
           assert.equal(request?.lat, PERSON.lat);
           assert.equal(request?.lon, PERSON.lon);
           assert.equal(request?.stopId, STOP_ID);
+        },
+      },
+      {
+        pattern: /^Then the walking line keeps its color inside a dark edge$/,
+        run({ assert, world }) {
+          const map = walkMap(world);
+          const span = map?.querySelector<SVGPolylineElement>("[data-route-span]");
+          const edge = map?.querySelector<SVGPolylineElement>("[data-route-casing]");
+          const card = world.root?.querySelector<HTMLElement>(".departure-card");
+          const color = card?.style.getPropertyValue("--destination-color") ?? "";
+          const ink = world.documentRef?.createElement("span");
+          const edgeProbe = world.documentRef?.createElement("span");
+          if (ink) {
+            ink.style.color = color;
+          }
+          if (edgeProbe) {
+            edgeProbe.style.color = "#161616";
+          }
+          assert.equal(span?.style.stroke, ink?.style.color);
+          assert.equal(edge?.style.stroke, edgeProbe?.style.color);
+          assert.equal(edge?.getAttribute("points"), span?.getAttribute("points") ?? null);
+          assert.equal(edge?.nextElementSibling, span ?? null);
+        },
+      },
+      {
+        pattern: /^Then the walking time sits in a dark frame$/,
+        run({ assert, world }) {
+          const label = walkMap(world)?.querySelector<HTMLElement>("[data-walk-time]");
+          const fill = world.documentRef?.createElement("span");
+          const edge = world.documentRef?.createElement("span");
+          if (fill) {
+            fill.style.background = "#f7f1e4";
+          }
+          if (edge) {
+            edge.style.color = "#161616";
+          }
+          assert.equal(label?.textContent, "8 min");
+          assert.equal(label?.style.backgroundColor, fill?.style.backgroundColor);
+          assert.equal(label?.style.borderTopColor, edge?.style.color);
         },
       },
       {

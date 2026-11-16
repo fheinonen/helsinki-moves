@@ -15,6 +15,8 @@ const HOLD_MS = 500;
 const HOLD_SLOP_PX = 12;
 const ON_TIME_COLOR = "#1b7f3a";
 const LATE_COLOR = "#c4362c";
+const ROUTE_EDGE = "#161616";
+const WALK_FRAME = "#f7f1e4";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export type HoldScheduler = (delayMs: number, fire: () => void) => () => void;
@@ -214,13 +216,19 @@ function mountStreets(input: {
   svg.setAttribute("class", "vehicle-span__route");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
+  const points = routePoints(input.extent, input.points);
+  const edge = input.documentRef.createElementNS(SVG_NS, "polyline");
+  edge.setAttribute("data-route-casing", "true");
+  edge.setAttribute("points", points);
+  edge.style.stroke = ROUTE_EDGE;
+  edge.style.strokeWidth = "3.6";
   const line = input.documentRef.createElementNS(SVG_NS, "polyline");
   line.setAttribute("data-route-span", routeLabel(input.points));
-  line.setAttribute("points", routePoints(input.extent, input.points));
+  line.setAttribute("points", points);
   if (input.color) {
     line.style.stroke = input.color;
   }
-  svg.append(line);
+  svg.append(edge, line);
   input.canvas.insertBefore(svg, input.stopMarker);
 }
 
@@ -305,6 +313,8 @@ function placeWalkTime(input: {
   label.dataset.lon = coord(middle.lon);
   label.style.left = spot.left;
   label.style.top = spot.top;
+  label.style.background = WALK_FRAME;
+  label.style.border = `1px solid ${ROUTE_EDGE}`;
   label.style.color = onTime ? ON_TIME_COLOR : LATE_COLOR;
   label.textContent = formatWalkMinutes(input.route.seconds);
   input.canvas.append(label);

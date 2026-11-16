@@ -801,14 +801,16 @@ button {
   position: absolute;
   z-index: 4;
   margin: 0;
+  padding: 0.16rem 0.46rem;
+  border: 1px solid #161616;
+  border-radius: 999px;
+  background: #f7f1e4;
+  box-shadow: 0 0 0 2px rgba(247, 241, 228, 0.94);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1;
   pointer-events: none;
-  text-shadow:
-    0 0 3px #fff,
-    0 0 1px #fff;
   transform: translate(-50%, -50%);
   white-space: nowrap;
 }
@@ -819,6 +821,11 @@ button {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.7;
+}
+
+.vehicle-span__route [data-route-casing] {
+  stroke: #161616;
+  stroke-width: 3.6;
 }
 
 .vehicle-span__stop,

@@ -8,13 +8,14 @@ import type { LocationService } from "@client/services/location-service";
 import { createApp } from "@server/app";
 import { createDigitransitService } from "@server/services/digitransit/client";
 import type { Stop } from "@shared/domain/stop";
+import type { WalkRoute } from "@shared/domain/walk-route";
 
 const API_KEY = "server-only-digitransit-key";
 const STOP_ID = "HSL:1020601";
 const PERSON = { lat: 60.1706, lon: 24.9414 };
 const PLATFORM = { lat: 60.1692, lon: 24.9337 };
 const GROUPED_CENTROID = { lat: 60.18, lon: 25.01 };
-const SHOWN_ROUTE = [PERSON, { lat: 60.1701, lon: 24.9381 }, PLATFORM];
+const SHOWN_ROUTE: WalkRoute["points"] = [PERSON, { lat: 60.1701, lon: 24.9381 }, PLATFORM];
 const ENCODED_WALK = "c~fnJcvewCz@zJ";
 const ENCODED_BUS = "_vjvJ_nszC";
 const ROUTE_SPAN = "60.170600 24.941400 60.170100 24.938100 60.169200 24.933700";
@@ -28,7 +29,7 @@ interface GeoPoint {
 
 interface WalkFetch {
   request: { lat: number; lon: number; stopId: string };
-  resolve(route: { points: GeoPoint[] } | null): void;
+  resolve(route: WalkRoute | null): void;
 }
 
 interface HungWalk {
@@ -275,6 +276,10 @@ function assertShownRoute(assert: { equal(actual: unknown, expected: unknown, me
   const table = world.root?.querySelector<HTMLElement>(".app-shell__departures-table");
   const row = world.root?.querySelector<HTMLElement>("tbody tr");
   const color = row?.style.getPropertyValue("--destination-color") ?? "";
+  const probe = world.documentRef?.createElement("span");
+  if (probe) {
+    probe.style.color = color;
+  }
   const glass = map?.querySelector<HTMLElement>(".vehicle-span__glass");
   const origin = map?.querySelector<HTMLElement>("[data-walk-origin]");
   const stop = map?.querySelector<HTMLElement>("[data-stop-marker]");
@@ -298,7 +303,7 @@ function assertShownRoute(assert: { equal(actual: unknown, expected: unknown, me
   assert.equal(glass?.dataset.west, coord(PLATFORM.lon));
   assert.equal(map?.querySelector("[data-street-tile]") instanceof HTMLElement, true);
   assert.equal(color.length > 0, true);
-  assert.equal(map?.querySelector<SVGElement>("[data-route-span]")?.style.stroke, color);
+  assert.equal(map?.querySelector<SVGElement>("[data-route-span]")?.style.stroke, probe?.style.color);
   assert.equal(world.scrolls, 1);
   assert.equal(world.root?.querySelector("[data-vehicle-map]"), null);
 }

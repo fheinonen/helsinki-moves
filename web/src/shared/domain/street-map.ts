@@ -1,4 +1,11 @@
-import type { GeoPoint, VehicleSpanFrame } from "./vehicle-span.js";
+import type { GeoPoint } from "./vehicle-span.js";
+
+export interface MapExtent {
+  readonly east: number;
+  readonly north: number;
+  readonly south: number;
+  readonly west: number;
+}
 
 export interface StreetTile {
   readonly height: string;
@@ -31,16 +38,16 @@ function percent(value: number): string {
   return `${value * 100}%`;
 }
 
-function mapWindow(frame: VehicleSpanFrame): MapWindow {
-  const latSpan = Math.max(frame.north - frame.south, MIN_SPAN);
-  const lonSpan = Math.max(frame.east - frame.west, MIN_SPAN);
+function mapWindow(extent: MapExtent): MapWindow {
+  const latSpan = Math.max(extent.north - extent.south, MIN_SPAN);
+  const lonSpan = Math.max(extent.east - extent.west, MIN_SPAN);
   const latPad = (latSpan * PAD) / (1 - PAD * 2);
   const lonPad = (lonSpan * PAD) / (1 - PAD * 2);
   return {
-    east: frame.east + lonPad,
-    northT: mercator(frame.north + latPad),
-    southT: mercator(frame.south - latPad),
-    west: frame.west - lonPad,
+    east: extent.east + lonPad,
+    northT: mercator(extent.north + latPad),
+    southT: mercator(extent.south - latPad),
+    west: extent.west - lonPad,
   };
 }
 
@@ -76,15 +83,15 @@ function tileBox(window: MapWindow, zoom: number, x: number, y: number): StreetT
   };
 }
 
-export function frameAspect(frame: VehicleSpanFrame): number {
-  const window = mapWindow(frame);
+export function frameAspect(extent: MapExtent): number {
+  const window = mapWindow(extent);
   const width = (window.east - window.west) / 360;
   const height = window.southT - window.northT;
   return width / height;
 }
 
-export function placeOnMap(frame: VehicleSpanFrame, point: GeoPoint): { left: string; top: string } {
-  const window = mapWindow(frame);
+export function placeOnMap(extent: MapExtent, point: GeoPoint): { left: string; top: string } {
+  const window = mapWindow(extent);
   const westT = (window.west + 180) / 360;
   const eastT = (window.east + 180) / 360;
   return {
@@ -93,8 +100,8 @@ export function placeOnMap(frame: VehicleSpanFrame, point: GeoPoint): { left: st
   };
 }
 
-export function streetTilesForFrame(frame: VehicleSpanFrame): StreetTile[] {
-  const window = mapWindow(frame);
+export function streetTilesForFrame(extent: MapExtent): StreetTile[] {
+  const window = mapWindow(extent);
   const zoom = chooseZoom(window);
   const scale = 2 ** zoom;
   const westT = (window.west + 180) / 360;

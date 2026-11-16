@@ -3,6 +3,8 @@ import {
   getUpstreamMode,
   type Mode,
 } from "../../../shared/domain/mode.js";
+import type { GeoPoint } from "../../../shared/domain/vehicle-span.js";
+import { toWalkRoute, type WalkRoute } from "../../../shared/domain/walk-route.js";
 import type { DepartureFetchWindow } from "../glance/glance-horizon.js";
 import type { DigitransitService, NearbyStopNode } from "./types.js";
 
@@ -48,6 +50,26 @@ const tripShapeQuery = `
         geometry {
           lat
           lon
+        }
+      }
+    }
+  }
+`;
+
+const walkPlanQuery = `
+  query WalkPlan($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!) {
+    plan(
+      from: { lat: $fromLat, lon: $fromLon }
+      to: { lat: $toLat, lon: $toLon }
+      numItineraries: 1
+      transportModes: [{ mode: WALK }]
+    ) {
+      itineraries {
+        legs {
+          mode
+          legGeometry {
+            points
+          }
         }
       }
     }
@@ -263,6 +285,73 @@ function normalizeNearbyStops(data: Record<string, unknown>): NearbyStopNode[] {
     .filter((node): node is NearbyStopNode => Boolean(node?.stop?.gtfsId));
 }
 
+function decodePolyline(encoded: string): GeoPoint[] {
+  const points: GeoPoint[] = [];
+  let index = 0;
+  let latitude = 0;
+  let longitude = 0;
+  while (index < encoded.length) {
+    const nextLatitude = readPolylineChunk(encoded, index);
+    index = nextLatitude.index;
+    latitude += nextLatitude.value;
+    const nextLongitude = readPolylineChunk(encoded, index);
+    index = nextLongitude.index;
+    longitude += nextLongitude.value;
+    points.push({ lat: latitude / 1e5, lon: longitude / 1e5 });
+  }
+  return points;
+}
+
+function readPolylineChunk(encoded: string, start: number): { index: number; value: number } {
+  let result = 0;
+  let shift = 0;
+  let index = start;
+  let byte = 0;
+  do {
+    byte = encoded.charCodeAt(index) - 63;
+    index += 1;
+    result |= (byte & 0x1f) << shift;
+    shift += 5;
+  } while (byte >= 0x20);
+  const value = result & 1 ? ~(result >> 1) : result >> 1;
+  return { index, value };
+}
+
+interface PlanLeg {
+  legGeometry?: { points?: string };
+  mode?: string;
+}
+
+function readWalkLegs(data: Record<string, unknown>): GeoPoint[] {
+  const plan = data.plan as { itineraries?: Array<{ legs?: PlanLeg[] }> } | null | undefined;
+  const points: GeoPoint[] = [];
+  for (const itinerary of plan?.itineraries ?? []) {
+    for (const leg of itinerary.legs ?? []) {
+      if (leg.mode !== "WALK" || !leg.legGeometry?.points) {
+        continue;
+      }
+      points.push(...decodePolyline(leg.legGeometry.points));
+    }
+  }
+  return points;
+}
+
+function samePlace(origin: GeoPoint, stop: GeoPoint): boolean {
+  return origin.lat === stop.lat && origin.lon === stop.lon;
+}
+
+function dedupeConsecutive(points: readonly GeoPoint[]): GeoPoint[] {
+  const result: GeoPoint[] = [];
+  for (const point of points) {
+    const previous = result[result.length - 1];
+    if (previous && previous.lat === point.lat && previous.lon === point.lon) {
+      continue;
+    }
+    result.push(point);
+  }
+  return result;
+}
+
 function isGeoPoint(value: { lat?: number; lon?: number }): value is { lat: number; lon: number } {
   return typeof value.lat === "number" && typeof value.lon === "number" && Number.isFinite(value.lat) && Number.isFinite(value.lon);
 }
@@ -361,6 +450,61 @@ export function createDigitransitService(input: {
   const timeoutMs = input.timeoutMs || DIGITRANSIT_TIMEOUT_MS;
   const nearbyStopsCache = new Map<string, NearbyStopsCacheEntry>();
 
+  async function readStopCoordinates(stopId: string): Promise<GeoPoint | null> {
+    const data = await graphqlRequest({
+      body: {
+        query: stopPointQuery,
+        variables: { id: stopId },
+      },
+      endpoint,
+      fetchImpl,
+      getApiKey,
+      timeoutMs,
+    });
+    const stop = data.stop as { lat?: number; lon?: number } | null | undefined;
+    if (!stop || !isGeoPoint(stop)) {
+      return null;
+    }
+    return stop;
+  }
+
+  async function requestWalkPlan(origin: GeoPoint, stop: GeoPoint): Promise<Record<string, unknown>> {
+    return graphqlRequest({
+      body: {
+        query: walkPlanQuery,
+        variables: {
+          fromLat: origin.lat,
+          fromLon: origin.lon,
+          toLat: stop.lat,
+          toLon: stop.lon,
+        },
+      },
+      endpoint,
+      fetchImpl,
+      getApiKey,
+      timeoutMs,
+    });
+  }
+
+  async function planWalk(origin: GeoPoint, stopId: string): Promise<WalkRoute | null> {
+    const trimmed = stopId.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const stop = await readStopCoordinates(trimmed);
+    if (!stop) {
+      return null;
+    }
+    if (samePlace(origin, stop)) {
+      return toWalkRoute([origin, stop]);
+    }
+    const decoded = readWalkLegs(await requestWalkPlan(origin, stop));
+    if (decoded.length === 0) {
+      return null;
+    }
+    return toWalkRoute(dedupeConsecutive([origin, ...decoded, stop]));
+  }
+
   return {
     async getTripShape(tripId) {
       const data = await graphqlRequest({
@@ -388,25 +532,8 @@ export function createDigitransitService(input: {
       });
       return readVehicleFix(data, tripId);
     },
-    async getStopPoint(stopId) {
-      const data = await graphqlRequest({
-        body: {
-          query: stopPointQuery,
-          variables: { id: stopId },
-        },
-        endpoint,
-        fetchImpl,
-        getApiKey,
-        timeoutMs,
-      });
-      const stop = data.stop as { lat?: number; lon?: number } | null | undefined;
-      const lat = stop?.lat;
-      const lon = stop?.lon;
-      if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return null;
-      }
-      return { lat, lon };
-    },
+    getStopPoint: readStopCoordinates,
+    planWalk,
     async getDeparturesForStopIds(stopIds, options) {
       if (stopIds.length === 0) {
         return new Map();

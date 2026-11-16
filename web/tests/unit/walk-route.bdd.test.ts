@@ -62,6 +62,9 @@ interface World {
   tripId: string;
   upstreamKeys: string[];
   vehicleOpens: number;
+  calloutCancelled: boolean;
+  selectedText: string;
+  selectionCancelled: boolean;
   walkHeaders: Array<string | null>;
   walkUrls: string[];
 }
@@ -87,6 +90,9 @@ function createWorld(): World {
     tripId: "HSL:TRIP1",
     upstreamKeys: [],
     vehicleOpens: 0,
+    calloutCancelled: false,
+    selectedText: "",
+    selectionCancelled: false,
     walkHeaders: [],
     walkUrls: [],
   };
@@ -135,6 +141,52 @@ function holdCard(world: World): void {
 
 function clickCard(world: World): void {
   departureRow(world).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+function cardText(world: World): HTMLElement {
+  const text = departureRow(world).querySelector(".departure-card__destination-text");
+  if (!(text instanceof HTMLElement)) {
+    throw new Error("Expected the departure text");
+  }
+  return text;
+}
+
+function installSelection(documentRef: Document, node: Node): Selection {
+  let ranges: Range[] = [];
+  const selection = {
+    anchorNode: node,
+    addRange(range: Range) {
+      ranges = [range];
+      this.anchorNode = node;
+    },
+    removeAllRanges() {
+      ranges = [];
+      this.anchorNode = null;
+    },
+    toString() {
+      return ranges.map((range) => range.toString()).join("");
+    },
+  } as Selection;
+  Object.defineProperty(documentRef, "getSelection", {
+    configurable: true,
+    value: () => selection,
+  });
+  return selection;
+}
+
+function selectCardText(world: World): void {
+  const documentRef = world.documentRef;
+  const text = cardText(world);
+  const node = text.firstChild;
+  if (!documentRef || !node) {
+    throw new Error("Expected the departure text");
+  }
+  const selection = installSelection(documentRef, node);
+  const range = documentRef.createRange();
+  range.selectNodeContents(node);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  documentRef.dispatchEvent(new Event("selectionchange"));
 }
 
 function stubNetwork(world: World): void {
@@ -475,6 +527,12 @@ Feature: Walking route from a held departure
     When the walk is unavailable
     Then the board says no walking route
     And the departure table stays in place
+
+  Scenario: Holding a departure card does not select its text.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And the person is at latitude 60.1706 and longitude 24.9414
+    When the card is held and the browser tries to select its text
+    Then the card text stays unselected
   `,
   {
     createWorld,
@@ -551,6 +609,25 @@ Feature: Walking route from a held departure
         pattern: /^When the card is held$/,
         run({ world }) {
           holdCard(world);
+        },
+      },
+      {
+        pattern: /^When the card is held and the browser tries to select its text$/,
+        run({ world }) {
+          const text = cardText(world);
+          dispatchPointer(text, "pointerdown", 8, 8);
+          const selection = new Event("selectstart", { bubbles: true, cancelable: true });
+          const callout = new Event("contextmenu", { bubbles: true, cancelable: true });
+          text.dispatchEvent(selection);
+          text.dispatchEvent(callout);
+          world.selectionCancelled = selection.defaultPrevented;
+          world.calloutCancelled = callout.defaultPrevented;
+          selectCardText(world);
+          world.fireHold?.();
+          if (world.documentRef) {
+            dispatchPointer(world.documentRef, "pointerup", 8, 8);
+          }
+          world.selectedText = world.documentRef?.getSelection()?.toString() ?? "";
         },
       },
       {
@@ -671,6 +748,15 @@ Feature: Walking route from a held departure
         run: async ({ world }) => {
           world.planner = "nostop";
           await requestWalk(world, `/api/v1/walk?lat=60.1706&lon=24.9414&stopId=${encodeURIComponent(STOP_ID)}`);
+        },
+      },
+      {
+        pattern: /^Then the card text stays unselected$/,
+        run({ assert, world }) {
+          assert.equal(world.selectionCancelled, true);
+          assert.equal(world.calloutCancelled, true);
+          assert.equal(world.selectedText, "");
+          assert.equal(walkMap(world), null);
         },
       },
       {

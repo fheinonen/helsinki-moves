@@ -151,22 +151,32 @@ function cardText(world: World): HTMLElement {
   return text;
 }
 
-function installSelection(documentRef: Document, node: Node): Selection {
+interface HeldSelection {
+  readonly anchorNode: Node | null;
+  addRange(range: Range): void;
+  removeAllRanges(): void;
+  toString(): string;
+}
+
+function installSelection(documentRef: Document, node: Node): HeldSelection {
   let ranges: Range[] = [];
-  const selection = {
-    anchorNode: node,
+  let anchor: Node | null = node;
+  const selection: HeldSelection = {
+    get anchorNode() {
+      return anchor;
+    },
     addRange(range: Range) {
       ranges = [range];
-      this.anchorNode = node;
+      anchor = range.startContainer;
     },
     removeAllRanges() {
       ranges = [];
-      this.anchorNode = null;
+      anchor = null;
     },
     toString() {
       return ranges.map((range) => range.toString()).join("");
     },
-  } as Selection;
+  };
   Object.defineProperty(documentRef, "getSelection", {
     configurable: true,
     value: () => selection,

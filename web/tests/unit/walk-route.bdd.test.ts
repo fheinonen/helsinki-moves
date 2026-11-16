@@ -559,21 +559,21 @@ Feature: Walking route from a held departure
     Then the walking line keeps its color inside a dark edge
     And the walking time sits in a dark frame
 
-  Scenario: A walk you can finish before the departure shows its time in green on the middle of the line.
+  Scenario: A walk you can finish before the departure shows its time in blue with a check on the middle of the line.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 20 minutes
     And the person is at latitude 60.1706 and longitude 24.9414
     And the walk takes 8 minutes
     When the card is held
     And the route arrives
-    Then the walking time is 8 min in green on the middle of the line
+    Then the walking time is 8 min in blue with a check on the middle of the line
 
-  Scenario: A walk that outlasts the departure shows its time in red on the middle of the line.
+  Scenario: A walk that outlasts the departure shows its time in amber with a cross on the middle of the line.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 5 minutes
     And the person is at latitude 60.1706 and longitude 24.9414
     And the walk takes 12 minutes
     When the card is held
     And the route arrives
-    Then the walking time is 12 min in red on the middle of the line
+    Then the walking time is 12 min in amber with a cross on the middle of the line
 
   Scenario: Holding a departure card does not select its text.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
@@ -869,22 +869,25 @@ Feature: Walking route from a held departure
           if (edge) {
             edge.style.color = "#161616";
           }
-          assert.equal(label?.textContent, "8 min");
+          assert.equal(label?.textContent, "✓ 8 min");
           assert.equal(label?.style.backgroundColor, fill?.style.backgroundColor);
           assert.equal(label?.style.borderTopColor, edge?.style.color);
         },
       },
       {
-        pattern: /^Then the walking time is (\d+) min in (green|red) on the middle of the line$/,
+        pattern: /^Then the walking time is (\d+) min in (blue|amber) with a (check|cross) on the middle of the line$/,
         run({ args, assert, world }) {
           const label = walkMap(world)?.querySelector<HTMLElement>("[data-walk-time]");
           const probe = world.documentRef?.createElement("span");
-          const color = args[1] === "green" ? "#1b7f3a" : "#c4362c";
+          const onTime = args[1] === "blue";
+          const color = onTime ? "#0b4f9c" : "#9a4e00";
+          const mark = args[2] === "check" ? "✓" : "✕";
           if (probe) {
             probe.style.color = color;
           }
-          assert.equal(label?.textContent, `${args[0]} min`);
-          assert.equal(label?.dataset.onTime, args[1] === "green" ? "true" : "false");
+          assert.equal(label?.textContent, `${mark} ${args[0]} min`);
+          assert.equal(label?.getAttribute("aria-label"), `${args[0]} min, ${onTime ? "on time" : "too late"}`);
+          assert.equal(label?.dataset.onTime, onTime ? "true" : "false");
           assert.equal(label?.style.color, probe?.style.color);
           assert.equal(label?.dataset.lat, "60.169976");
           assert.equal(label?.dataset.lon, "24.937495");

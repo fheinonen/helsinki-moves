@@ -13,8 +13,10 @@ import {
 
 const HOLD_MS = 500;
 const HOLD_SLOP_PX = 12;
-const ON_TIME_COLOR = "#1b7f3a";
-const LATE_COLOR = "#c4362c";
+const ON_TIME_COLOR = "#0b4f9c";
+const LATE_COLOR = "#9a4e00";
+const ON_TIME_MARK = "✓";
+const LATE_MARK = "✕";
 const ROUTE_EDGE = "#161616";
 const WALK_FRAME = "#f7f1e4";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -313,10 +315,12 @@ function placeWalkTime(input: {
   label.dataset.lon = coord(middle.lon);
   label.style.left = spot.left;
   label.style.top = spot.top;
+  const minutes = formatWalkMinutes(input.route.seconds);
   label.style.background = WALK_FRAME;
   label.style.border = `1px solid ${ROUTE_EDGE}`;
   label.style.color = onTime ? ON_TIME_COLOR : LATE_COLOR;
-  label.textContent = formatWalkMinutes(input.route.seconds);
+  label.textContent = `${onTime ? ON_TIME_MARK : LATE_MARK} ${minutes}`;
+  label.setAttribute("aria-label", `${minutes}, ${onTime ? "on time" : "too late"}`);
   input.canvas.append(label);
 }
 

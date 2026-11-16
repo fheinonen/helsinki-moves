@@ -65,6 +65,7 @@ const walkPlanQuery = `
       transportModes: [{ mode: WALK }]
     ) {
       itineraries {
+        duration
         legs {
           mode
           legGeometry {
@@ -322,18 +323,36 @@ interface PlanLeg {
   mode?: string;
 }
 
-function readWalkLegs(data: Record<string, unknown>): GeoPoint[] {
-  const plan = data.plan as { itineraries?: Array<{ legs?: PlanLeg[] }> } | null | undefined;
-  const points: GeoPoint[] = [];
-  for (const itinerary of plan?.itineraries ?? []) {
-    for (const leg of itinerary.legs ?? []) {
-      if (leg.mode !== "WALK" || !leg.legGeometry?.points) {
-        continue;
-      }
-      points.push(...decodePolyline(leg.legGeometry.points));
-    }
+interface PlannedWalk {
+  points: GeoPoint[];
+  seconds: number;
+}
+
+function walkSeconds(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
   }
-  return points;
+  return value;
+}
+
+function readWalkLegs(data: Record<string, unknown>): PlannedWalk | null {
+  const plan = data.plan as { itineraries?: Array<{ duration?: unknown; legs?: PlanLeg[] }> } | null | undefined;
+  const itinerary = plan?.itineraries?.[0];
+  const seconds = walkSeconds(itinerary?.duration);
+  if (!itinerary || seconds == null) {
+    return null;
+  }
+  const points: GeoPoint[] = [];
+  for (const leg of itinerary.legs ?? []) {
+    if (leg.mode !== "WALK" || !leg.legGeometry?.points) {
+      continue;
+    }
+    points.push(...decodePolyline(leg.legGeometry.points));
+  }
+  if (points.length === 0) {
+    return null;
+  }
+  return { points, seconds };
 }
 
 function samePlace(origin: GeoPoint, stop: GeoPoint): boolean {
@@ -496,13 +515,13 @@ export function createDigitransitService(input: {
       return null;
     }
     if (samePlace(origin, stop)) {
-      return toWalkRoute([origin, stop]);
+      return toWalkRoute([origin, stop], 0);
     }
     const decoded = readWalkLegs(await requestWalkPlan(origin, stop));
-    if (decoded.length === 0) {
+    if (!decoded) {
       return null;
     }
-    return toWalkRoute(dedupeConsecutive([origin, ...decoded, stop]));
+    return toWalkRoute(dedupeConsecutive([origin, ...decoded.points, stop]), decoded.seconds);
   }
 
   return {

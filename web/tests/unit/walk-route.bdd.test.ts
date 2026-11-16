@@ -59,7 +59,9 @@ interface World {
   serverBody: string;
   serverStatus: number;
   store?: AppStore;
+  leavesInMinutes: number | null;
   tripId: string;
+  walkSeconds: number;
   upstreamKeys: string[];
   vehicleOpens: number;
   calloutCancelled: boolean;
@@ -82,12 +84,14 @@ function createWorld(): World {
     fireHold: null,
     holdDelay: null,
     hung: [],
+    leavesInMinutes: null,
     planBodies: [],
     planner: "walk",
     scrolls: 0,
     serverBody: "",
     serverStatus: 0,
     tripId: "HSL:TRIP1",
+    walkSeconds: 8 * 60,
     upstreamKeys: [],
     vehicleOpens: 0,
     calloutCancelled: false,
@@ -209,7 +213,9 @@ function stubNetwork(world: World): void {
       return Promise.resolve(new Response(JSON.stringify({ points: ENCODED_WALK }), { status: 200 }));
     }
     if (world.fetchMode === "json") {
-      return Promise.resolve(new Response(JSON.stringify({ points: SHOWN_ROUTE }), { status: 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ points: SHOWN_ROUTE, seconds: world.walkSeconds }), { status: 200 }),
+      );
     }
     return new Promise((resolve) => {
       world.hung.push({
@@ -236,7 +242,10 @@ function renderBoard(world: World): void {
     station: {
       departures: [
         {
-          departureIso: "2026-03-07T10:10:00.000Z",
+          departureIso:
+            world.leavesInMinutes == null
+              ? "2026-03-07T10:10:00.000Z"
+              : new Date(Date.now() + world.leavesInMinutes * 60_000).toISOString(),
           destination: "Kamppi",
           line: "550",
           stopId: STOP_ID,
@@ -326,7 +335,7 @@ async function flush(): Promise<void> {
 
 function resolveShown(world: World): void {
   const pending = world.fetches.shift();
-  pending?.resolve({ points: SHOWN_ROUTE });
+  pending?.resolve({ points: SHOWN_ROUTE, seconds: world.walkSeconds });
 }
 
 function walkMap(world: World): HTMLElement | null {
@@ -395,6 +404,7 @@ function installPlanner(world: World): void {
             plan: {
               itineraries: [
                 {
+                  duration: 8 * 60,
                   legs: [
                     { legGeometry: { points: ENCODED_BUS }, mode: "BUS" },
                     { legGeometry: { points: ENCODED_WALK }, mode: "WALK" },
@@ -499,8 +509,10 @@ Feature: Walking route from a held departure
     Given the platform for stop HSL:1020601 is at latitude 60.1692 and longitude 24.9337
     When the server plans a walk from latitude 60.1706 and longitude 24.9414
     Then the walk JSON ends at the platform and has no encoded polyline
+    And the walking time is 8 minutes
     When the server plans a walk from the same platform point
     Then the walk JSON is the platform twice
+    And the walking time is 0 minutes
     When the planner has no walk between two different points
     Then the walk response says no walking route
     When the server is asked for a walk without a stop
@@ -538,6 +550,22 @@ Feature: Walking route from a held departure
     Then the board says no walking route
     And the departure table stays in place
 
+  Scenario: A walk you can finish before the departure shows its time in green on the middle of the line.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 20 minutes
+    And the person is at latitude 60.1706 and longitude 24.9414
+    And the walk takes 8 minutes
+    When the card is held
+    And the route arrives
+    Then the walking time is 8 min in green on the middle of the line
+
+  Scenario: A walk that outlasts the departure shows its time in red on the middle of the line.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in 5 minutes
+    And the person is at latitude 60.1706 and longitude 24.9414
+    And the walk takes 12 minutes
+    When the card is held
+    And the route arrives
+    Then the walking time is 12 min in red on the middle of the line
+
   Scenario: Holding a departure card does not select its text.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
     And the person is at latitude 60.1706 and longitude 24.9414
@@ -574,6 +602,19 @@ Feature: Walking route from a held departure
         pattern: /^Given a departure card for line 550 to Kamppi at stop HSL:1020601$/,
         run({ world }) {
           renderBoard(world);
+        },
+      },
+      {
+        pattern: /^Given a departure card for line 550 to Kamppi at stop HSL:1020601 leaving in (\d+) minutes$/,
+        run({ args, world }) {
+          world.leavesInMinutes = Number(args[0]);
+          renderBoard(world);
+        },
+      },
+      {
+        pattern: /^(?:Given|When|Then) the walk takes (\d+) minutes$/,
+        run({ args, world }) {
+          world.walkSeconds = Number(args[0]) * 60;
         },
       },
       {
@@ -786,6 +827,22 @@ Feature: Walking route from a held departure
         },
       },
       {
+        pattern: /^Then the walking time is (\d+) min in (green|red) on the middle of the line$/,
+        run({ args, assert, world }) {
+          const label = walkMap(world)?.querySelector<HTMLElement>("[data-walk-time]");
+          const probe = world.documentRef?.createElement("span");
+          const color = args[1] === "green" ? "#1b7f3a" : "#c4362c";
+          if (probe) {
+            probe.style.color = color;
+          }
+          assert.equal(label?.textContent, `${args[0]} min`);
+          assert.equal(label?.dataset.onTime, args[1] === "green" ? "true" : "false");
+          assert.equal(label?.style.color, probe?.style.color);
+          assert.equal(label?.dataset.lat, "60.169976");
+          assert.equal(label?.dataset.lon, "24.937495");
+        },
+      },
+      {
         pattern: /^Then the walk map shows the route points$/,
         run({ assert, world }) {
           assertShownRoute(assert, world);
@@ -928,6 +985,13 @@ Feature: Walking route from a held departure
           assert.equal(world.upstreamKeys.length > 0, true);
           assert.equal(world.upstreamKeys.every((key) => key === API_KEY), true);
           assert.equal(world.serverBody.includes(API_KEY), false);
+        },
+      },
+      {
+        pattern: /^Then the walking time is (\d+) minutes$/,
+        run({ args, assert, world }) {
+          const body = JSON.parse(world.serverBody) as { seconds?: number };
+          assert.equal(body.seconds, Number(args[0]) * 60);
         },
       },
       {

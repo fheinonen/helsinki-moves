@@ -797,6 +797,22 @@ button {
   pointer-events: none;
 }
 
+.walk-time {
+  position: absolute;
+  z-index: 4;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow:
+    0 0 3px #fff,
+    0 0 1px #fff;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
 .vehicle-span__route polyline {
   fill: none;
   stroke: #1d4ed8;

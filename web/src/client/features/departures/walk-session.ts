@@ -2,10 +2,19 @@ import { appendOsmCredit, OSM_MAP_CREDIT } from "@client/features/map/osm-credit
 import { fetchWalkRoute } from "@client/services/walk-client";
 import { frameAspect, placeOnMap, streetTilesForFrame, type MapExtent } from "@shared/domain/street-map";
 import type { GeoPoint } from "@shared/domain/vehicle-span";
-import { WALK_UNAVAILABLE, type WalkRequest, type WalkRoute } from "@shared/domain/walk-route";
+import {
+  canMakeDeparture,
+  formatWalkMinutes,
+  WALK_UNAVAILABLE,
+  walkMidpoint,
+  type WalkRequest,
+  type WalkRoute,
+} from "@shared/domain/walk-route";
 
 const HOLD_MS = 500;
 const HOLD_SLOP_PX = 12;
+const ON_TIME_COLOR = "#1b7f3a";
+const LATE_COLOR = "#c4362c";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export type HoldScheduler = (delayMs: number, fire: () => void) => () => void;
@@ -27,6 +36,7 @@ type WalkAttemptId = string & { readonly __walkAttemptId: unique symbol };
 
 interface HeldDeparture {
   readonly color: string;
+  readonly departureMs: number;
   readonly destination: string;
   readonly line: string;
   readonly stopId: string;
@@ -264,12 +274,40 @@ function walkMapElement(input: {
   });
   placeMarker(origin, extent, route.points[0]);
   placeMarker(stop, extent, route.points.at(-1) ?? route.points[1]);
+  placeWalkTime({ canvas, departureMs: label.departureMs, documentRef, extent, route });
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
   appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
   glass.append(canvas, credit);
   element.append(head, glass);
   return element;
+}
+
+function placeWalkTime(input: {
+  canvas: HTMLElement;
+  departureMs: number;
+  documentRef: Document;
+  extent: MapExtent;
+  route: WalkRoute;
+}): void {
+  const middle = walkMidpoint(input.route.points);
+  const spot = placeOnMap(input.extent, middle);
+  const onTime = canMakeDeparture({
+    departureMs: input.departureMs,
+    now: Date.now(),
+    seconds: input.route.seconds,
+  });
+  const label = input.documentRef.createElement("p");
+  label.className = "walk-time";
+  label.dataset.walkTime = "true";
+  label.dataset.onTime = onTime ? "true" : "false";
+  label.dataset.lat = coord(middle.lat);
+  label.dataset.lon = coord(middle.lon);
+  label.style.left = spot.left;
+  label.style.top = spot.top;
+  label.style.color = onTime ? ON_TIME_COLOR : LATE_COLOR;
+  label.textContent = formatWalkMinutes(input.route.seconds);
+  input.canvas.append(label);
 }
 
 function failureElement(documentRef: Document): HTMLElement {
@@ -335,6 +373,7 @@ function departureFrom(target: EventTarget | null): HeldDeparture | null {
   }
   return {
     color: row.style.getPropertyValue("--destination-color"),
+    departureMs: Date.parse(row.querySelector("time")?.getAttribute("datetime") ?? ""),
     destination: row.dataset.destination ?? "",
     line: row.dataset.line ?? "",
     stopId,

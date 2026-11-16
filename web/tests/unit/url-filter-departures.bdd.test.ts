@@ -97,6 +97,9 @@ Feature: URL filter departures
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures(input) {
               requests.push({
                 destinations: [...input.destinations],

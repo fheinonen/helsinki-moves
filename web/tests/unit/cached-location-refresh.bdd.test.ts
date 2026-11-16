@@ -67,6 +67,9 @@ function createCachingGeolocation(world: World): Geolocation {
 
 function createController(world: World): AppController {
   const departuresClient: DeparturesClient = {
+    async getLaterDepartures() {
+      throw new Error("later departures are not part of this scenario");
+    },
     async getDepartures(input) {
       const lat = input.coords?.lat ?? Number.NaN;
       const lon = input.coords?.lon ?? Number.NaN;

@@ -1,6 +1,7 @@
 import type {
   DeparturesRequest,
   DeparturesSuccessResponse,
+  LaterDeparturesResponse,
   StopStation,
 } from "../../../shared/contracts/departures-contract.js";
 import { getNoNearbyStopsMessage, getUpstreamMode, type Mode } from "../../../shared/domain/mode.js";
@@ -12,7 +13,14 @@ import {
 } from "./departures-normalizer.js";
 import type { DigitransitService, NearbyStopNode } from "./types.js";
 import type { Departure } from "../../../shared/domain/departure.js";
-import { departureFetchWindow, selectGlanceDepartures } from "../glance/glance-horizon.js";
+import type { BoardCursor } from "../../../shared/domain/board-rank.js";
+import {
+  continuationFetchWindow,
+  departureFetchWindow,
+  selectGlanceDepartures,
+  selectLaterDepartures,
+  type DepartureFetchWindow,
+} from "../glance/glance-horizon.js";
 
 const SEARCH_RADIUS_METERS = 1200;
 
@@ -92,6 +100,19 @@ async function resolveSearchOrigin(
   return service.getStopPoint(request.stopId);
 }
 
+interface LoadedDepartures {
+  departures: Departure[];
+  selectedStop: Stop;
+  stops: Stop[];
+}
+
+function requestSelections(request: DeparturesRequest): { destinations: string[]; lines: string[] } {
+  return {
+    destinations: request.destinations,
+    lines: request.lines,
+  };
+}
+
 export class DeparturesService {
   constructor(
     private readonly digitransitService: DigitransitService,
@@ -99,9 +120,55 @@ export class DeparturesService {
   ) {}
 
   async execute(request: DeparturesRequest): Promise<DeparturesSuccessResponse> {
+    const nowMs = this.now();
+    const loaded = await this.loadMergedDepartures(request, departureFetchWindow(request.mode, nowMs));
+    if (!loaded) {
+      return buildEmptyResponse(request.mode);
+    }
+
+    return {
+      filterOptions: buildFilterOptions(loaded.departures),
+      mode: request.mode,
+      selectedStopId: loaded.selectedStop.id,
+      station: buildStation(
+        loaded.selectedStop,
+        selectGlanceDepartures({
+          departures: filterDeparturesBySelections(loaded.departures, requestSelections(request)),
+          mode: request.mode,
+          nowMs,
+        })
+      ),
+      stops: loaded.stops,
+    };
+  }
+
+  async executeLater(request: DeparturesRequest, after: BoardCursor): Promise<LaterDeparturesResponse> {
+    const nowMs = this.now();
+    const loaded = await this.loadMergedDepartures(
+      request,
+      continuationFetchWindow(request.mode, nowMs, after)
+    );
+    if (!loaded) {
+      return { departures: [] };
+    }
+
+    return {
+      departures: selectLaterDepartures({
+        after,
+        departures: filterDeparturesBySelections(loaded.departures, requestSelections(request)),
+        mode: request.mode,
+        nowMs,
+      }),
+    };
+  }
+
+  private async loadMergedDepartures(
+    request: DeparturesRequest,
+    fetchWindow: DepartureFetchWindow
+  ): Promise<LoadedDepartures | null> {
     const origin = await resolveSearchOrigin(this.digitransitService, request);
     if (!origin) {
-      return buildEmptyResponse(request.mode);
+      return null;
     }
 
     const nearbyStops = await this.digitransitService.getNearbyStops({
@@ -111,40 +178,26 @@ export class DeparturesService {
     });
     const modeStops = filterModeStops(nearbyStops, getUpstreamMode(request.mode));
     if (modeStops.length === 0) {
-      return buildEmptyResponse(request.mode);
+      return null;
     }
 
-    const selectableStops = buildSelectableStops(modeStops);
-    const selectedStop = selectStop(selectableStops, request.stopId);
+    const stops = buildSelectableStops(modeStops);
+    const selectedStop = selectStop(stops, request.stopId);
     if (!selectedStop) {
-      return buildEmptyResponse(request.mode);
+      return null;
     }
 
-    const nowMs = this.now();
-    const selections = {
-      destinations: request.destinations,
-      lines: request.lines,
-    };
     const departuresByStopId = await this.digitransitService.getDeparturesForStopIds(
       selectedStop.memberStopIds,
       {
-        fetchWindow: departureFetchWindow(request.mode, nowMs),
+        fetchWindow,
         mode: request.mode,
       }
     );
-    const allDepartures = mergeDeparturesForStopIds(departuresByStopId, selectedStop.memberStopIds);
-    const visibleDepartures = selectGlanceDepartures({
-      departures: filterDeparturesBySelections(allDepartures, selections),
-      mode: request.mode,
-      nowMs,
-    });
-
     return {
-      filterOptions: buildFilterOptions(allDepartures),
-      mode: request.mode,
-      selectedStopId: selectedStop.id,
-      station: buildStation(selectedStop, visibleDepartures),
-      stops: selectableStops,
+      departures: mergeDeparturesForStopIds(departuresByStopId, selectedStop.memberStopIds),
+      selectedStop,
+      stops,
     };
   }
 }

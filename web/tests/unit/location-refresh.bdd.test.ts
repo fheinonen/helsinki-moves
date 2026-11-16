@@ -40,6 +40,9 @@ Feature: Location refresh
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures() {
               throw new Error("Departures client should not be called");
             },
@@ -100,6 +103,9 @@ Feature: Location refresh
             },
           };
           const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
             async getDepartures(input) {
               world.departuresCallCount = (world.departuresCallCount || 0) + 1;
               return {

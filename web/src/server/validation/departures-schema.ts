@@ -1,6 +1,11 @@
 import { error, ok, type Result } from "../../shared/utils/result.js";
 import { isMode, parseMode, type Mode } from "../../shared/domain/mode.js";
+import { parseBoardCursor, type BoardCursor } from "../../shared/domain/board-rank.js";
 import type { DeparturesRequest } from "../../shared/contracts/departures-contract.js";
+
+export type DeparturesQuery =
+  | { readonly kind: "glance"; readonly request: DeparturesRequest }
+  | { readonly kind: "later"; readonly request: DeparturesRequest; readonly after: BoardCursor };
 
 type ValidationError = "invalid coordinates";
 const MAX_RESULT_LIMIT = 60;
@@ -40,9 +45,23 @@ function parseResultLimit(value: string | null, defaultValue: number): number | 
   return parsed;
 }
 
+function classifyDeparturesQuery(
+  searchParams: URLSearchParams,
+  request: DeparturesRequest
+): Result<DeparturesQuery, ValidationError> {
+  if (!searchParams.has("after")) {
+    return ok({ kind: "glance", request });
+  }
+  const after = parseBoardCursor(searchParams.get("after") ?? "");
+  if (!after) {
+    return error("invalid coordinates");
+  }
+  return ok({ kind: "later", request, after });
+}
+
 export function validateDeparturesRequest(
   searchParams: URLSearchParams
-): Result<DeparturesRequest, ValidationError> {
+): Result<DeparturesQuery, ValidationError> {
   const stopId = searchParams.get("stopId")?.trim() || null;
   const hasLat = searchParams.has("lat");
   const hasLon = searchParams.has("lon");
@@ -66,7 +85,7 @@ export function validateDeparturesRequest(
     return error("invalid coordinates");
   }
 
-  return ok({
+  return classifyDeparturesQuery(searchParams, {
     destinations: parseMultiValue(searchParams.get("dest")),
     lat,
     lines: parseMultiValue(searchParams.get("line")),

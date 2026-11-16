@@ -1,4 +1,5 @@
 import type { AppStore } from "@client/app/app-store";
+import { createHoldSession, type PointerPush, type ScrollMetrics } from "@client/app/hold-scroll";
 import type { DeparturesClient } from "@client/services/departures-client";
 import {
   getSoonestMatchingDepartureMs,
@@ -14,6 +15,8 @@ import type { VoiceRecorder } from "@client/features/voice/browser-voice-recorde
 import type { VoiceAvailability } from "@client/features/voice/voice-capability";
 import type { VoiceTypedFallbackPrompt } from "@client/features/voice/voice-typed-fallback";
 import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
+import { tailCursor, type BoardCursor } from "@shared/domain/board-rank";
+import type { Departure } from "@shared/domain/departure";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
 import { sanitizeFilterState } from "@shared/domain/filter";
 import type { Mode } from "@shared/domain/mode";
@@ -31,12 +34,24 @@ interface CreateAppControllerOptions {
 
 type DepartureLoadPresentation = "blank" | "keep";
 
+type ExtendPermit = {
+  readonly after: BoardCursor;
+  readonly destinations: readonly string[];
+  readonly lat: number | null;
+  readonly lines: readonly string[];
+  readonly lon: number | null;
+  readonly mode: Mode;
+  readonly requestId: number;
+  readonly stopId: string | null;
+};
+
 export interface AppController {
   chooseVoiceLocation(index: number): Promise<void>;
   getActiveMode(): Mode;
   getVoiceAvailability(): VoiceAvailability;
   initializeVoice(): void;
   loadInitialDepartures(): Promise<void>;
+  noteScrollPush(push: PointerPush, metrics: ScrollMetrics): void;
   refreshNearbyDepartures(): Promise<void>;
   setMode(mode: Mode): void;
   setSelectedStop(stopId: string | null): Promise<void>;
@@ -69,7 +84,7 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function sameValues(left: string[], right: string[]): boolean {
+function sameValues(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) {
     return false;
   }
@@ -89,6 +104,8 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
   } = options;
   let activeRequestId = 0;
   let activeAbortController: AbortController | null = null;
+  let extendAbortController: AbortController | null = null;
+  const holdSession = createHoldSession();
 
   if (options.voiceAvailability) {
     store.setVoiceAvailability(voiceAvailability);
@@ -96,6 +113,8 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
 
   function createRequestToken(): { abortController: AbortController; requestId: number } {
     activeAbortController?.abort();
+    extendAbortController?.abort();
+    holdSession.reset();
     activeAbortController = new AbortController();
     return {
       abortController: activeAbortController,
@@ -494,6 +513,108 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     return true;
   }
 
+  function capturePermit(after: BoardCursor): ExtendPermit {
+    const state = store.getState();
+    return {
+      after,
+      destinations: [...state.filters.destinations],
+      lat: state.coords?.lat ?? null,
+      lines: [...state.filters.lines],
+      lon: state.coords?.lon ?? null,
+      mode: state.activeMode,
+      requestId: activeRequestId,
+      stopId: state.filters.stopId,
+    };
+  }
+
+  function sameCursor(left: BoardCursor, right: BoardCursor): boolean {
+    return left.departureMs === right.departureMs && left.tie === right.tie;
+  }
+
+  function sameScope(permit: ExtendPermit, current: ExtendPermit): boolean {
+    return (
+      permit.mode === current.mode &&
+      permit.stopId === current.stopId &&
+      sameValues(permit.lines, current.lines) &&
+      sameValues(permit.destinations, current.destinations)
+    );
+  }
+
+  function samePlace(permit: ExtendPermit, current: ExtendPermit): boolean {
+    return permit.lat === current.lat && permit.lon === current.lon && sameCursor(permit.after, current.after);
+  }
+
+  function extendPermitStillHolds(permit: ExtendPermit, current: ExtendPermit): boolean {
+    return permit.requestId === current.requestId && sameScope(permit, current) && samePlace(permit, current);
+  }
+
+  function permitStillCurrent(permit: ExtendPermit): boolean {
+    const tail = tailCursor(store.getState().station?.departures ?? []);
+    if (!tail) {
+      return false;
+    }
+    return extendPermitStillHolds(permit, capturePermit(tail));
+  }
+
+  function departureCount(): number {
+    return store.getState().station?.departures.length ?? 0;
+  }
+
+  function replaceExtendSignal(): AbortSignal {
+    extendAbortController?.abort();
+    extendAbortController = new AbortController();
+    return extendAbortController.signal;
+  }
+
+  function appendHeldSuffix(permit: ExtendPermit, suffix: readonly Departure[]): void {
+    if (!permitStillCurrent(permit)) {
+      return;
+    }
+    const before = departureCount();
+    store.appendLaterDepartures(suffix);
+    const grew = departureCount() > before;
+    holdSession.settle(grew ? { type: "grew" } : { type: "empty" });
+  }
+
+  function failHeldSuffix(permit: ExtendPermit): void {
+    if (!permitStillCurrent(permit)) {
+      return;
+    }
+    holdSession.settle({ type: "failed" });
+  }
+
+  async function loadLaterDepartures(): Promise<void> {
+    const state = store.getState();
+    const tail = tailCursor(state.station?.departures ?? []);
+    if (!tail) {
+      holdSession.settle({ type: "failed" });
+      return;
+    }
+    const permit = capturePermit(tail);
+    try {
+      const later = await departuresClient.getLaterDepartures({
+        after: tail,
+        coords: state.coords,
+        destinations: [...permit.destinations],
+        lines: [...permit.lines],
+        mode: permit.mode,
+        signal: replaceExtendSignal(),
+        stopId: permit.stopId,
+      });
+      appendHeldSuffix(permit, later.departures);
+    } catch {
+      failHeldSuffix(permit);
+    }
+  }
+
+  function noteScrollPush(push: PointerPush, metrics: ScrollMetrics): void {
+    const step = holdSession.push(push, metrics);
+    if (!step.extend) {
+      return;
+    }
+    void loadLaterDepartures();
+  }
+
   return {
     async chooseVoiceLocation(index) {
       const choice = store.getState().voice.choices[index];
@@ -520,6 +641,7 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
       }
       await loadNearbyFromDevice(readCoarseDevicePosition);
     },
+    noteScrollPush,
     async refreshNearbyDepartures() {
       await loadNearbyFromDevice(readFreshDevicePosition);
     },

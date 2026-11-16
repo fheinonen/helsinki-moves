@@ -321,8 +321,7 @@ function projectWalk(input: {
   return { element, id: attempt.id, kind: "map" };
 }
 
-function labelFrom(event: PointerEvent): HeldDeparture | null {
-  const target = event.target;
+function departureFrom(target: EventTarget | null): HeldDeparture | null {
   if (!(target instanceof Element)) {
     return null;
   }
@@ -340,6 +339,27 @@ function labelFrom(event: PointerEvent): HeldDeparture | null {
     line: row.dataset.line ?? "",
     stopId,
   };
+}
+
+function labelFrom(event: PointerEvent): HeldDeparture | null {
+  return departureFrom(event.target);
+}
+
+function refuseCardSelection(event: Event): void {
+  if (!departureFrom(event.target)) {
+    return;
+  }
+  event.preventDefault();
+}
+
+function clearTextSelection(documentRef: Document): void {
+  documentRef.getSelection()?.removeAllRanges();
+}
+
+function selectionInsideCard(documentRef: Document): boolean {
+  const node = documentRef.getSelection()?.anchorNode ?? null;
+  const element = node instanceof Element ? node : node?.parentElement ?? null;
+  return departureFrom(element) != null;
 }
 
 function movedPastSlop(arm: Arm, event: PointerEvent): boolean {
@@ -395,6 +415,7 @@ function bindHold(input: {
     }
     disarm();
     swallowNextClick = true;
+    clearTextSelection(documentRef);
     input.beginWalk(label);
   }
 
@@ -428,12 +449,22 @@ function bindHold(input: {
       return;
     }
     swallowNextClick = false;
+    clearTextSelection(documentRef);
     event.preventDefault();
     event.stopPropagation();
   }
 
+  function onSelectionChange(): void {
+    if (selectionInsideCard(documentRef)) {
+      clearTextSelection(documentRef);
+    }
+  }
+
   input.table.addEventListener("click", onClick, true);
+  input.table.addEventListener("contextmenu", refuseCardSelection);
   input.table.addEventListener("pointerdown", onPointerDown);
+  input.table.addEventListener("selectstart", refuseCardSelection);
+  documentRef.addEventListener("selectionchange", onSelectionChange);
   return { disarm };
 }
 

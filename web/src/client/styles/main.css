@@ -641,6 +641,9 @@ button {
 
 .departure-card {
   border-top: 1px solid var(--line-soft);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .departure-card td {
@@ -700,6 +703,9 @@ button {
   line-height: inherit;
   text-align: inherit;
   cursor: inherit;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .departure-card__time[data-urgency="now"] {

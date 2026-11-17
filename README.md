@@ -14,9 +14,17 @@ Allow location the first time. The board opens on the nearest stop and shows the
 - **Pick another stop.** The stop menu lists places near you.
 - **Shorten the list.** Filter by line, or by where the vehicle is headed.
 - **Come back to this exact board.** The address remembers the mode, the stop, and any line or destination you kept. Bookmark it. Opening that link restores the board and leaves the location prompt alone.
-- **See the vehicle.** Press a departure. A street map opens above the list, framed from that vehicle to your stop, and the marker keeps moving. Switch mode or pick another stop and the map closes.
+- **See the vehicle.** A short press on a departure opens the live vehicle map above the list, framed from that vehicle to your stop, and the marker keeps moving. Switch mode or pick another stop and the map closes.
+- **Walk to the stop.** A long press shows the walk to that stop. The walking time sits on the line. A check means you still make the departure if you leave now. A cross means you do not make it. The line keeps the destination color, with a dark edge.
+- **Load later departures.** Hold the scroll at the bottom of the board. The first push that reaches the end does not load later departures. The next push loads them.
 - **Say a place.** The microphone takes a short recording and looks up what you said.
 - **You have walked on.** Refresh reads your location again. When the phone allows it, the board follows you and the old bookmark steps aside.
+
+The footer credits Digitransit for the timetable data. It shows the date and time the data was received. The map and the voice search credit OpenStreetMap under the ODbL.
+
+## From a keyboard
+
+Enter or Space on a departure time opens the vehicle map. The board is a main landmark. The page uses your operating system's text scale.
 
 ## In a terminal
 

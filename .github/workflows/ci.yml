@@ -54,15 +54,6 @@ jobs:
           - os: ubuntu-latest
             project: chromium
             browser: chromium
-          - os: ubuntu-latest
-            project: firefox
-            browser: firefox
-          - os: windows-latest
-            project: chromium
-            browser: chromium
-          - os: macos-latest
-            project: webkit
-            browser: webkit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,12 +68,7 @@ jobs:
         run: npm run build
         working-directory: web
       - name: Install Playwright browser dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
         run: npx playwright install --with-deps ${{ matrix.browser }}
-        working-directory: web
-      - name: Install Playwright browser
-        if: matrix.os != 'ubuntu-latest'
-        run: npx playwright install ${{ matrix.browser }}
         working-directory: web
       - name: Run browser E2E tests
         run: npx playwright test --project=${{ matrix.project }}

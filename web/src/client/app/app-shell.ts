@@ -1,4 +1,5 @@
 import { formatDigitransitCredit } from "@client/app/digitransit-credit";
+import { scrollMapIntoView } from "@client/features/map/map-chrome";
 import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-credit";
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
@@ -371,37 +372,79 @@ function createDeparturesTableView(
   };
 }
 
+function restoreDepartureFocus(card: HTMLTableRowElement | null): void {
+  if (!card?.isConnected) {
+    return;
+  }
+  card.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
 function createVehicleSpanSession(input: {
+  canWalk(): boolean;
   documentRef: Document;
+  isExpanded(): boolean;
+  onExpandedChange(expanded: boolean): void;
+  onSwitchToWalk(card: HTMLTableRowElement): void;
+  onUserClose(): void;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
-}): { close(): void; press(card: HTMLTableRowElement): void } {
+}): {
+  close(options?: { restoreFocus?: boolean }): void;
+  press(card: HTMLTableRowElement, options?: { switched?: boolean }): void;
+} {
+  let activeCard: HTMLTableRowElement | null = null;
   let map: VehicleSpanMap | null = null;
   let stopStream: (() => void) | null = null;
   const openVehicleSpan = input.openVehicleSpan ?? openVehicleSpanStream;
 
-  const close = () => {
+  const close = (options?: { restoreFocus?: boolean }) => {
+    const cardToFocus = options?.restoreFocus ? activeCard : null;
+    if (activeCard) {
+      delete activeCard.dataset.mapActive;
+    }
+    activeCard = null;
     stopStream?.();
     stopStream = null;
     map?.close();
     map = null;
+    if (cardToFocus) {
+      restoreDepartureFocus(cardToFocus);
+    }
   };
 
   return {
     close,
-    press(card) {
+    press(card, pressOptions) {
       const tripId = card.dataset.tripId || "";
       const stopId = card.dataset.stopId || "";
       if (!tripId || !stopId) {
         return;
       }
+      if (activeCard === card && map) {
+        input.onUserClose();
+        close();
+        return;
+      }
       close();
+      const switched = pressOptions?.switched ?? false;
       const nextMap = createVehicleSpanMap({
         destination: card.dataset.destination || "",
         destinationColor: card.style.getPropertyValue("--destination-color") || undefined,
         documentRef: input.documentRef,
+        initialExpanded: input.isExpanded(),
         line: card.dataset.line || "",
-        onClose: close,
+        onClose: () => {
+          input.onUserClose();
+          close({ restoreFocus: true });
+        },
+        onExpandedChange: input.onExpandedChange,
+        onSwitchToWalk: input.canWalk()
+          ? () => {
+              nextMap.markSwitchBusy();
+              input.onSwitchToWalk(card);
+            }
+          : undefined,
+        switched,
       });
       const table = input.root.querySelector(".app-shell__departures-table");
       if (table) {
@@ -409,7 +452,11 @@ function createVehicleSpanSession(input: {
       } else {
         input.root.append(nextMap.element);
       }
-      nextMap.element.scrollIntoView?.({ block: "start" });
+      card.dataset.mapActive = "true";
+      activeCard = card;
+      if (!switched) {
+        scrollMapIntoView(nextMap.element, input.documentRef);
+      }
       map = nextMap;
       stopStream = openVehicleSpan({
         onEvent(event) {
@@ -591,12 +638,34 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.dataset.stationTitle = "true";
   stationTitle.hidden = true;
 
+  let walk!: WalkSession;
+  let mapExpanded = false;
+  const resetMapExpanded = () => {
+    mapExpanded = false;
+  };
+  const setMapExpanded = (expanded: boolean) => {
+    mapExpanded = expanded;
+  };
+  const isMapExpanded = () => mapExpanded;
+  const hasUsableCoords = () => {
+    const coords = store.getState().coords;
+    return coords != null && Number.isFinite(coords.lat) && Number.isFinite(coords.lon);
+  };
   const vehicleSpan = createVehicleSpanSession({
+    canWalk: hasUsableCoords,
     documentRef,
+    isExpanded: isMapExpanded,
+    onExpandedChange: setMapExpanded,
+    onSwitchToWalk: (card) => {
+      walk.openForCard(card);
+    },
+    onUserClose: () => {
+      resetMapExpanded();
+      walk.close();
+    },
     openVehicleSpan: options.openVehicleSpan,
     root,
   });
-  let walk!: WalkSession;
   const departuresTableView = createDeparturesTableView(documentRef, (card) => {
     walk.close();
     vehicleSpan.press(card);
@@ -607,11 +676,19 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     },
     documentRef,
     fetchWalk: options.fetchWalk,
+    isExpanded: isMapExpanded,
+    onExpandedChange: setMapExpanded,
+    onSwitchToVehicle: (card) => {
+      walk.close();
+      vehicleSpan.press(card, { switched: true });
+    },
+    onUserClose: resetMapExpanded,
     readCoords: () => store.getState().coords,
     scheduleHold: options.scheduleHold,
     table: departuresTableView.element,
   });
   const closeMaps = () => {
+    resetMapExpanded();
     walk.close();
     vehicleSpan.close();
   };

@@ -660,7 +660,15 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     return fetchWalkRoute(request, (url, init) => fetch(url, { ...init, signal }));
   }
 
-  function beginWalk(label: HeldDeparture): void {
+  function mapAlreadyOpen(): boolean {
+    if (mounted?.kind === "map" && mounted.element.isConnected) {
+      return true;
+    }
+    const previous = input.table.previousElementSibling;
+    return previous?.matches("[data-vehicle-map='true']") ?? false;
+  }
+
+  function startWalk(label: HeldDeparture): void {
     const origin = input.readCoords();
     if (!usableOrigin(origin)) {
       return;
@@ -691,6 +699,13 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     );
   }
 
+  function beginWalk(label: HeldDeparture): void {
+    if (mapAlreadyOpen()) {
+      return;
+    }
+    startWalk(label);
+  }
+
   const hold = bindHold({
     beginWalk,
     canWalk: () => usableOrigin(input.readCoords()),
@@ -703,7 +718,7 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     openForCard(card) {
       const label = departureFrom(card);
       if (label) {
-        beginWalk(label);
+        startWalk(label);
       }
     },
   };

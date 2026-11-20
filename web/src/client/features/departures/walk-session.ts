@@ -1,6 +1,16 @@
+import { attachInteractiveMap } from "@client/features/map/interactive-map";
+import {
+  buildMapHeader,
+  formatCoord,
+  mountMapStreets,
+  ROUTE_EDGE_COLOR,
+  scrollMapIntoView,
+  writeMapExtent,
+  type MapSwitchAction,
+} from "@client/features/map/map-chrome";
 import { appendOsmCredit, OSM_MAP_CREDIT } from "@client/features/map/osm-credit";
 import { fetchWalkRoute } from "@client/services/walk-client";
-import { frameAspect, placeOnMap, streetTilesForFrame, type MapExtent } from "@shared/domain/street-map";
+import { placeOnMap, type MapExtent } from "@shared/domain/street-map";
 import type { GeoPoint } from "@shared/domain/vehicle-span";
 import {
   canMakeDeparture,
@@ -17,20 +27,20 @@ const ON_TIME_COLOR = "#1b7f3a";
 const LATE_COLOR = "#9a4e00";
 const ON_TIME_MARK = "✓";
 const LATE_MARK = "✕";
-const ROUTE_EDGE = "#161616";
 const WALK_FRAME = "#f7f1e4";
-const SVG_NS = "http://www.w3.org/2000/svg";
 
 export type HoldScheduler = (delayMs: number, fire: () => void) => () => void;
 
 export interface WalkSession {
-  close(): void;
+  close(options?: { restoreFocus?: boolean }): void;
+  openForCard(card: HTMLTableRowElement): void;
 }
 
 export interface CreateWalkSessionInput {
   closeVehicle(): void;
   documentRef: Document;
   fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
+  onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   readCoords(): GeoPoint | null;
   scheduleHold?: HoldScheduler;
   table: HTMLTableElement;
@@ -39,11 +49,13 @@ export interface CreateWalkSessionInput {
 type WalkAttemptId = string & { readonly __walkAttemptId: unique symbol };
 
 interface HeldDeparture {
+  readonly card: HTMLTableRowElement;
   readonly color: string;
   readonly departureMs: number;
   readonly destination: string;
   readonly line: string;
   readonly stopId: string;
+  readonly tripId: string;
 }
 
 type WalkAttempt =
@@ -78,6 +90,8 @@ type WalkCommand =
   | { readonly type: "close" };
 
 interface WalkProjection {
+  readonly card: HTMLTableRowElement;
+  readonly destroy: () => void;
   readonly element: HTMLElement;
   readonly id: WalkAttemptId;
   readonly kind: "map" | "status";
@@ -137,10 +151,6 @@ function reduceWalk(attempt: WalkAttempt, command: WalkCommand): WalkAttempt {
   }
 }
 
-function coord(value: number): string {
-  return value.toFixed(6);
-}
-
 function extentOf(points: WalkRoute["points"]): MapExtent {
   let east = points[0].lon;
   let north = points[0].lat;
@@ -155,144 +165,24 @@ function extentOf(points: WalkRoute["points"]): MapExtent {
   return { east, north, south, west };
 }
 
-function routeLabel(points: readonly GeoPoint[]): string {
-  return points.map((point) => `${coord(point.lat)} ${coord(point.lon)}`).join(" ");
-}
-
-function routePoints(extent: MapExtent, points: readonly GeoPoint[]): string {
-  return points
-    .map((point) => {
-      const spot = placeOnMap(extent, point);
-      return `${Number.parseFloat(spot.left)},${Number.parseFloat(spot.top)}`;
-    })
-    .join(" ");
-}
-
-function writeExtent(glass: HTMLElement, extent: MapExtent): void {
-  glass.dataset.east = coord(extent.east);
-  glass.dataset.north = coord(extent.north);
-  glass.dataset.south = coord(extent.south);
-  glass.dataset.west = coord(extent.west);
-}
-
 function placeMarker(marker: HTMLElement, extent: MapExtent, point: GeoPoint): void {
   const spot = placeOnMap(extent, point);
   marker.style.left = spot.left;
   marker.style.top = spot.top;
-  marker.dataset.lat = coord(point.lat);
-  marker.dataset.lon = coord(point.lon);
+  marker.dataset.lat = formatCoord(point.lat);
+  marker.dataset.lon = formatCoord(point.lon);
 }
 
-function marker(documentRef: Document, name: "stopMarker" | "walkOrigin"): HTMLElement {
+function createMapMarker(
+  documentRef: Document,
+  name: "stopMarker" | "walkOrigin",
+  ariaLabel: string,
+): HTMLElement {
   const element = documentRef.createElement("span");
   element.className = "vehicle-span__stop";
   element.dataset[name] = "true";
-  return element;
-}
-
-function mountStreets(input: {
-  canvas: HTMLElement;
-  color: string;
-  documentRef: Document;
-  extent: MapExtent;
-  points: readonly GeoPoint[];
-  stopMarker: HTMLElement;
-}): void {
-  const aspect = frameAspect(input.extent);
-  input.canvas.style.aspectRatio = String(aspect);
-  input.canvas.style.setProperty("--map-aspect", String(aspect));
-  for (const tile of streetTilesForFrame(input.extent)) {
-    const image = input.documentRef.createElement("img");
-    image.alt = "";
-    image.className = "vehicle-span__tile";
-    image.dataset.streetTile = "true";
-    image.decoding = "async";
-    image.src = tile.src;
-    image.style.height = tile.height;
-    image.style.left = tile.left;
-    image.style.top = tile.top;
-    image.style.width = tile.width;
-    input.canvas.insertBefore(image, input.stopMarker);
-  }
-  const svg = input.documentRef.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("class", "vehicle-span__route");
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("viewBox", "0 0 100 100");
-  const points = routePoints(input.extent, input.points);
-  const edge = input.documentRef.createElementNS(SVG_NS, "polyline");
-  edge.setAttribute("data-route-casing", "true");
-  edge.setAttribute("points", points);
-  edge.setAttribute("stroke-width", "6");
-  edge.setAttribute("vector-effect", "non-scaling-stroke");
-  edge.style.stroke = ROUTE_EDGE;
-  const line = input.documentRef.createElementNS(SVG_NS, "polyline");
-  line.setAttribute("data-route-span", routeLabel(input.points));
-  line.setAttribute("points", points);
-  line.setAttribute("stroke-width", "4");
-  line.setAttribute("vector-effect", "non-scaling-stroke");
-  if (input.color) {
-    line.style.stroke = input.color;
-  }
-  svg.append(edge, line);
-  input.canvas.insertBefore(svg, input.stopMarker);
-}
-
-function walkMapElement(input: {
-  documentRef: Document;
-  label: HeldDeparture;
-  onClose: () => void;
-  route: WalkRoute;
-}): HTMLElement {
-  const { documentRef, label, onClose, route } = input;
-  const element = documentRef.createElement("section");
-  element.className = "vehicle-span";
-  element.dataset.walkMap = "true";
-  element.setAttribute("aria-label", `${label.line} walk to ${label.destination}`);
-  const head = documentRef.createElement("div");
-  head.className = "vehicle-span__head";
-  const identity = documentRef.createElement("p");
-  identity.className = "vehicle-span__identity";
-  const line = documentRef.createElement("span");
-  line.className = "vehicle-span__line";
-  line.textContent = label.line;
-  const destination = documentRef.createElement("span");
-  destination.className = "vehicle-span__destination";
-  destination.textContent = label.destination;
-  identity.append(line, destination);
-  const closeButton = documentRef.createElement("button");
-  closeButton.className = "vehicle-span__close";
-  closeButton.dataset.walkClose = "true";
-  closeButton.type = "button";
-  closeButton.textContent = "Close";
-  closeButton.addEventListener("click", () => {
-    onClose();
-  });
-  head.append(identity, closeButton);
-  const glass = documentRef.createElement("div");
-  glass.className = "vehicle-span__glass";
-  const canvas = documentRef.createElement("div");
-  canvas.className = "vehicle-span__canvas";
-  const origin = marker(documentRef, "walkOrigin");
-  const stop = marker(documentRef, "stopMarker");
-  canvas.append(origin, stop);
-  const extent = extentOf(route.points);
-  writeExtent(glass, extent);
-  mountStreets({
-    canvas,
-    color: label.color,
-    documentRef,
-    extent,
-    points: route.points,
-    stopMarker: stop,
-  });
-  placeMarker(origin, extent, route.points[0]);
-  placeMarker(stop, extent, route.points.at(-1) ?? route.points[1]);
-  placeWalkTime({ canvas, departureMs: label.departureMs, documentRef, extent, route });
-  const credit = documentRef.createElement("p");
-  credit.className = "vehicle-span__credit";
-  appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
-  glass.append(canvas, credit);
-  element.append(head, glass);
+  element.setAttribute("role", "img");
+  element.setAttribute("aria-label", ariaLabel);
   return element;
 }
 
@@ -314,17 +204,93 @@ function placeWalkTime(input: {
   label.className = "walk-time";
   label.dataset.walkTime = "true";
   label.dataset.onTime = onTime ? "true" : "false";
-  label.dataset.lat = coord(middle.lat);
-  label.dataset.lon = coord(middle.lon);
+  label.dataset.lat = formatCoord(middle.lat);
+  label.dataset.lon = formatCoord(middle.lon);
   label.style.left = spot.left;
   label.style.top = spot.top;
   const minutes = formatWalkMinutes(input.route.seconds);
   label.style.background = WALK_FRAME;
-  label.style.border = `1px solid ${ROUTE_EDGE}`;
+  label.style.border = `1px solid ${ROUTE_EDGE_COLOR}`;
   label.style.color = onTime ? ON_TIME_COLOR : LATE_COLOR;
   label.textContent = `${onTime ? ON_TIME_MARK : LATE_MARK} ${minutes}`;
   label.setAttribute("aria-label", `${minutes}, ${onTime ? "on time" : "too late"}`);
   input.canvas.append(label);
+}
+
+function buildWalkMap(input: {
+  documentRef: Document;
+  label: HeldDeparture;
+  onClose: () => void;
+  onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
+  route: WalkRoute;
+}): { destroy: () => void; element: HTMLElement } {
+  const { documentRef, label, onClose, onSwitchToVehicle, route } = input;
+  const element = documentRef.createElement("section");
+  element.className = "vehicle-span";
+  element.dataset.walkMap = "true";
+  element.setAttribute("aria-label", `${label.line} walk to ${label.destination}`);
+  if (label.color) {
+    element.style.setProperty("--destination-color", label.color);
+  }
+
+  const switchAction: MapSwitchAction | undefined =
+    label.tripId && onSwitchToVehicle
+      ? {
+          ariaLabel: "Show live vehicle",
+          label: "Vehicle",
+          onSwitch: () => {
+            onSwitchToVehicle(label.card);
+          },
+          target: "vehicle",
+        }
+      : undefined;
+
+  const head = buildMapHeader({
+    closeAttr: "walkClose",
+    destination: label.destination,
+    documentRef,
+    line: label.line,
+    onClose,
+    switchAction,
+  });
+
+  const glass = documentRef.createElement("div");
+  glass.className = "vehicle-span__glass";
+  const canvas = documentRef.createElement("div");
+  canvas.className = "vehicle-span__canvas";
+  const origin = createMapMarker(documentRef, "walkOrigin", "Your location");
+  const stop = createMapMarker(documentRef, "stopMarker", label.destination);
+  canvas.append(origin, stop);
+
+  const extent = extentOf(route.points);
+  writeMapExtent(glass, extent);
+  mountMapStreets({
+    ariaLabel: `Walk to ${label.destination}`,
+    canvas,
+    color: label.color || undefined,
+    documentRef,
+    extent,
+    points: route.points,
+    stopMarker: stop,
+  });
+  placeMarker(origin, extent, route.points[0]);
+  placeMarker(stop, extent, route.points.at(-1) ?? route.points[1]);
+  placeWalkTime({ canvas, departureMs: label.departureMs, documentRef, extent, route });
+
+  const credit = documentRef.createElement("p");
+  credit.className = "vehicle-span__credit";
+  appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
+  glass.append(canvas, credit);
+  element.append(head, glass);
+
+  const interactive = attachInteractiveMap({ canvas, documentRef, glass, onClose });
+  return {
+    destroy() {
+      interactive.destroy();
+      element.remove();
+    },
+    element,
+  };
 }
 
 function failureElement(documentRef: Document): HTMLElement {
@@ -336,8 +302,28 @@ function failureElement(documentRef: Document): HTMLElement {
   return note;
 }
 
-function sameProjection(mounted: WalkProjection | null, id: WalkAttemptId, kind: WalkProjection["kind"]): boolean {
+function sameProjection(
+  mounted: WalkProjection | null,
+  id: WalkAttemptId,
+  kind: WalkProjection["kind"],
+): boolean {
   return mounted?.id === id && mounted.kind === kind;
+}
+
+function clearCardWalkState(card: HTMLTableRowElement | null): void {
+  if (!card) {
+    return;
+  }
+  delete card.dataset.walkLoading;
+  delete card.dataset.mapActive;
+}
+
+function teardownProjection(mounted: WalkProjection | null): void {
+  if (!mounted) {
+    return;
+  }
+  delete mounted.card.dataset.mapActive;
+  mounted.destroy();
 }
 
 function projectWalk(input: {
@@ -345,35 +331,52 @@ function projectWalk(input: {
   readonly documentRef: Document;
   readonly mounted: WalkProjection | null;
   readonly onClose: () => void;
+  readonly onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   readonly table: HTMLTableElement;
 }): WalkProjection | null {
   const { attempt, mounted } = input;
   if (attempt.status === "idle" || attempt.status === "pending") {
-    mounted?.element.remove();
+    teardownProjection(mounted);
     return null;
   }
   if (attempt.status === "failed") {
     if (sameProjection(mounted, attempt.id, "status")) {
       return mounted;
     }
-    mounted?.element.remove();
+    teardownProjection(mounted);
     const element = failureElement(input.documentRef);
     input.table.before(element);
-    return { element, id: attempt.id, kind: "status" };
+    return {
+      card: attempt.label.card,
+      destroy() {
+        element.remove();
+      },
+      element,
+      id: attempt.id,
+      kind: "status",
+    };
   }
   if (sameProjection(mounted, attempt.id, "map")) {
     return mounted;
   }
-  mounted?.element.remove();
-  const element = walkMapElement({
+  teardownProjection(mounted);
+  const built = buildWalkMap({
     documentRef: input.documentRef,
     label: attempt.label,
     onClose: input.onClose,
+    onSwitchToVehicle: input.onSwitchToVehicle,
     route: attempt.route,
   });
-  input.table.before(element);
-  element.scrollIntoView({ block: "start" });
-  return { element, id: attempt.id, kind: "map" };
+  input.table.before(built.element);
+  attempt.label.card.dataset.mapActive = "true";
+  scrollMapIntoView(built.element, input.documentRef);
+  return {
+    card: attempt.label.card,
+    destroy: built.destroy,
+    element: built.element,
+    id: attempt.id,
+    kind: "map",
+  };
 }
 
 function departureFrom(target: EventTarget | null): HeldDeparture | null {
@@ -389,16 +392,14 @@ function departureFrom(target: EventTarget | null): HeldDeparture | null {
     return null;
   }
   return {
+    card: row,
     color: row.style.getPropertyValue("--destination-color"),
     departureMs: Date.parse(row.querySelector("time")?.getAttribute("datetime") ?? ""),
     destination: row.dataset.destination ?? "",
     line: row.dataset.line ?? "",
     stopId,
+    tripId: row.dataset.tripId?.trim() ?? "",
   };
-}
-
-function labelFrom(event: PointerEvent): HeldDeparture | null {
-  return departureFrom(event.target);
 }
 
 function refuseCardSelection(event: Event): void {
@@ -426,6 +427,7 @@ function movedPastSlop(arm: Arm, event: PointerEvent): boolean {
 
 function bindHold(input: {
   beginWalk(label: HeldDeparture): void;
+  canWalk(): boolean;
   scheduleHold: HoldScheduler;
   table: HTMLTableElement;
 }): { disarm(): void } {
@@ -440,7 +442,10 @@ function bindHold(input: {
   }
 
   function disarm(): void {
-    arm?.cancelTimer();
+    if (arm) {
+      delete arm.label.card.dataset.holdActive;
+      arm.cancelTimer();
+    }
     arm = null;
     unlisten();
   }
@@ -476,6 +481,9 @@ function bindHold(input: {
   }
 
   function armHold(label: HeldDeparture, event: PointerEvent): void {
+    if (input.canWalk()) {
+      label.card.dataset.holdActive = "true";
+    }
     arm = {
       cancelTimer: input.scheduleHold(HOLD_MS, () => {
         fire(label);
@@ -493,7 +501,7 @@ function bindHold(input: {
       return;
     }
     swallowNextClick = false;
-    const label = labelFrom(event);
+    const label = departureFrom(event.target);
     if (!label) {
       return;
     }
@@ -554,9 +562,17 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
+function restoreCardFocus(card: HTMLTableRowElement | null): void {
+  if (!card?.isConnected) {
+    return;
+  }
+  card.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
 export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
   let attempt: WalkAttempt = { status: "idle" };
   let mounted: WalkProjection | null = null;
+  let loadingCard: HTMLTableRowElement | null = null;
   let requestedId: WalkAttemptId | null = null;
   let flight: AbortController | null = null;
   const scheduleHold = input.scheduleHold ?? defaultHoldScheduler;
@@ -566,22 +582,45 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     flight = null;
   }
 
+  function syncLoadingCard(): void {
+    const nextLoading = attempt.status === "pending" ? attempt.label.card : null;
+    if (loadingCard && loadingCard !== nextLoading) {
+      delete loadingCard.dataset.walkLoading;
+    }
+    loadingCard = nextLoading;
+    if (loadingCard) {
+      loadingCard.dataset.walkLoading = "true";
+    }
+  }
+
+  function closeWithFocus(): void {
+    close({ restoreFocus: true });
+  }
+
   function apply(command: WalkCommand): void {
     attempt = reduceWalk(attempt, command);
+    syncLoadingCard();
     mounted = projectWalk({
       attempt,
       documentRef: input.documentRef,
       mounted,
-      onClose: close,
+      onClose: closeWithFocus,
+      onSwitchToVehicle: input.onSwitchToVehicle,
       table: input.table,
     });
   }
 
-  function close(): void {
+  function close(options?: { restoreFocus?: boolean }): void {
+    const cardToFocus = options?.restoreFocus ? (mounted?.card ?? loadingCard) : null;
     hold.disarm();
+    clearCardWalkState(loadingCard);
+    loadingCard = null;
     apply({ type: "close" });
     requestedId = null;
     abortInFlight();
+    if (cardToFocus) {
+      restoreCardFocus(cardToFocus);
+    }
   }
 
   function loadWalk(request: WalkRequest, signal: AbortSignal): Promise<WalkRoute | null> {
@@ -623,6 +662,20 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     );
   }
 
-  const hold = bindHold({ beginWalk, scheduleHold, table: input.table });
-  return { close };
+  const hold = bindHold({
+    beginWalk,
+    canWalk: () => usableOrigin(input.readCoords()),
+    scheduleHold,
+    table: input.table,
+  });
+
+  return {
+    close,
+    openForCard(card) {
+      const label = departureFrom(card);
+      if (label) {
+        beginWalk(label);
+      }
+    },
+  };
 }

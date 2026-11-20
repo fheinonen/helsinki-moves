@@ -1,4 +1,5 @@
 import { formatDigitransitCredit } from "@client/app/digitransit-credit";
+import { scrollMapIntoView } from "@client/features/map/map-chrome";
 import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-credit";
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
@@ -371,20 +372,38 @@ function createDeparturesTableView(
   };
 }
 
+function restoreDepartureFocus(card: HTMLTableRowElement | null): void {
+  if (!card?.isConnected) {
+    return;
+  }
+  card.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
 function createVehicleSpanSession(input: {
+  canWalk(): boolean;
   documentRef: Document;
+  onSwitchToWalk(card: HTMLTableRowElement): void;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
-}): { close(): void; press(card: HTMLTableRowElement): void } {
+}): { close(options?: { restoreFocus?: boolean }): void; press(card: HTMLTableRowElement): void } {
+  let activeCard: HTMLTableRowElement | null = null;
   let map: VehicleSpanMap | null = null;
   let stopStream: (() => void) | null = null;
   const openVehicleSpan = input.openVehicleSpan ?? openVehicleSpanStream;
 
-  const close = () => {
+  const close = (options?: { restoreFocus?: boolean }) => {
+    const cardToFocus = options?.restoreFocus ? activeCard : null;
+    if (activeCard) {
+      delete activeCard.dataset.mapActive;
+    }
+    activeCard = null;
     stopStream?.();
     stopStream = null;
     map?.close();
     map = null;
+    if (cardToFocus) {
+      restoreDepartureFocus(cardToFocus);
+    }
   };
 
   return {
@@ -395,13 +414,24 @@ function createVehicleSpanSession(input: {
       if (!tripId || !stopId) {
         return;
       }
+      if (activeCard === card && map) {
+        close();
+        return;
+      }
       close();
       const nextMap = createVehicleSpanMap({
         destination: card.dataset.destination || "",
         destinationColor: card.style.getPropertyValue("--destination-color") || undefined,
         documentRef: input.documentRef,
         line: card.dataset.line || "",
-        onClose: close,
+        onClose: () => {
+          close({ restoreFocus: true });
+        },
+        onSwitchToWalk: input.canWalk()
+          ? () => {
+              input.onSwitchToWalk(card);
+            }
+          : undefined,
       });
       const table = input.root.querySelector(".app-shell__departures-table");
       if (table) {
@@ -409,7 +439,9 @@ function createVehicleSpanSession(input: {
       } else {
         input.root.append(nextMap.element);
       }
-      nextMap.element.scrollIntoView?.({ block: "start" });
+      card.dataset.mapActive = "true";
+      activeCard = card;
+      scrollMapIntoView(nextMap.element, input.documentRef);
       map = nextMap;
       stopStream = openVehicleSpan({
         onEvent(event) {
@@ -591,12 +623,20 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.dataset.stationTitle = "true";
   stationTitle.hidden = true;
 
+  let walk!: WalkSession;
+  const hasUsableCoords = () => {
+    const coords = store.getState().coords;
+    return coords != null && Number.isFinite(coords.lat) && Number.isFinite(coords.lon);
+  };
   const vehicleSpan = createVehicleSpanSession({
+    canWalk: hasUsableCoords,
     documentRef,
+    onSwitchToWalk: (card) => {
+      walk.openForCard(card);
+    },
     openVehicleSpan: options.openVehicleSpan,
     root,
   });
-  let walk!: WalkSession;
   const departuresTableView = createDeparturesTableView(documentRef, (card) => {
     walk.close();
     vehicleSpan.press(card);
@@ -607,6 +647,10 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     },
     documentRef,
     fetchWalk: options.fetchWalk,
+    onSwitchToVehicle: (card) => {
+      walk.close();
+      vehicleSpan.press(card);
+    },
     readCoords: () => store.getState().coords,
     scheduleHold: options.scheduleHold,
     table: departuresTableView.element,

@@ -1,5 +1,7 @@
+import { attachInteractiveMap } from "@client/features/map/interactive-map";
+import { buildMapHeader, formatCoord, mountMapStreets, writeMapExtent } from "@client/features/map/map-chrome";
 import { appendOsmCredit, OSM_MAP_CREDIT } from "@client/features/map/osm-credit";
-import { frameAspect, placeOnMap, streetTilesForFrame } from "@shared/domain/street-map";
+import { placeOnMap } from "@shared/domain/street-map";
 import {
   applyVehicleSpanEvent,
   closedVehicleSpan,
@@ -15,6 +17,7 @@ interface VehicleSpanMapOptions {
   documentRef: Document;
   line: string;
   onClose: () => void;
+  onSwitchToWalk?: () => void;
 }
 
 export interface VehicleSpanMap {
@@ -23,37 +26,10 @@ export interface VehicleSpanMap {
   element: HTMLElement;
 }
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-const ROUTE_EDGE = "#161616";
-
-function coord(value: number): string {
-  return value.toFixed(6);
-}
-
 function place(marker: HTMLElement, frame: VehicleSpanFrame, point: GeoPoint): void {
   const spot = placeOnMap(frame, point);
   marker.style.left = spot.left;
   marker.style.top = spot.top;
-}
-
-function writeFrame(glass: HTMLElement, frame: VehicleSpanFrame): void {
-  glass.dataset.east = coord(frame.east);
-  glass.dataset.north = coord(frame.north);
-  glass.dataset.south = coord(frame.south);
-  glass.dataset.west = coord(frame.west);
-}
-
-function routeLabel(frame: VehicleSpanFrame): string {
-  return frame.route.map((point) => `${coord(point.lat)} ${coord(point.lon)}`).join(" ");
-}
-
-function routePoints(frame: VehicleSpanFrame): string {
-  return frame.route
-    .map((point) => {
-      const spot = placeOnMap(frame, point);
-      return `${Number.parseFloat(spot.left)},${Number.parseFloat(spot.top)}`;
-    })
-    .join(" ");
 }
 
 function clearStreets(glass: HTMLElement): void {
@@ -62,86 +38,31 @@ function clearStreets(glass: HTMLElement): void {
   }
 }
 
-function fitCanvas(canvas: HTMLElement, frame: VehicleSpanFrame): void {
-  const aspect = frameAspect(frame);
-  canvas.style.aspectRatio = String(aspect);
-  canvas.style.setProperty("--map-aspect", String(aspect));
-}
-
-function mountStreets(input: {
-  canvas: HTMLElement;
-  destination: string;
-  destinationColor?: string;
-  documentRef: Document;
-  frame: VehicleSpanFrame;
-  stopMarker: HTMLElement;
-}): void {
-  const { canvas, destinationColor, documentRef, frame, stopMarker } = input;
-  fitCanvas(canvas, frame);
-  for (const tile of streetTilesForFrame(frame)) {
-    const image = documentRef.createElement("img");
-    image.alt = "";
-    image.className = "vehicle-span__tile";
-    image.dataset.streetTile = "true";
-    image.decoding = "async";
-    image.src = tile.src;
-    image.style.height = tile.height;
-    image.style.left = tile.left;
-    image.style.top = tile.top;
-    image.style.width = tile.width;
-    canvas.insertBefore(image, stopMarker);
-  }
-
-  const svg = documentRef.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("class", "vehicle-span__route");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `Route to ${input.destination}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("viewBox", "0 0 100 100");
-  const points = routePoints(frame);
-  const edge = documentRef.createElementNS(SVG_NS, "polyline");
-  edge.setAttribute("data-route-casing", "true");
-  edge.setAttribute("points", points);
-  edge.setAttribute("stroke-width", "6");
-  edge.setAttribute("vector-effect", "non-scaling-stroke");
-  edge.style.stroke = ROUTE_EDGE;
-  const line = documentRef.createElementNS(SVG_NS, "polyline");
-  line.setAttribute("data-route-span", routeLabel(frame));
-  line.setAttribute("points", points);
-  line.setAttribute("stroke-width", "4");
-  line.setAttribute("vector-effect", "non-scaling-stroke");
-  if (destinationColor) {
-    line.style.stroke = destinationColor;
-  }
-  svg.append(edge, line);
-  canvas.insertBefore(svg, stopMarker);
-}
-
 export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpanMap {
-  const { destination, destinationColor, documentRef, line, onClose } = options;
+  const { destination, destinationColor, documentRef, line, onClose, onSwitchToWalk } = options;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.vehicleMap = "true";
   element.setAttribute("aria-label", `${line} to ${destination}`);
+  if (destinationColor) {
+    element.style.setProperty("--destination-color", destinationColor);
+  }
 
-  const head = documentRef.createElement("div");
-  head.className = "vehicle-span__head";
-  const identity = documentRef.createElement("p");
-  identity.className = "vehicle-span__identity";
-  const lineText = documentRef.createElement("span");
-  lineText.className = "vehicle-span__line";
-  lineText.textContent = line;
-  const destinationText = documentRef.createElement("span");
-  destinationText.className = "vehicle-span__destination";
-  destinationText.textContent = destination;
-  identity.append(lineText, destinationText);
-
-  const closeButton = documentRef.createElement("button");
-  closeButton.className = "vehicle-span__close";
-  closeButton.dataset.vehicleSpanClose = "true";
-  closeButton.type = "button";
-  closeButton.textContent = "Close";
-  head.append(identity, closeButton);
+  const head = buildMapHeader({
+    closeAttr: "vehicleSpanClose",
+    destination,
+    documentRef,
+    line,
+    onClose,
+    switchAction: onSwitchToWalk
+      ? {
+          ariaLabel: "Show walking route",
+          label: "Walk",
+          onSwitch: onSwitchToWalk,
+          target: "walk",
+        }
+      : undefined,
+  });
 
   const glass = documentRef.createElement("div");
   glass.className = "vehicle-span__glass";
@@ -150,11 +71,13 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   status.className = "vehicle-span__status";
   status.dataset.vehicleStatus = "true";
   status.textContent = "Finding the vehicle";
+
   const stopMarker = documentRef.createElement("span");
   stopMarker.className = "vehicle-span__stop";
   stopMarker.dataset.stopMarker = "true";
   stopMarker.setAttribute("role", "img");
   stopMarker.setAttribute("aria-label", destination);
+
   const vehicleMarker = documentRef.createElement("span");
   vehicleMarker.className = "vehicle-span__vehicle";
   vehicleMarker.dataset.vehicleMarker = "true";
@@ -162,9 +85,11 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   if (destinationColor) {
     vehicleMarker.style.background = destinationColor;
   }
+
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
   appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
+
   const canvas = documentRef.createElement("div");
   canvas.className = "vehicle-span__canvas";
   canvas.dataset.vehicleCanvas = "true";
@@ -172,16 +97,30 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   glass.append(status, canvas, credit);
   element.append(head, glass);
 
+  const interactive = attachInteractiveMap({ canvas, documentRef, glass, onClose });
   let view = closedVehicleSpan();
+  let hasVehicleFix = false;
 
   const showStop = (stop: GeoPoint) => {
     const frame = frameVehicleSpan(stop, stop);
     clearStreets(glass);
-    writeFrame(glass, frame);
-    mountStreets({ canvas, destination, destinationColor, documentRef, frame, stopMarker });
+    writeMapExtent(glass, frame);
+    mountMapStreets({
+      ariaLabel: `Route to ${destination}`,
+      canvas,
+      color: destinationColor,
+      documentRef,
+      extent: frame,
+      points: frame.route,
+      stopMarker,
+    });
     place(stopMarker, frame, stop);
+    delete glass.dataset.vehicleLive;
+    delete vehicleMarker.dataset.gliding;
     delete vehicleMarker.dataset.lat;
     delete vehicleMarker.dataset.lon;
+    hasVehicleFix = false;
+    interactive.reset();
     element.hidden = false;
   };
 
@@ -198,31 +137,35 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
       }
       if (!hadFrame) {
         clearStreets(glass);
-        writeFrame(glass, view.frame);
-        mountStreets({
+        writeMapExtent(glass, view.frame);
+        mountMapStreets({
+          ariaLabel: `Route to ${destination}`,
           canvas,
-          destination,
-          destinationColor,
+          color: destinationColor,
           documentRef,
-          frame: view.frame,
+          extent: view.frame,
+          points: view.frame.route,
           stopMarker,
         });
         place(stopMarker, view.frame, view.frame.stop);
+        interactive.reset();
       }
+      if (hasVehicleFix) {
+        vehicleMarker.dataset.gliding = "true";
+      }
+      hasVehicleFix = true;
+      glass.dataset.vehicleLive = "true";
       place(vehicleMarker, view.frame, view.vehicle);
-      vehicleMarker.dataset.lat = coord(view.vehicle.lat);
-      vehicleMarker.dataset.lon = coord(view.vehicle.lon);
+      vehicleMarker.dataset.lat = formatCoord(view.vehicle.lat);
+      vehicleMarker.dataset.lon = formatCoord(view.vehicle.lon);
       element.hidden = false;
     },
     close() {
+      interactive.destroy();
       element.remove();
     },
     element,
   };
-
-  closeButton.addEventListener("click", () => {
-    onClose();
-  });
 
   return map;
 }

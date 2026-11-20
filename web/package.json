@@ -16,6 +16,7 @@
     "env:check": "node tools/check-runtime-env.mjs",
     "lint": "npm run check:syntax",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "review": "node tools/review-change.mts",
     "perf:bundle": "npm run build && node tools/check-bundle-budgets.mjs",
     "release:validate": "npm run env:check && npm run check:syntax && npm run test:unit && npm run ui:perf && npm run ui:flicker && npm run perf:bundle && npm run ui:check && npx playwright test tests/e2e/voice-search.spec.ts --project=chromium && npx playwright test tests/e2e/voice-search.spec.ts --project=mobile-chromium",
     "smoke:live": "playwright test -c playwright.smoke.config.ts",
@@ -37,6 +38,9 @@
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.json && tsc --noEmit --pretty false -p tsconfig.server.json && tsc --noEmit --pretty false -p tsconfig.tests.json"
   },
   "devDependencies": {
+    "@lezer/common": "^1.5.5",
+    "@lezer/javascript": "^1.5.6",
+    "@lezer/python": "^1.1.19",
     "@playwright/test": "1.64.1",
     "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^5.0.5",

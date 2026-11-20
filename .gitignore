@@ -1,4 +1,5 @@
 .DS_Store
+.jj/
 web/.env
 web/.vercel
 web/playwright-report/

@@ -46,6 +46,10 @@ Must stay:
 - browser-agnostic
 - server-agnostic
 
+## `review/`
+
+`review/` runs Aroma over TypeScript source. `reviewChanges` reports methods that already contain code like a change, and the lines those methods share beyond the change. The Hono app does not import it, and Vite does not bundle it.
+
 ## Import Direction
 
 - `client -> shared`

@@ -2,11 +2,14 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "target": "ES2025",
-    "lib": ["ES2025"]
+    "lib": ["ES2025"],
+    "allowImportingTsExtensions": true
   },
   "include": [
     "api/**/*.ts",
     "src/server/**/*.ts",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "src/review/**/*.ts",
+    "tools/review-change.mts"
   ]
 }

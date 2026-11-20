@@ -1100,6 +1100,11 @@ Feature: Vehicle span map
           assert.equal(edge?.style.stroke, probe?.style.color);
           assert.equal(edge?.getAttribute("points"), span?.getAttribute("points") ?? null);
           assert.equal(edge?.nextElementSibling, span ?? null);
+          assert.equal(edge?.getAttribute("vector-effect"), "non-scaling-stroke");
+          assert.equal(span?.getAttribute("vector-effect"), "non-scaling-stroke");
+          assert.equal(edge?.getAttribute("stroke-width"), "6");
+          assert.equal(span?.getAttribute("stroke-width"), "4");
+          assert.equal(edge?.style.strokeWidth, "");
         },
       },
       {

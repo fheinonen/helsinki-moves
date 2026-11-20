@@ -15,8 +15,10 @@ interface VehicleSpanMapOptions {
   destination: string;
   destinationColor?: string;
   documentRef: Document;
+  initialExpanded?: boolean;
   line: string;
   onClose: () => void;
+  onExpandedChange?: (expanded: boolean) => void;
   onSwitchToWalk?: () => void;
 }
 
@@ -39,7 +41,16 @@ function clearStreets(glass: HTMLElement): void {
 }
 
 export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpanMap {
-  const { destination, destinationColor, documentRef, line, onClose, onSwitchToWalk } = options;
+  const {
+    destination,
+    destinationColor,
+    documentRef,
+    initialExpanded,
+    line,
+    onClose,
+    onExpandedChange,
+    onSwitchToWalk,
+  } = options;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.vehicleMap = "true";
@@ -97,7 +108,14 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
   glass.append(status, canvas, credit);
   element.append(head, glass);
 
-  const interactive = attachInteractiveMap({ canvas, documentRef, glass, onClose });
+  const interactive = attachInteractiveMap({
+    canvas,
+    documentRef,
+    glass,
+    initialExpanded,
+    onClose,
+    onExpandedChange,
+  });
   let view = closedVehicleSpan();
   let hasVehicleFix = false;
 

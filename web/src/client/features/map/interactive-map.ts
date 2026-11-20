@@ -24,7 +24,9 @@ interface AttachInteractiveMapInput {
   canvas: HTMLElement;
   documentRef: Document;
   glass: HTMLElement;
+  initialExpanded?: boolean;
   onClose: () => void;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 interface MapControlButtons {
@@ -142,11 +144,11 @@ function panOffsetForKey(key: string): MapPoint | null {
 }
 
 export function attachInteractiveMap(input: AttachInteractiveMapInput): InteractiveMapController {
-  const { canvas, documentRef, glass, onClose } = input;
+  const { canvas, documentRef, glass, initialExpanded = false, onClose, onExpandedChange } = input;
   const controls = createMapControls(documentRef);
   const pointers = new Map<number, MapPoint>();
   let camera: MapCamera = createMapCamera();
-  let expanded = false;
+  let expanded = initialExpanded;
 
   glass.tabIndex = 0;
   glass.append(controls.container);
@@ -285,6 +287,12 @@ export function attachInteractiveMap(input: AttachInteractiveMapInput): Interact
     }
   }
 
+  function syncExpanded(): void {
+    glass.classList.toggle("is-expanded", expanded);
+    controls.expand.setAttribute("aria-pressed", String(expanded));
+    controls.expand.setAttribute("aria-label", expanded ? "Collapse map" : "Expand map");
+  }
+
   controls.zoomIn.addEventListener("click", () => {
     setCamera(stepMapCameraZoom(camera, "in", viewportOf(glass)));
   });
@@ -296,9 +304,8 @@ export function attachInteractiveMap(input: AttachInteractiveMapInput): Interact
   });
   controls.expand.addEventListener("click", () => {
     expanded = !expanded;
-    glass.classList.toggle("is-expanded", expanded);
-    controls.expand.setAttribute("aria-pressed", String(expanded));
-    controls.expand.setAttribute("aria-label", expanded ? "Collapse map" : "Expand map");
+    syncExpanded();
+    onExpandedChange?.(expanded);
   });
 
   glass.addEventListener("dblclick", onDoubleClick);
@@ -311,6 +318,7 @@ export function attachInteractiveMap(input: AttachInteractiveMapInput): Interact
   documentRef.addEventListener("keydown", onDocumentKeyDown);
 
   syncCamera();
+  syncExpanded();
 
   return {
     destroy() {

@@ -296,13 +296,17 @@ Feature: Fluid vehicle map and walking route screens in browser
       },
       {
         pattern: /^Then the walking route screen renders origin, stop, route, and on-time badge inside the shell$/,
-        run: async ({ assert, fixtures }) => {
+        run: async ({ assert, fixtures, world }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           const shellBox = await page.locator(".app-shell").boundingBox();
           const walkBox = await page.locator("[data-walk-map='true']").boundingBox();
-          assert.equal(Boolean(shellBox && walkBox), true);
+          const walkGlassBox = await page.locator("[data-walk-map='true'] .vehicle-span__glass").boundingBox();
+          assert.equal(Boolean(shellBox && walkBox && walkGlassBox), true);
           assert.equal((walkBox?.x ?? 0) >= (shellBox?.x ?? 0), true);
           assert.equal((walkBox?.x ?? 0) + (walkBox?.width ?? 0) <= (shellBox?.x ?? 0) + (shellBox?.width ?? 0), true);
+          if (world.expandedGlassHeight) {
+            assert.equal((walkGlassBox?.height ?? 0) >= world.expandedGlassHeight - 2, true);
+          }
           assert.equal(await page.locator("[data-walk-origin='true']").isVisible(), true);
           assert.equal(await page.locator("[data-walk-map='true'] [data-stop-marker='true']").isVisible(), true);
           assert.equal(await page.locator("[data-walk-time='true']").textContent(), "✓ 6 min");
@@ -311,10 +315,14 @@ Feature: Fluid vehicle map and walking route screens in browser
       },
       {
         pattern: /^When the user switches directly back to the vehicle map and presses Escape$/,
-        run: async ({ fixtures }) => {
+        run: async ({ assert, fixtures, world }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator("[data-map-switch='vehicle']").click();
           await page.locator("[data-vehicle-map='true']").waitFor({ state: "visible" });
+          const vehicleGlassBox = await page.locator("[data-vehicle-glass]").boundingBox();
+          if (world.expandedGlassHeight) {
+            assert.equal((vehicleGlassBox?.height ?? 0) >= world.expandedGlassHeight - 2, true);
+          }
           await page.keyboard.press("Escape");
         },
       },

@@ -336,6 +336,17 @@ Feature: Fluid vehicle map and walking route screens
     Then the open map returns to the fitted span
     When pointer interactions start on map controls or outside drag
     Then the open map ignores spurious drags and stays at 1x zoom
+
+  Scenario: Switching between the vehicle map and walking route preserves the expanded view
+    Given a departure board with line 550 to Kamppi and user coordinates
+    And the vehicle map is open on the live vehicle
+    When the user expands the open map
+    And the user switches from the vehicle map to the walking route
+    Then the open map stays expanded
+    When the user switches from the walking route to the vehicle map
+    Then the open map stays expanded
+    When the user closes the open map and reopens the vehicle map
+    Then the open map starts at its default height
   `,
   {
     createWorld,
@@ -717,6 +728,43 @@ Feature: Fluid vehicle map and walking route screens
           assert.equal(readZoom(world.root), 1);
           assert.equal(readPan(world.root).x, 0);
           assert.equal(readPan(world.root).y, 0);
+        },
+      },
+      {
+        pattern: /^When the user expands the open map$/,
+        run({ world }) {
+          const expand = world.root?.querySelector<HTMLButtonElement>("[data-map-expand]");
+          if (!expand) {
+            throw new Error("Expected expand control");
+          }
+          expand.click();
+        },
+      },
+      {
+        pattern: /^Then the open map stays expanded$/,
+        run({ assert, world }) {
+          const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
+          const expand = world.root?.querySelector<HTMLButtonElement>("[data-map-expand]");
+          assert.equal(glass?.classList.contains("is-expanded"), true);
+          assert.equal(expand?.getAttribute("aria-pressed"), "true");
+          assert.equal(expand?.getAttribute("aria-label"), "Collapse map");
+        },
+      },
+      {
+        pattern: /^When the user closes the open map and reopens the vehicle map$/,
+        run({ world }) {
+          world.root?.querySelector<HTMLButtonElement>("[data-vehicle-span-close]")?.click();
+          openVehicleLive(world);
+        },
+      },
+      {
+        pattern: /^Then the open map starts at its default height$/,
+        run({ assert, world }) {
+          const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
+          const expand = world.root?.querySelector<HTMLButtonElement>("[data-map-expand]");
+          assert.equal(glass?.classList.contains("is-expanded"), false);
+          assert.equal(expand?.getAttribute("aria-pressed"), "false");
+          assert.equal(expand?.getAttribute("aria-label"), "Expand map");
         },
       },
     ],

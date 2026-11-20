@@ -40,7 +40,10 @@ export interface CreateWalkSessionInput {
   closeVehicle(): void;
   documentRef: Document;
   fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
+  isExpanded?: () => boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
+  onUserClose?: () => void;
   readCoords(): GeoPoint | null;
   scheduleHold?: HoldScheduler;
   table: HTMLTableElement;
@@ -219,12 +222,14 @@ function placeWalkTime(input: {
 
 function buildWalkMap(input: {
   documentRef: Document;
+  initialExpanded?: boolean;
   label: HeldDeparture;
   onClose: () => void;
+  onExpandedChange?: (expanded: boolean) => void;
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   route: WalkRoute;
 }): { destroy: () => void; element: HTMLElement } {
-  const { documentRef, label, onClose, onSwitchToVehicle, route } = input;
+  const { documentRef, initialExpanded, label, onClose, onExpandedChange, onSwitchToVehicle, route } = input;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.walkMap = "true";
@@ -283,7 +288,14 @@ function buildWalkMap(input: {
   glass.append(canvas, credit);
   element.append(head, glass);
 
-  const interactive = attachInteractiveMap({ canvas, documentRef, glass, onClose });
+  const interactive = attachInteractiveMap({
+    canvas,
+    documentRef,
+    glass,
+    initialExpanded,
+    onClose,
+    onExpandedChange,
+  });
   return {
     destroy() {
       interactive.destroy();
@@ -329,8 +341,10 @@ function teardownProjection(mounted: WalkProjection | null): void {
 function projectWalk(input: {
   readonly attempt: WalkAttempt;
   readonly documentRef: Document;
+  readonly initialExpanded?: boolean;
   readonly mounted: WalkProjection | null;
   readonly onClose: () => void;
+  readonly onExpandedChange?: (expanded: boolean) => void;
   readonly onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   readonly table: HTMLTableElement;
 }): WalkProjection | null {
@@ -362,8 +376,10 @@ function projectWalk(input: {
   teardownProjection(mounted);
   const built = buildWalkMap({
     documentRef: input.documentRef,
+    initialExpanded: input.initialExpanded,
     label: attempt.label,
     onClose: input.onClose,
+    onExpandedChange: input.onExpandedChange,
     onSwitchToVehicle: input.onSwitchToVehicle,
     route: attempt.route,
   });
@@ -594,6 +610,7 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
   }
 
   function closeWithFocus(): void {
+    input.onUserClose?.();
     close({ restoreFocus: true });
   }
 
@@ -603,8 +620,10 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     mounted = projectWalk({
       attempt,
       documentRef: input.documentRef,
+      initialExpanded: input.isExpanded?.(),
       mounted,
       onClose: closeWithFocus,
+      onExpandedChange: input.onExpandedChange,
       onSwitchToVehicle: input.onSwitchToVehicle,
       table: input.table,
     });

@@ -382,7 +382,10 @@ function restoreDepartureFocus(card: HTMLTableRowElement | null): void {
 function createVehicleSpanSession(input: {
   canWalk(): boolean;
   documentRef: Document;
+  isExpanded(): boolean;
+  onExpandedChange(expanded: boolean): void;
   onSwitchToWalk(card: HTMLTableRowElement): void;
+  onUserClose(): void;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
 }): { close(options?: { restoreFocus?: boolean }): void; press(card: HTMLTableRowElement): void } {
@@ -415,6 +418,7 @@ function createVehicleSpanSession(input: {
         return;
       }
       if (activeCard === card && map) {
+        input.onUserClose();
         close();
         return;
       }
@@ -423,10 +427,13 @@ function createVehicleSpanSession(input: {
         destination: card.dataset.destination || "",
         destinationColor: card.style.getPropertyValue("--destination-color") || undefined,
         documentRef: input.documentRef,
+        initialExpanded: input.isExpanded(),
         line: card.dataset.line || "",
         onClose: () => {
+          input.onUserClose();
           close({ restoreFocus: true });
         },
+        onExpandedChange: input.onExpandedChange,
         onSwitchToWalk: input.canWalk()
           ? () => {
               input.onSwitchToWalk(card);
@@ -624,6 +631,14 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.hidden = true;
 
   let walk!: WalkSession;
+  let mapExpanded = false;
+  const resetMapExpanded = () => {
+    mapExpanded = false;
+  };
+  const setMapExpanded = (expanded: boolean) => {
+    mapExpanded = expanded;
+  };
+  const isMapExpanded = () => mapExpanded;
   const hasUsableCoords = () => {
     const coords = store.getState().coords;
     return coords != null && Number.isFinite(coords.lat) && Number.isFinite(coords.lon);
@@ -631,9 +646,12 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   const vehicleSpan = createVehicleSpanSession({
     canWalk: hasUsableCoords,
     documentRef,
+    isExpanded: isMapExpanded,
+    onExpandedChange: setMapExpanded,
     onSwitchToWalk: (card) => {
       walk.openForCard(card);
     },
+    onUserClose: resetMapExpanded,
     openVehicleSpan: options.openVehicleSpan,
     root,
   });
@@ -647,15 +665,19 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     },
     documentRef,
     fetchWalk: options.fetchWalk,
+    isExpanded: isMapExpanded,
+    onExpandedChange: setMapExpanded,
     onSwitchToVehicle: (card) => {
       walk.close();
       vehicleSpan.press(card);
     },
+    onUserClose: resetMapExpanded,
     readCoords: () => store.getState().coords,
     scheduleHold: options.scheduleHold,
     table: departuresTableView.element,
   });
   const closeMaps = () => {
+    resetMapExpanded();
     walk.close();
     vehicleSpan.close();
   };

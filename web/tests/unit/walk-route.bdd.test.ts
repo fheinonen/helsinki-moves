@@ -60,6 +60,7 @@ interface World {
   serverStatus: number;
   store?: AppStore;
   leavesInMinutes: number | null;
+  openMap: HTMLElement | null;
   tripId: string;
   walkSeconds: number;
   upstreamKeys: string[];
@@ -85,6 +86,7 @@ function createWorld(): World {
     holdDelay: null,
     hung: [],
     leavesInMinutes: null,
+    openMap: null,
     planBodies: [],
     planner: "walk",
     scrolls: 0,
@@ -453,6 +455,37 @@ Feature: Walking route from a held departure
     Then the vehicle map is open
     And no walk was requested
 
+  Scenario: Holding a departure while its walk map is open keeps that same map open.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And the person is at latitude 60.1706 and longitude 24.9414
+    When the card is held
+    And the route arrives
+    Then the walk map shows the route points
+    When the user holds the departure for the open map
+    And the following click lands
+    Then the same walk map stays open
+    And the vehicle map stays closed
+    And no walk was requested
+
+  Scenario: Holding a departure while its vehicle map is open keeps that same map open.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And the person is at latitude 60.1706 and longitude 24.9414
+    When the card is pressed briefly
+    Then the vehicle map is open
+    When the user holds the departure for the open map
+    And the following click lands
+    Then the same vehicle map stays open
+    And no walk was requested
+
+  Scenario: A short press while the walk map is open opens the vehicle map.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And the person is at latitude 60.1706 and longitude 24.9414
+    When the card is held
+    And the route arrives
+    Then the walk map shows the route points
+    When the card is pressed briefly
+    Then the vehicle map is open
+
   Scenario: Changing mode removes the walk map.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
     And the person is at latitude 60.1706 and longitude 24.9414
@@ -668,6 +701,17 @@ Feature: Walking route from a held departure
       {
         pattern: /^When the card is held$/,
         run({ world }) {
+          holdCard(world);
+        },
+      },
+      {
+        pattern: /^When the user holds the departure for the open map$/,
+        run({ world }) {
+          world.openMap =
+            walkMap(world) ?? world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']") ?? null;
+          if (!world.openMap) {
+            throw new Error("Expected an open map");
+          }
           holdCard(world);
         },
       },
@@ -902,6 +946,25 @@ Feature: Walking route from a held departure
         pattern: /^Then the walk map shows the route points$/,
         run({ assert, world }) {
           assertShownRoute(assert, world);
+        },
+      },
+      {
+        pattern: /^Then the same walk map stays open$/,
+        run({ assert, world }) {
+          const map = walkMap(world);
+          assert.equal(map, world.openMap);
+          assert.equal(map?.isConnected, true);
+          assertShownRoute(assert, world);
+        },
+      },
+      {
+        pattern: /^Then the same vehicle map stays open$/,
+        run({ assert, world }) {
+          const map = world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']") ?? null;
+          assert.equal(map, world.openMap);
+          assert.equal(map?.isConnected, true);
+          assert.equal(walkMap(world), null);
+          assert.equal(world.vehicleOpens, 1);
         },
       },
       {

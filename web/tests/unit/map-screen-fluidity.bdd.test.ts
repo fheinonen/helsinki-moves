@@ -347,6 +347,19 @@ Feature: Fluid vehicle map and walking route screens
     Then the open map stays expanded
     When the user closes the open map and reopens the vehicle map
     Then the open map starts at its default height
+
+  Scenario: Switching from vehicle to walk keeps the vehicle map open until the walking route arrives
+    Given a departure board with line 550 to Kamppi and user coordinates
+    And the vehicle map is open on the live vehicle
+    When the user starts switching from the vehicle map to the walking route
+    Then the vehicle map stays open while the walking route loads
+    When the pending walking route arrives
+    Then the walking route map replaces the vehicle map
+    When the user switches from the walking route to the vehicle map
+    And the user starts switching from the vehicle map to the walking route
+    And the user closes the open vehicle map before the walking route arrives
+    And the pending walking route arrives
+    Then both map screens are closed
   `,
   {
     createWorld,
@@ -765,6 +778,32 @@ Feature: Fluid vehicle map and walking route screens
           assert.equal(glass?.classList.contains("is-expanded"), false);
           assert.equal(expand?.getAttribute("aria-pressed"), "false");
           assert.equal(expand?.getAttribute("aria-label"), "Expand map");
+        },
+      },
+      {
+        pattern: /^When the user starts switching from the vehicle map to the walking route$/,
+        run({ world }) {
+          const button = world.root?.querySelector<HTMLButtonElement>("[data-map-switch='walk']");
+          if (!button) {
+            throw new Error("Expected switch to walk control");
+          }
+          button.click();
+        },
+      },
+      {
+        pattern: /^Then the vehicle map stays open while the walking route loads$/,
+        run({ assert, world }) {
+          const map = world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']");
+          const switchButton = map?.querySelector<HTMLButtonElement>("[data-map-switch='walk']");
+          assert.equal(map instanceof HTMLElement, true);
+          assert.equal(world.root?.querySelector("[data-walk-map='true']"), null);
+          assert.equal(switchButton?.getAttribute("aria-busy"), "true");
+        },
+      },
+      {
+        pattern: /^When the user closes the open vehicle map before the walking route arrives$/,
+        run({ world }) {
+          world.root?.querySelector<HTMLButtonElement>("[data-vehicle-span-close]")?.click();
         },
       },
     ],

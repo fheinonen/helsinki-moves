@@ -340,6 +340,7 @@ function teardownProjection(mounted: WalkProjection | null): void {
 
 function projectWalk(input: {
   readonly attempt: WalkAttempt;
+  readonly closeVehicle: () => void;
   readonly documentRef: Document;
   readonly initialExpanded?: boolean;
   readonly mounted: WalkProjection | null;
@@ -358,6 +359,7 @@ function projectWalk(input: {
       return mounted;
     }
     teardownProjection(mounted);
+    input.closeVehicle();
     const element = failureElement(input.documentRef);
     input.table.before(element);
     return {
@@ -374,6 +376,8 @@ function projectWalk(input: {
     return mounted;
   }
   teardownProjection(mounted);
+  const hadVehicleMap =
+    input.table.previousElementSibling?.matches("[data-vehicle-map='true']") ?? false;
   const built = buildWalkMap({
     documentRef: input.documentRef,
     initialExpanded: input.initialExpanded,
@@ -383,9 +387,15 @@ function projectWalk(input: {
     onSwitchToVehicle: input.onSwitchToVehicle,
     route: attempt.route,
   });
+  if (hadVehicleMap) {
+    built.element.dataset.mapSwitched = "true";
+  }
+  input.closeVehicle();
   input.table.before(built.element);
   attempt.label.card.dataset.mapActive = "true";
-  scrollMapIntoView(built.element, input.documentRef);
+  if (!hadVehicleMap) {
+    scrollMapIntoView(built.element, input.documentRef);
+  }
   return {
     card: attempt.label.card,
     destroy: built.destroy,
@@ -619,6 +629,7 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     syncLoadingCard();
     mounted = projectWalk({
       attempt,
+      closeVehicle: input.closeVehicle,
       documentRef: input.documentRef,
       initialExpanded: input.isExpanded?.(),
       mounted,
@@ -657,7 +668,6 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     abortInFlight();
     const id = mintWalkAttemptId();
     apply({ id, label, origin, type: "hold" });
-    input.closeVehicle();
     if (!isPendingId(attempt, id) || requestedId === id) {
       return;
     }

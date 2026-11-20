@@ -170,6 +170,9 @@ Feature: Fluid vehicle map and walking route screens in browser
             });
           });
           await page.route("**/api/v1/walk**", async (route) => {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 120);
+            });
             await route.fulfill({
               body: JSON.stringify(buildWalkPayload()),
               contentType: "application/json",
@@ -285,9 +288,10 @@ Feature: Fluid vehicle map and walking route screens in browser
       },
       {
         pattern: /^When the user switches directly from the vehicle map to the walking route$/,
-        run: async ({ fixtures }) => {
+        run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator("[data-map-switch='walk']").click();
+          assert.equal(await page.locator("[data-vehicle-map='true']").isVisible(), true);
           await page.locator("[data-walk-map='true']").waitFor({ state: "visible" });
           await page.locator("[data-walk-map='true'] [data-street-tile][data-tile-loaded='true']").first().waitFor({
             state: "visible",

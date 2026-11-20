@@ -20,12 +20,14 @@ interface VehicleSpanMapOptions {
   onClose: () => void;
   onExpandedChange?: (expanded: boolean) => void;
   onSwitchToWalk?: () => void;
+  switched?: boolean;
 }
 
 export interface VehicleSpanMap {
   apply(event: VehicleSpanEvent): void;
   close(): void;
   element: HTMLElement;
+  markSwitchBusy(): void;
 }
 
 function place(marker: HTMLElement, frame: VehicleSpanFrame, point: GeoPoint): void {
@@ -50,10 +52,14 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     onClose,
     onExpandedChange,
     onSwitchToWalk,
+    switched = false,
   } = options;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.vehicleMap = "true";
+  if (switched) {
+    element.dataset.mapSwitched = "true";
+  }
   element.setAttribute("aria-label", `${line} to ${destination}`);
   if (destinationColor) {
     element.style.setProperty("--destination-color", destinationColor);
@@ -183,6 +189,13 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
       element.remove();
     },
     element,
+    markSwitchBusy() {
+      const button = head.querySelector<HTMLButtonElement>("[data-map-switch='walk']");
+      if (button) {
+        button.setAttribute("aria-busy", "true");
+        button.dataset.switchLoading = "true";
+      }
+    },
   };
 
   return map;

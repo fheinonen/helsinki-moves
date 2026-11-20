@@ -147,6 +147,15 @@ Feature: Fluid vehicle map and walking route screens in browser
     Then the vehicle map stays framed inside the shell with loaded tiles and controls
     When the user switches directly from the vehicle map to the walking route
     Then the walking route screen renders origin, stop, route, and on-time badge inside the shell
+
+  Scenario: Long destination names keep the vehicle map, walk map, and board inside narrow mobile bounds
+    Given deterministic long-destination map and route mocks are installed
+    And deterministic clock is installed for map fluidity checks
+    When the app is opened in narrow mobile viewport for map fluidity
+    And the user opens the first departure vehicle map
+    Then the open map and board stay strictly inside the narrow shell bounds
+    When the user switches directly from the vehicle map to the walking route
+    Then the open map and board stay strictly inside the narrow shell bounds
   `,
   {
     createWorld: async () => ({}),
@@ -338,6 +347,86 @@ Feature: Fluid vehicle map and walking route screens in browser
           assert.equal(await page.locator("[data-walk-map='true']").count(), 0);
           const focusedLabel = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || "");
           assert.equal(focusedLabel.includes("550 to Kamppi"), true);
+        },
+      },
+      {
+        pattern: /^Given deterministic long-destination map and route mocks are installed$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.route("**/api/v1/departures**", async (route) => {
+            const payload = buildDeparturesPayload();
+            payload.station.departures[0].destination = "Lentoasema-Tikkurila via Huopalahti";
+            payload.station.departures[0].line = "550";
+            payload.filterOptions.destinations[0].value = "Lentoasema-Tikkurila via Huopalahti";
+            await route.fulfill({
+              body: JSON.stringify(payload),
+              contentType: "application/json",
+              status: 200,
+            });
+          });
+          await page.route("**/api/v1/vehicle-span**", async (route) => {
+            await route.fulfill({
+              body: buildVehicleSpanSse(),
+              contentType: "text/event-stream",
+              status: 200,
+            });
+          });
+          await page.route("**/api/v1/walk**", async (route) => {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 120);
+            });
+            await route.fulfill({
+              body: JSON.stringify(buildWalkPayload()),
+              contentType: "application/json",
+              status: 200,
+            });
+          });
+          await page.route("**/api/v1/map-tile**", async (route) => {
+            await route.fulfill({
+              body: MOCK_TILE_SVG,
+              contentType: "image/svg+xml",
+              status: 200,
+            });
+          });
+        },
+      },
+      {
+        pattern: /^When the app is opened in narrow mobile viewport for map fluidity$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          await page.setViewportSize({ width: 360, height: 800 });
+          await page.goto("/");
+          await page.waitForSelector(".departure-card");
+        },
+      },
+      {
+        pattern: /^Then the open map and board stay strictly inside the narrow shell bounds$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as import("@playwright/test").Page;
+          const viewport = page.viewportSize();
+          const metrics = await page.evaluate(() => {
+            const shell = document.querySelector(".app-shell")?.getBoundingClientRect();
+            const map = document.querySelector(".vehicle-span")?.getBoundingClientRect();
+            const closeBtn = document.querySelector(".vehicle-span__close")?.getBoundingClientRect();
+            const clock = document.querySelector(".app-shell__clock")?.getBoundingClientRect();
+            const firstTime = document.querySelector(".departure-card__time")?.getBoundingClientRect();
+            return {
+              clockRight: clock?.right ?? 0,
+              closeRight: closeBtn?.right ?? 0,
+              docScrollWidth: document.documentElement.scrollWidth,
+              firstTimeRight: firstTime?.right ?? 0,
+              innerWidth: window.innerWidth,
+              mapRight: map?.right ?? 0,
+              shellRight: shell?.right ?? 0,
+              shellWidth: shell?.width ?? 0,
+            };
+          });
+          assert.equal(metrics.docScrollWidth <= metrics.innerWidth, true);
+          assert.equal(metrics.shellWidth <= (viewport?.width ?? 360), true);
+          assert.equal(metrics.mapRight <= metrics.shellRight + 0.5, true);
+          assert.equal(metrics.closeRight <= metrics.mapRight + 0.5, true);
+          assert.equal(metrics.clockRight <= metrics.shellRight - 6, true);
+          assert.equal(metrics.firstTimeRight <= metrics.shellRight - 4, true);
         },
       },
     ],

@@ -102,11 +102,14 @@ function mountStreets(input: {
   const edge = documentRef.createElementNS(SVG_NS, "polyline");
   edge.setAttribute("data-route-casing", "true");
   edge.setAttribute("points", points);
+  edge.setAttribute("stroke-width", "6");
+  edge.setAttribute("vector-effect", "non-scaling-stroke");
   edge.style.stroke = ROUTE_EDGE;
-  edge.style.strokeWidth = "3.6";
   const line = documentRef.createElementNS(SVG_NS, "polyline");
   line.setAttribute("data-route-span", routeLabel(frame));
   line.setAttribute("points", points);
+  line.setAttribute("stroke-width", "4");
+  line.setAttribute("vector-effect", "non-scaling-stroke");
   if (destinationColor) {
     line.style.stroke = destinationColor;
   }

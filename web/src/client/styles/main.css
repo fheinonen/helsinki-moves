@@ -820,12 +820,11 @@ button {
   stroke: #1d4ed8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .vehicle-span__route [data-route-casing] {
   stroke: #161616;
-  stroke-width: 3.6;
 }
 
 .vehicle-span__stop,

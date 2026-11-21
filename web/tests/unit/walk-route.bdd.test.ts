@@ -490,7 +490,7 @@ Feature: Walking route from a held departure
     Then the same walk map shows line 560 to Ruoholahti
     And the vehicle map stays closed
 
-  Scenario: Holding another departure while the vehicle map is open changes that vehicle route and keeps the map open.
+  Scenario: Holding another departure while the vehicle map is open keeps that map until the walk replaces it.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
     And another departure for line 560 to Ruoholahti
     And the person is at latitude 60.1706 and longitude 24.9414
@@ -498,8 +498,9 @@ Feature: Walking route from a held departure
     Then the vehicle map is open
     When the user holds the other departure
     And the following click lands
-    Then the same vehicle map shows line 560 to Ruoholahti
-    And no walk was requested
+    Then the same vehicle map stays open while the walk is requested
+    When the other route arrives
+    Then the walk map replaces the vehicle map
 
   Scenario: A short press while the walk map is open opens the vehicle map.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
@@ -1021,16 +1022,26 @@ Feature: Walking route from a held departure
         },
       },
       {
-        pattern: /^Then the same vehicle map shows line 560 to Ruoholahti$/,
+        pattern: /^Then the same vehicle map stays open while the walk is requested$/,
         run({ assert, world }) {
           const map = world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']") ?? null;
           assert.equal(map, world.openMap);
           assert.equal(map?.isConnected, true);
-          assert.equal(map?.getAttribute("aria-label"), "560 to Ruoholahti");
-          assert.equal(map?.querySelector(".vehicle-span__line")?.textContent, "560");
-          assert.equal(map?.querySelector(".vehicle-span__destination")?.textContent, "Ruoholahti");
+          assert.equal(map?.getAttribute("aria-label"), "550 to Kamppi");
           assert.equal(walkMap(world), null);
-          assert.equal(world.vehicleOpens, 2);
+          assert.equal(world.vehicleOpens, 1);
+          assert.equal(world.fetches.length, 1);
+          assert.equal(world.fetches[0]?.request.stopId, STOP_ID);
+        },
+      },
+      {
+        pattern: /^Then the walk map replaces the vehicle map$/,
+        run({ assert, world }) {
+          const map = walkMap(world);
+          assert.equal(map instanceof HTMLElement, true);
+          assert.equal(map?.getAttribute("aria-label"), "560 walk to Ruoholahti");
+          assert.equal(world.openMap?.isConnected, false);
+          assert.equal(world.root?.querySelector("[data-vehicle-map]"), null);
         },
       },
       {

@@ -469,6 +469,7 @@ function projectWalk(input: {
       clearCardWalkState(mounted.card);
       mounted.show(attempt.label, attempt.route);
       attempt.label.card.dataset.mapActive = "true";
+      scrollMapIntoView(mounted.element, input.documentRef);
     }
     return {
       card: attempt.label.card,

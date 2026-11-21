@@ -7,10 +7,10 @@ import type { DeparturesClient } from "@client/services/departures-client";
 import type { LocationService } from "@client/services/location-service";
 
 interface World {
-  container: HTMLElement;
-  documentRef: Document;
+  container?: HTMLElement;
+  documentRef?: Document;
   unsubscribe?: () => void;
-  store: AppStore;
+  store?: AppStore;
 }
 
 defineFeature<World>(
@@ -30,57 +30,51 @@ Feature: Mode selector
     And the active keyboard target mode is TRAM
   `,
   {
-    createWorld: () => {
-      const documentRef = document.implementation.createHTMLDocument("mode-switch");
-      documentRef.body.innerHTML = "<div id='root'></div>";
-      const container = documentRef.querySelector<HTMLElement>("#root");
-      if (!container) {
-        throw new Error("Expected root container");
-      }
-
-      const store = createAppStore();
-      const departuresClient: DeparturesClient = {
-        async getLaterDepartures() {
-          throw new Error("later departures are not part of this scenario");
-        },
-        async getDepartures() {
-          throw new Error("Departures client should not be called");
-        },
-      };
-      const locationService: LocationService = {
-        async getCurrentPosition() {
-          return { code: "unavailable", ok: false };
-        },
-      };
-      const controller = createAppController({
-        departuresClient,
-        locationService,
-        store,
-      });
-      const unsubscribe = renderModeSelector({
-        container,
-        controller,
-        documentRef,
-      });
-
-      return {
-        container,
-        documentRef,
-        unsubscribe,
-        store,
-      };
-    },
+    createWorld: () => ({}),
     stepDefinitions: [
       {
         pattern: /^Given the app starts in rail mode$/,
-        run: ({ assert, world }) => {
-          assert.equal(world.store.getState().activeMode, "RAIL");
+        run: ({ world }) => {
+          const documentRef = document.implementation.createHTMLDocument("mode-switch");
+          documentRef.body.innerHTML = "<div id='root'></div>";
+          const container = documentRef.querySelector<HTMLElement>("#root");
+          if (!container) {
+            throw new Error("Expected root container");
+          }
+
+          const store = createAppStore({ activeMode: "RAIL" });
+          const departuresClient: DeparturesClient = {
+            async getLaterDepartures() {
+              throw new Error("later departures are not part of this scenario");
+            },
+            async getDepartures() {
+              throw new Error("Departures client should not be called");
+            },
+          };
+          const locationService: LocationService = {
+            async getCurrentPosition() {
+              return { code: "unavailable", ok: false };
+            },
+          };
+          const controller = createAppController({
+            departuresClient,
+            locationService,
+            store,
+          });
+          world.unsubscribe = renderModeSelector({
+            container,
+            controller,
+            documentRef,
+          });
+          world.container = container;
+          world.documentRef = documentRef;
+          world.store = store;
         },
       },
       {
         pattern: /^When the user selects bus mode$/,
         run: ({ world }) => {
-          const button = world.container.querySelector<HTMLButtonElement>('[data-mode="BUS"]');
+          const button = world.container?.querySelector<HTMLButtonElement>('[data-mode="BUS"]');
           if (!button) {
             throw new Error("Expected bus mode button");
           }
@@ -90,13 +84,13 @@ Feature: Mode selector
       {
         pattern: /^Then the active mode is bus$/,
         run: ({ assert, world }) => {
-          assert.equal(world.store.getState().activeMode, "BUS");
+          assert.equal(world.store?.getState().activeMode, "BUS");
         },
       },
       {
         pattern: /^When the user moves to the next mode with the keyboard$/,
         run: ({ world }) => {
-          const selector = world.container.querySelector<HTMLElement>(".mode-selector");
+          const selector = world.container?.querySelector<HTMLElement>(".mode-selector");
           if (!selector) {
             throw new Error("Expected mode selector");
           }
@@ -106,13 +100,13 @@ Feature: Mode selector
       {
         pattern: /^Then the active mode is tram$/,
         run: ({ assert, world }) => {
-          assert.equal(world.store.getState().activeMode, "TRAM");
+          assert.equal(world.store?.getState().activeMode, "TRAM");
         },
       },
       {
         pattern: /^Then the active keyboard target mode is (.+)$/,
         run: ({ args, assert, world }) => {
-          const button = world.container.querySelector<HTMLElement>(`[data-mode="${args[0]}"]`);
+          const button = world.container?.querySelector<HTMLElement>(`[data-mode="${args[0]}"]`);
           assert.equal(button?.getAttribute("aria-checked"), "true");
           assert.equal(button?.getAttribute("tabindex"), "0");
           world.unsubscribe?.();

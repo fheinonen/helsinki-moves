@@ -1,4 +1,4 @@
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import { resolveViteDevServerConfig } from "@shared/config/vite-dev-server";
 
@@ -19,10 +19,6 @@ interface World {
   config?: LoadedConfig;
   env?: NodeJS.ProcessEnv;
 }
-
-afterEach(() => {
-  delete process.env.PORT;
-});
 
 defineFeature<World>(
   test,

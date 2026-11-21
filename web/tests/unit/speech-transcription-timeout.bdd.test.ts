@@ -1,7 +1,9 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
-import { createSpeechTranscriptionService } from "@server/services/voice/transcribe-service";
-import type { SpeechTranscriptionService } from "@server/services/voice/transcribe-service";
+import {
+  createSpeechTranscriptionService,
+  type SpeechTranscriptionService,
+} from "@server/services/voice/transcribe-service";
 
 interface World {
   errorMessage?: string;

@@ -8,8 +8,10 @@ import {
 import { createVoiceError } from "@client/features/voice/voice-errors";
 
 interface World {
+  error?: ReturnType<typeof createVoiceError>;
   message?: string;
   offerFallback?: boolean;
+  prompt?: ReturnType<typeof createBrowserVoiceTypedFallbackPrompt>;
   response?: string | null;
 }
 
@@ -41,39 +43,45 @@ Feature: Voice typed fallback prompt
       {
         pattern: /^Given a voice unsupported error$/,
         run: ({ world }) => {
-          const error = createVoiceError("voice_unsupported", "Voice recognition is unavailable right now.");
-          world.offerFallback = shouldOfferVoiceTypedFallback(error);
-          world.message = buildVoiceTypedFallbackPromptMessage(error);
+          world.error = createVoiceError("voice_unsupported", "Voice recognition is unavailable right now.");
         },
       },
       {
         pattern: /^Given a voice not understood error$/,
         run: ({ world }) => {
-          const error = createVoiceError("voice_not_understood", "Could not transcribe speech");
-          world.offerFallback = shouldOfferVoiceTypedFallback(error);
-          world.message = buildVoiceTypedFallbackPromptMessage(error);
+          world.error = createVoiceError("voice_not_understood", "Could not transcribe speech");
         },
       },
       {
         pattern: /^Given a browser typed fallback prompt with a surrounding-spaces response$/,
         run: ({ world }) => {
-          const prompt = createBrowserVoiceTypedFallbackPrompt({
+          world.prompt = createBrowserVoiceTypedFallbackPrompt({
             promptImpl() {
               return "  Kamppi Helsinki  ";
             },
           });
-          world.response = prompt.request(
-            createVoiceError("voice_unsupported", "Voice recognition is unavailable right now.")
-          );
         },
       },
       {
         pattern: /^When the typed fallback prompt message is built$/,
-        run: () => {},
+        run: ({ world }) => {
+          if (!world.error) {
+            throw new Error("Expected voice error");
+          }
+          world.offerFallback = shouldOfferVoiceTypedFallback(world.error);
+          world.message = buildVoiceTypedFallbackPromptMessage(world.error);
+        },
       },
       {
         pattern: /^When the browser typed fallback prompt is requested for a voice unsupported error$/,
-        run: () => {},
+        run: ({ world }) => {
+          if (!world.prompt) {
+            throw new Error("Expected browser typed fallback prompt");
+          }
+          world.response = world.prompt.request(
+            createVoiceError("voice_unsupported", "Voice recognition is unavailable right now.")
+          );
+        },
       },
       {
         pattern: /^Then typed fallback is offered$/,

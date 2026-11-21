@@ -2,16 +2,16 @@ Feature: hm CLI all modes and failures
 
   Scenario: all modes merge departures from available modes
     Given geocoding finds "Pasila, Helsinki"
-    Given bus and tram departures are available across all modes
+    And bus and tram departures are available across all modes
     When the user runs hm with arguments:
       """
       -l Pasila --all
       """
     Then the departures API is called 4 times
-    And the first departures API request has query parameter mode set to "BUS"
-    And the second departures API request has query parameter mode set to "TRAM"
-    And the third departures API request has query parameter mode set to "RAIL"
-    And the fourth departures API request has query parameter mode set to "METRO"
+    And the first departures API request has query parameter "mode" set to "BUS"
+    And the second departures API request has query parameter "mode" set to "TRAM"
+    And the third departures API request has query parameter "mode" set to "RAIL"
+    And the fourth departures API request has query parameter "mode" set to "METRO"
     And stdout contains "Pasila, Helsinki — All departures"
     And stdout contains "MODE"
     And stdout contains "57"
@@ -20,7 +20,7 @@ Feature: hm CLI all modes and failures
 
   Scenario: all modes ignore invalid single-mode flags
     Given geocoding finds "Pasila, Helsinki"
-    Given bus departures are available across all modes
+    And bus departures are available across all modes
     When the user runs hm with arguments:
       """
       -l Pasila --all -m ferry
@@ -31,7 +31,7 @@ Feature: hm CLI all modes and failures
 
   Scenario: all modes warn when one mode is unavailable
     Given geocoding finds "Pasila, Helsinki"
-    Given bus departures are available while tram is unavailable across all modes
+    And bus departures are available while tram is unavailable across all modes
     When the user runs hm with arguments:
       """
       -l Pasila --all
@@ -43,7 +43,7 @@ Feature: hm CLI all modes and failures
 
   Scenario: all modes with no departures exit one
     Given geocoding finds "Pasila, Helsinki"
-    Given no departures are available across all modes
+    And no departures are available across all modes
     When the user runs hm with arguments:
       """
       -l Pasila --all
@@ -53,7 +53,7 @@ Feature: hm CLI all modes and failures
 
   Scenario: all modes with every mode unavailable warn and exit one
     Given geocoding finds "Pasila, Helsinki"
-    Given every mode is unavailable across all modes
+    And every mode is unavailable across all modes
     When the user runs hm with arguments:
       """
       -l Pasila --all
@@ -69,7 +69,7 @@ Feature: hm CLI all modes and failures
 
   Scenario: single-mode departures API failure exits two
     Given geocoding finds "Pasila, Helsinki"
-    Given the departures API returns an internal server error for single-mode queries
+    And the departures API returns an internal server error for single-mode queries
     When the user runs hm with arguments:
       """
       -l Pasila

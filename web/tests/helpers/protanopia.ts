@@ -65,7 +65,7 @@ function pivot(channel: number): number {
   return channel / (3 * delta ** 2) + 4 / 29;
 }
 
-export function rgbToLab(rgb: Rgb): Lab {
+function rgbToLab(rgb: Rgb): Lab {
   const red = srgbChannelToLinear(rgb[0]);
   const green = srgbChannelToLinear(rgb[1]);
   const blue = srgbChannelToLinear(rgb[2]);
@@ -114,7 +114,7 @@ function meanHue(first: number, second: number, chromaProduct: number): number {
   return (sum - 360) / 2;
 }
 
-export function deltaE00(first: Lab, second: Lab): number {
+function deltaE00(first: Lab, second: Lab): number {
   const [lightnessA, aA, bA] = first;
   const [lightnessB, aB, bB] = second;
   const chromaA = Math.hypot(aA, bA);

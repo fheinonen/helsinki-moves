@@ -8,6 +8,7 @@ import {
 interface World {
   actionLabel?: string;
   input?: Parameters<typeof detectVoiceCapability>[0];
+  labelInput?: Parameters<typeof getVoiceActionLabel>[0];
   capability?: ReturnType<typeof detectVoiceCapability>;
 }
 
@@ -68,10 +69,10 @@ Feature: Voice capability detection
       {
         pattern: /^Given voice availability is (available|checking|unavailable) and voice phase is (idle|listening|processing)$/,
         run: ({ args, world }) => {
-          world.actionLabel = getVoiceActionLabel({
+          world.labelInput = {
             availability: args[0] as "available" | "checking" | "unavailable",
             phase: args[1] as "idle" | "listening" | "processing",
-          });
+          };
         },
       },
       {
@@ -97,7 +98,12 @@ Feature: Voice capability detection
       },
       {
         pattern: /^When the voice action label is resolved$/,
-        run: () => {},
+        run: ({ world }) => {
+          if (!world.labelInput) {
+            throw new Error("Expected voice action label input");
+          }
+          world.actionLabel = getVoiceActionLabel(world.labelInput);
+        },
       },
       {
         pattern: /^Then the voice action label is (.+)$/,

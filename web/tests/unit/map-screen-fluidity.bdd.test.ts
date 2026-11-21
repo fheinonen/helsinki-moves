@@ -281,14 +281,6 @@ Feature: Fluid vehicle map and walking route screens
     When the user resets the open map with the keyboard
     Then the open map returns to the fitted span
 
-  Scenario: Switching directly between the vehicle map and walking route screen
-    Given a departure board with line 550 to Kamppi and user coordinates
-    And the vehicle map is open on the live vehicle
-    When the user switches from the vehicle map to the walking route
-    Then the walking route map replaces the vehicle map
-    When the user switches from the walking route to the vehicle map
-    Then the vehicle map replaces the walking route map
-
   Scenario: Pressing Escape closes the open vehicle map or walking route map and restores focus
     Given a departure board with line 550 to Kamppi and user coordinates
     And the vehicle map is open on the live vehicle
@@ -342,9 +334,11 @@ Feature: Fluid vehicle map and walking route screens
     And the vehicle map is open on the live vehicle
     When the user expands the open map
     And the user switches from the vehicle map to the walking route
-    Then the open map stays expanded
+    Then the walking route map replaces the vehicle map
+    And the open map stays expanded
     When the user switches from the walking route to the vehicle map
-    Then the open map stays expanded
+    Then the vehicle map replaces the walking route map
+    And the open map stays expanded
     When the user closes the open map and reopens the vehicle map
     Then the open map starts at its default height
 

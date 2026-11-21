@@ -146,7 +146,7 @@ Feature: Voice typed fallback
       },
       {
         pattern:
-          /^(?:Then|And) the last typed fallback prompt message equals "([^"]*)"$/,
+          /^Then the last typed fallback prompt message equals "([^"]*)"$/,
         run: ({ assert, args, world }) => {
           assert.equal(
             String(world.promptCalls?.at(-1)?.message || ""),
@@ -155,7 +155,7 @@ Feature: Voice typed fallback
         },
       },
       {
-        pattern: /^(?:Then|And) the pending voice query is Kamppi Helsinki$/,
+        pattern: /^Then the pending voice query is Kamppi Helsinki$/,
         run: ({ assert, world }) => {
           assert.equal(
             world.controller?.store.getState().voice.pendingQuery,
@@ -164,7 +164,7 @@ Feature: Voice typed fallback
         },
       },
       {
-        pattern: /^(?:Then|And) the current station name is Kamppi$/,
+        pattern: /^Then the current station name is Kamppi$/,
         run: ({ assert, world }) => {
           assert.equal(world.controller?.store.getState().station?.stopName, "Kamppi");
         },

@@ -159,15 +159,16 @@ Feature: App shell filter controls
       },
       {
         pattern: /^When the filter panel is opened$/,
-        run: ({ assert, world }) => {
+        run: ({ world }) => {
           const toggle = world.container?.querySelector<HTMLButtonElement>("[data-filter-toggle]");
           const panel = world.container?.querySelector<HTMLElement>("[data-filter-panel]");
           if (!toggle || !panel) {
             throw new Error("Expected filter controls");
           }
           toggle.click();
-          assert.equal(panel.hidden, false);
-          assert.equal(toggle.getAttribute("aria-expanded"), "true");
+          if (panel.hidden || toggle.getAttribute("aria-expanded") !== "true") {
+            throw new Error("Expected filter panel to open before mode change");
+          }
         },
       },
       {

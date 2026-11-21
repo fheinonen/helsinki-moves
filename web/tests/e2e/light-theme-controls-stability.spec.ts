@@ -90,14 +90,14 @@ Feature: Light theme controls stability
         },
       },
       {
-        pattern: /^(?:Given|And) deterministic time is configured for controls stability$/,
+        pattern: /^Given deterministic time is configured for controls stability$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await installFixedNow(page, FIXED_NOW_MS);
         },
       },
       {
-        pattern: /^(?:Given|And) the app opens in light-theme bus mode$/,
+        pattern: /^Given the app opens in light-theme bus mode$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.addInitScript(() => {
@@ -204,11 +204,12 @@ Feature: Light theme controls stability
       {
         pattern: /^Then the controls probe reports (\d+) low-opacity visible frames$/,
         run: ({ assert, args, world }) => {
+          assert.equal((world.probe?.visibleSamples ?? 0) > 0, true, "expected visible control samples");
           assert.equal(world.probe?.lowOpacityVisibleFrames, Number(args[0]));
         },
       },
       {
-        pattern: /^(?:Then|And) the controls probe reports (\d+) solid white frames$/,
+        pattern: /^Then the controls probe reports (\d+) solid white frames$/,
         run: ({ assert, args, world }) => {
           assert.equal(world.probe?.solidWhiteFrames, Number(args[0]));
         },

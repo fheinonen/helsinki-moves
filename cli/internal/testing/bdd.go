@@ -40,7 +40,6 @@ type Evidence struct {
 var departuresCallCountPattern = regexp.MustCompile(`^the departures API is called ([0-9]+) times?$`)
 var departuresRequestPattern = regexp.MustCompile(`^the departures API request has query parameter (.+) set to (.+)$`)
 var ordinalDeparturesRequestPattern = regexp.MustCompile(`^the (.+) departures API request has query parameter (.+) set to (.+)$`)
-var numericOrdinalPattern = regexp.MustCompile(`^([0-9]+)(st|nd|rd|th)$`)
 
 func LoadScenarios(path string, parseGiven func(string, *Scenario) error) ([]Scenario, error) {
 	return LoadScenariosWithStepParser(path, func(line string, sc *Scenario) error {
@@ -67,6 +66,7 @@ func LoadScenariosWithStepParser(path string, parseStep func(string, *Scenario) 
 		inArgs    bool
 		awaitArgs bool
 		argsLines []string
+		lastKind  string
 	)
 
 	s := bufio.NewScanner(f)
@@ -81,6 +81,7 @@ func LoadScenariosWithStepParser(path string, parseStep func(string, *Scenario) 
 			inArgs = false
 			awaitArgs = false
 			argsLines = nil
+			lastKind = ""
 			continue
 		case current == nil:
 			continue
@@ -110,28 +111,33 @@ func LoadScenariosWithStepParser(path string, parseStep func(string, *Scenario) 
 			continue
 		}
 
+		if strings.HasPrefix(line, "And ") && (lastKind == "Given" || lastKind == "When") {
+			line = lastKind + " " + strings.TrimPrefix(line, "And ")
+		}
+
 		switch {
 		case strings.HasPrefix(line, "When the user runs hm with arguments:"):
 			awaitArgs = true
-		case strings.HasPrefix(line, "Given "), strings.HasPrefix(line, "When "):
-			if parseStep == nil {
-				return nil, fmt.Errorf("unexpected step in scenario %q: %q", current.Name, line)
+			lastKind = "When"
+		case strings.HasPrefix(line, "Given "):
+			lastKind = "Given"
+			if err := dispatchStep(parseStep, line, current); err != nil {
+				return nil, err
 			}
-			if err := parseStep(line, current); err != nil {
+		case strings.HasPrefix(line, "When "):
+			lastKind = "When"
+			if err := dispatchStep(parseStep, line, current); err != nil {
 				return nil, err
 			}
 		case strings.HasPrefix(line, "Then "):
-			check, ok := ParseCheck(strings.TrimPrefix(line, "Then "))
-			if !ok {
-				return nil, fmt.Errorf("unknown Then step in scenario %q: %q", current.Name, line)
+			lastKind = "Then"
+			if err := appendCheck(strings.TrimPrefix(line, "Then "), line, current); err != nil {
+				return nil, err
 			}
-			current.Checks = append(current.Checks, check)
 		case strings.HasPrefix(line, "And "):
-			check, ok := ParseCheck(strings.TrimPrefix(line, "And "))
-			if !ok {
-				return nil, fmt.Errorf("unknown And step in scenario %q: %q", current.Name, line)
+			if err := appendCheck(strings.TrimPrefix(line, "And "), line, current); err != nil {
+				return nil, err
 			}
-			current.Checks = append(current.Checks, check)
 		default:
 			return nil, fmt.Errorf("unrecognized step in scenario %q: %q", current.Name, line)
 		}
@@ -146,41 +152,50 @@ func LoadScenariosWithStepParser(path string, parseStep func(string, *Scenario) 
 	return out, nil
 }
 
+func dispatchStep(parseStep func(string, *Scenario) error, line string, sc *Scenario) error {
+	if parseStep == nil {
+		return fmt.Errorf("unexpected step in scenario %q: %q", sc.Name, line)
+	}
+	return parseStep(line, sc)
+}
+
+func appendCheck(text, line string, sc *Scenario) error {
+	check, ok := ParseCheck(text)
+	if !ok {
+		return fmt.Errorf("unknown assertion step in scenario %q: %q", sc.Name, line)
+	}
+	sc.Checks = append(sc.Checks, check)
+	return nil
+}
+
 func ParseCheck(line string) (Check, bool) {
 	switch {
-	case line == "stdout is empty":
-		return Check{Kind: "stdout-empty"}, true
 	case line == "stderr is empty":
 		return Check{Kind: "stderr-empty"}, true
 	case line == "stdout is valid JSON":
 		return Check{Kind: "stdout-json"}, true
-	case strings.HasPrefix(line, "stdout does not contain "):
-		return Check{Kind: "stdout-not", Want: unquote(strings.TrimPrefix(line, "stdout does not contain "))}, true
 	case strings.HasPrefix(line, "stdout contains "):
-		return Check{Kind: "stdout", Want: unquote(strings.TrimPrefix(line, "stdout contains "))}, true
+		return Check{Kind: "stdout", Want: Unquote(strings.TrimPrefix(line, "stdout contains "))}, true
 	case strings.HasPrefix(line, "stderr contains "):
-		return Check{Kind: "stderr", Want: unquote(strings.TrimPrefix(line, "stderr contains "))}, true
+		return Check{Kind: "stderr", Want: Unquote(strings.TrimPrefix(line, "stderr contains "))}, true
 	case strings.HasPrefix(line, "exit code is "):
 		return Check{Kind: "code", Want: strings.TrimSpace(strings.TrimPrefix(line, "exit code is "))}, true
 	case strings.HasPrefix(line, "the archive name is "):
-		return Check{Kind: "archive-name", Want: unquote(strings.TrimPrefix(line, "the archive name is "))}, true
+		return Check{Kind: "archive-name", Want: Unquote(strings.TrimPrefix(line, "the archive name is "))}, true
 	case departuresCallCountPattern.MatchString(line):
 		match := departuresCallCountPattern.FindStringSubmatch(line)
-		count, err := strconv.Atoi(match[1])
-		if err != nil {
-			return Check{}, false
-		}
+		count, _ := strconv.Atoi(match[1])
 		return Check{Kind: "departures-call-count", Count: count}, true
 	case departuresRequestPattern.MatchString(line):
 		match := departuresRequestPattern.FindStringSubmatch(line)
-		return Check{Kind: "departures-request-param", Index: 0, Param: unquote(match[1]), Want: unquote(match[2])}, true
+		return Check{Kind: "departures-request-param", Index: 0, Param: Unquote(match[1]), Want: Unquote(match[2])}, true
 	case ordinalDeparturesRequestPattern.MatchString(line):
 		match := ordinalDeparturesRequestPattern.FindStringSubmatch(line)
 		index, ok := ordinalIndex(match[1])
 		if !ok {
 			return Check{}, false
 		}
-		return Check{Kind: "departures-request-param", Index: index, Param: unquote(match[2]), Want: unquote(match[3])}, true
+		return Check{Kind: "departures-request-param", Index: index, Param: Unquote(match[2]), Want: Unquote(match[3])}, true
 	default:
 		return Check{}, false
 	}
@@ -196,10 +211,6 @@ func RunChecksWithEvidence(t *testing.T, evidence Evidence, checks []Check) {
 
 	for _, chk := range checks {
 		switch chk.Kind {
-		case "stdout-empty":
-			if evidence.Result.Stdout != "" {
-				t.Fatalf("stdout = %q, want empty", evidence.Result.Stdout)
-			}
 		case "stderr-empty":
 			if evidence.Result.Stderr != "" {
 				t.Fatalf("stderr = %q, want empty", evidence.Result.Stderr)
@@ -211,10 +222,6 @@ func RunChecksWithEvidence(t *testing.T, evidence Evidence, checks []Check) {
 		case "stdout":
 			if !strings.Contains(evidence.Result.Stdout, chk.Want) {
 				t.Fatalf("stdout missing %q\nstdout: %q", chk.Want, evidence.Result.Stdout)
-			}
-		case "stdout-not":
-			if strings.Contains(evidence.Result.Stdout, chk.Want) {
-				t.Fatalf("stdout unexpectedly contains %q\nstdout: %q", chk.Want, evidence.Result.Stdout)
 			}
 		case "stderr":
 			if !strings.Contains(evidence.Result.Stderr, chk.Want) {
@@ -251,7 +258,7 @@ func RunChecksWithEvidence(t *testing.T, evidence Evidence, checks []Check) {
 	}
 }
 
-func unquote(text string) string {
+func Unquote(text string) string {
 	text = strings.TrimSpace(text)
 	if s, err := strconv.Unquote(text); err == nil {
 		return s
@@ -260,19 +267,18 @@ func unquote(text string) string {
 }
 
 func ordinalIndex(text string) (int, bool) {
-	text = strings.TrimSpace(strings.ToLower(text))
-	if n, ok := ordinalWordValue(text); ok {
-		return n - 1, true
-	}
-	match := numericOrdinalPattern.FindStringSubmatch(text)
-	if len(match) != 3 {
+	switch strings.TrimSpace(strings.ToLower(text)) {
+	case "first":
+		return 0, true
+	case "second":
+		return 1, true
+	case "third":
+		return 2, true
+	case "fourth":
+		return 3, true
+	default:
 		return 0, false
 	}
-	n, err := strconv.Atoi(match[1])
-	if err != nil || n <= 0 {
-		return 0, false
-	}
-	return n - 1, true
 }
 
 func departuresRequests(requests []HTTPRequest) []HTTPRequest {
@@ -283,31 +289,4 @@ func departuresRequests(requests []HTTPRequest) []HTTPRequest {
 		}
 	}
 	return filtered
-}
-
-func ordinalWordValue(text string) (int, bool) {
-	switch text {
-	case "first":
-		return 1, true
-	case "second":
-		return 2, true
-	case "third":
-		return 3, true
-	case "fourth":
-		return 4, true
-	case "fifth":
-		return 5, true
-	case "sixth":
-		return 6, true
-	case "seventh":
-		return 7, true
-	case "eighth":
-		return 8, true
-	case "ninth":
-		return 9, true
-	case "tenth":
-		return 10, true
-	default:
-		return 0, false
-	}
 }

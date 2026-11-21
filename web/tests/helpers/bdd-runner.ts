@@ -7,7 +7,7 @@ export interface AssertApi {
   match(actual: string, expected: RegExp, message?: string): void;
 }
 
-interface ParsedStep {
+export interface ParsedStep {
   keyword: "Given" | "When" | "Then";
   lineNumber: number;
   phrase: string;
@@ -15,7 +15,7 @@ interface ParsedStep {
   text: string;
 }
 
-interface ParsedScenario {
+export interface ParsedScenario {
   name: string;
   steps: ParsedStep[];
 }
@@ -28,19 +28,19 @@ interface StepContext<World> {
   world: World;
 }
 
-type StepDefinition<World> =
-  | [pattern: RegExp | string, run: (context: StepContext<World>) => void | Promise<void>]
+export type StepDefinition<Context> =
+  | [pattern: RegExp | string, run: (context: Context) => void | Promise<void>]
   | {
       pattern: RegExp | string;
-      run: (context: StepContext<World>) => void | Promise<void>;
+      run: (context: Context) => void | Promise<void>;
     };
 
-interface NormalizedStepDefinition<World> {
+export interface NormalizedStepDefinition<Context> {
   pattern: RegExp | string;
-  run: (context: StepContext<World>) => void | Promise<void>;
+  run: (context: Context) => void | Promise<void>;
 }
 
-const defaultAssert: AssertApi = {
+export const defaultAssert: AssertApi = {
   equal(actual, expected, message) {
     if (actual !== expected) {
       throw new Error(message || `Expected ${String(actual)} to equal ${String(expected)}`);
@@ -122,9 +122,9 @@ function normalizeKeyword(keyword: string): ParsedStep["keyword"] {
   throw new Error(`Unsupported step keyword: ${keyword}`);
 }
 
-function normalizeStepDefinitions<World>(
-  stepDefinitions: StepDefinition<World>[]
-): NormalizedStepDefinition<World>[] {
+export function normalizeStepDefinitions<Context>(
+  stepDefinitions: StepDefinition<Context>[]
+): NormalizedStepDefinition<Context>[] {
   if (!Array.isArray(stepDefinitions) || stepDefinitions.length === 0) {
     throw new Error("Step definitions are required");
   }
@@ -147,16 +147,16 @@ function normalizeStepDefinitions<World>(
   });
 }
 
-function resolveStep<World>(
-  step: ParsedStep,
-  stepDefinitions: NormalizedStepDefinition<World>[]
+export function resolveStep<Context>(
+  step: { phrase: string },
+  stepDefinitions: NormalizedStepDefinition<Context>[]
 ): {
   args: string[];
-  definition: NormalizedStepDefinition<World>;
+  definition: NormalizedStepDefinition<Context>;
 } {
   const matches: Array<{
     args: string[];
-    definition: NormalizedStepDefinition<World>;
+    definition: NormalizedStepDefinition<Context>;
   }> = [];
 
   for (const definition of stepDefinitions) {
@@ -184,13 +184,30 @@ function resolveStep<World>(
   return matches[0];
 }
 
-function createFailFirstProbeAssert(): AssertApi {
+export function assertStepDefinitionsUsed<Context>(
+  scenarios: ParsedScenario[],
+  stepDefinitions: NormalizedStepDefinition<Context>[]
+): void {
+  const used = new Set<NormalizedStepDefinition<Context>>();
+  for (const scenario of scenarios) {
+    for (const step of scenario.steps) {
+      used.add(resolveStep(step, stepDefinitions).definition);
+    }
+  }
+  for (const definition of stepDefinitions) {
+    if (!used.has(definition)) {
+      throw new Error(`Unused step definition: ${String(definition.pattern)}`);
+    }
+  }
+}
+
+export function createFailFirstProbeAssert(errorToken = FAIL_FIRST_PROBE_ERROR): AssertApi {
   return {
     equal() {
-      throw new Error(FAIL_FIRST_PROBE_ERROR);
+      throw new Error(errorToken);
     },
     match() {
-      throw new Error(FAIL_FIRST_PROBE_ERROR);
+      throw new Error(errorToken);
     },
   };
 }
@@ -198,7 +215,7 @@ function createFailFirstProbeAssert(): AssertApi {
 async function executeScenario<World>(input: {
   assertionApi?: AssertApi;
   scenario: ParsedScenario;
-  stepDefinitions: NormalizedStepDefinition<World>[];
+  stepDefinitions: NormalizedStepDefinition<StepContext<World>>[];
   world: World;
 }): Promise<void> {
   const { assertionApi = defaultAssert, scenario, stepDefinitions, world } = input;
@@ -217,7 +234,7 @@ async function executeScenario<World>(input: {
 async function assertFailFirstProbe<World>(input: {
   createWorld: () => World;
   scenario: ParsedScenario;
-  stepDefinitions: NormalizedStepDefinition<World>[];
+  stepDefinitions: NormalizedStepDefinition<StepContext<World>>[];
 }): Promise<void> {
   const { createWorld, scenario, stepDefinitions } = input;
   try {
@@ -246,12 +263,13 @@ export function defineFeature<World>(
   input: {
     createWorld: () => World;
     failFirstProbe?: boolean;
-    stepDefinitions: StepDefinition<World>[];
+    stepDefinitions: StepDefinition<StepContext<World>>[];
   }
 ): void {
   const { createWorld, failFirstProbe = true, stepDefinitions } = input;
   const normalizedDefinitions = normalizeStepDefinitions(stepDefinitions);
   const scenarios = parseFeature(featureText);
+  assertStepDefinitionsUsed(scenarios, normalizedDefinitions);
 
   for (const scenario of scenarios) {
     testFn(scenario.name, async () => {

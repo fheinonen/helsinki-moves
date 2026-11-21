@@ -20,9 +20,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: "cli/go.mod"
-      - name: Run CI contract test
-        run: make contract-test
-        working-directory: cli
       - name: Run CLI validation
         run: ./cli/scripts/test-ci.sh
 

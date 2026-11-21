@@ -30,7 +30,7 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 	scenarios, err := testruntime.LoadScenarios(filepath.Join("all_modes_and_failures.scenarios.txt"), func(line string, sc *testruntime.Scenario) error {
 		switch {
 		case strings.HasPrefix(line, "Given geocoding finds "):
-			sc.Values["label"] = strings.TrimSpace(strings.Trim(strings.TrimPrefix(line, "Given geocoding finds "), `"`))
+			sc.Values["label"] = testruntime.Unquote(strings.TrimPrefix(line, "Given geocoding finds "))
 			return nil
 		case line == "Given bus and tram departures are available across all modes":
 			sc.Values["fixture"] = string(fixtureBusAndTramAvailable)
@@ -79,9 +79,7 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 					w.Header().Set("Content-Type", "application/json")
 					_ = json.NewEncoder(w).Encode(allModesGeocodeResponse(geocodeQuery(sc.Args), sc.Values["label"]))
 				case "/api/v1/departures":
-					if !writeAllModesDepartureResponse(w, allModesFixture(sc.Values["fixture"]), r) {
-						return
-					}
+					writeAllModesDepartureResponse(w, allModesFixture(sc.Values["fixture"]), r)
 				default:
 					http.NotFound(w, r)
 				}
@@ -96,9 +94,6 @@ func TestAllModesAndFailuresScenarios(t *testing.T) {
 }
 
 func allModesGeocodeResponse(query, label string) map[string]any {
-	if label == "" {
-		label = "Pasila, Helsinki"
-	}
 	return map[string]any{
 		"ambiguous": false,
 		"choices":   []any{},
@@ -112,16 +107,15 @@ func allModesGeocodeResponse(query, label string) map[string]any {
 	}
 }
 
-func writeAllModesDepartureResponse(w http.ResponseWriter, fixture allModesFixture, r *http.Request) bool {
+func writeAllModesDepartureResponse(w http.ResponseWriter, fixture allModesFixture, r *http.Request) {
 	mode := r.URL.Query().Get("mode")
 	if fixture == fixtureSingleModeDeparturesFail || fixture == fixtureAllModesUnavailable || fixture == fixtureTramUnavailable && mode == "TRAM" {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return false
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(allModesDepartureResponse(fixture, mode))
-	return true
 }
 
 func allModesDepartureResponse(fixture allModesFixture, mode string) map[string]any {
@@ -145,8 +139,6 @@ func allModesDepartureResponse(fixture allModesFixture, mode string) map[string]
 				departureJSON("2026-03-19T13:03:00Z", "57", "Munkkiniemi", "Pa0001", "HSL:9001", "Pasilan asema", nil),
 			})
 		}
-		return departurePayload(mode, []map[string]any{})
-	case fixtureNoAllModeResults:
 		return departurePayload(mode, []map[string]any{})
 	default:
 		return departurePayload(mode, []map[string]any{})

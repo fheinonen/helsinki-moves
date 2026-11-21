@@ -35,21 +35,21 @@ Feature: Live deploy smoke
         },
       },
       {
-        pattern: /^(?:Then|And) the refresh action is visible$/,
+        pattern: /^Then the refresh action is visible$/,
         run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           assert.equal(await page.locator("[data-refresh]").isVisible(), true);
         },
       },
       {
-        pattern: /^(?:Then|And) the voice action is visible$/,
+        pattern: /^Then the voice action is visible$/,
         run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           assert.equal(await page.locator("[data-voice-action]").isVisible(), true);
         },
       },
       {
-        pattern: /^And the user selects BUS mode in the live deployment$/,
+        pattern: /^When the user selects BUS mode in the live deployment$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator('[data-mode="BUS"]').click();

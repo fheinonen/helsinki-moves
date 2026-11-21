@@ -19,6 +19,8 @@ export const DESTINATION_COLORS = [
 
 const PALETTE_SIZE = DESTINATION_COLORS.length;
 const UNSEPARATED = 1_000_000;
+const SOFT_DISTINCT_FLOOR = 2900;
+const REUSE_COMFORT_FLOOR = 3500;
 const CLIMB_ROUNDS = 40;
 const WIDE_STAGE_ROUNDS = 4;
 const POLISH_ROUNDS = 20;
@@ -29,6 +31,24 @@ type Edge = readonly [number, number];
 interface Separation {
   count: number;
   min: number;
+  pairCount: number;
+  pairMin: number;
+  reuseExcess: number;
+  reuseMax: number;
+  sum: number;
+}
+
+interface PaletteMetrics {
+  pairCount: number;
+  pairMin: number;
+  reuseExcess: number;
+  reuseMax: number;
+}
+
+interface NodeFit {
+  min: number;
+  multiplicity: number;
+  pairMin: number;
   sum: number;
 }
 
@@ -39,9 +59,11 @@ interface Problem {
   distinct: boolean;
   eu: Int32Array;
   ev: Int32Array;
+  forceReuse: boolean;
   free: number[];
   hasRecolorTarget: boolean;
   isFree: Uint8Array;
+  reuseMode: boolean;
 }
 
 interface Candidate {
@@ -73,12 +95,14 @@ const DISTANCE = [
 ];
 
 const FLAT_DISTANCE = flattenDistances(DISTANCE);
+const ALL_COLORS_MASK = (1 << PALETTE_SIZE) - 1;
+const ALL_DISPERSION = computeMaskDispersion(ALL_COLORS_MASK);
 
 function flattenDistances(matrix: readonly (readonly number[])[]): Int32Array {
   const flat = new Int32Array(PALETTE_SIZE * PALETTE_SIZE);
   for (let row = 0; row < PALETTE_SIZE; row += 1) {
     for (let col = 0; col < PALETTE_SIZE; col += 1) {
-      flat[(row << 4) | col] = matrix[row][col];
+      flat[row * PALETTE_SIZE + col] = matrix[row][col];
     }
   }
   return flat;
@@ -89,12 +113,38 @@ export function separateNeighbors(
   edges: readonly Edge[],
   reserved: ReadonlySet<number> = new Set()
 ): number[] {
-  const problem = buildProblem(fixed, edges, reserved);
+  const first = solvePass(fixed, edges, reserved, false);
+  if (!shouldFallbackReuse(first.score.min, fixed, reserved)) {
+    return first.colors;
+  }
+  const fallback = solvePass(fixed, edges, reserved, true);
+  return fallback.score.min > first.score.min ? fallback.colors : first.colors;
+}
+
+function shouldFallbackReuse(
+  min: number,
+  fixed: readonly number[],
+  reserved: ReadonlySet<number>
+): boolean {
+  if (min >= SOFT_DISTINCT_FLOOR) {
+    return false;
+  }
+  return reserved.size > 0 || fixed.some((color) => color >= 0);
+}
+
+function solvePass(
+  fixed: readonly number[],
+  edges: readonly Edge[],
+  reserved: ReadonlySet<number>,
+  forceReuse: boolean
+): Candidate {
+  const problem = buildProblem(fixed, edges, reserved, forceReuse);
   if (problem.free.length === 0) {
-    return fixed.slice();
+    const colors = fixed.slice();
+    return { colors, score: scoreCandidate(colors, problem.baseUsed, problem), used: problem.baseUsed };
   }
   if (problem.free.length === 1) {
-    return greedyStart(fixed, problem, -1).colors;
+    return greedyStart(fixed, problem, -1);
   }
   return searchHillClimb(fixed, problem);
 }
@@ -102,28 +152,41 @@ export function separateNeighbors(
 function buildProblem(
   fixed: readonly number[],
   edges: readonly Edge[],
-  reserved: ReadonlySet<number>
+  reserved: ReadonlySet<number>,
+  forceReuse: boolean
 ): Problem {
+  const { baseUsed, freeRaw, isFree } = scanFixed(fixed, reserved);
+  const avail = countAvailable(baseUsed);
+  const { adj, eu, ev } = activeGraph(fixed.length, edges, fixed);
+  const free = orderFree(freeRaw, isFree, adj);
+  const distinct = !forceReuse && free.length <= avail;
+  const reuseMode = !distinct;
+  const hasRecolorTarget = reuseMode || free.length < avail;
+  return { adj, avail, baseUsed, distinct, eu, ev, forceReuse, free, hasRecolorTarget, isFree, reuseMode };
+}
+
+function scanFixed(
+  fixed: readonly number[],
+  reserved: ReadonlySet<number>
+): { baseUsed: Uint8Array; freeRaw: number[]; isFree: Uint8Array } {
   const baseUsed = new Uint8Array(PALETTE_SIZE);
   for (const color of reserved) {
     baseUsed[color] = 1;
   }
+  const onBoard = new Uint8Array(PALETTE_SIZE);
   const freeRaw: number[] = [];
   const isFree = new Uint8Array(fixed.length);
   for (let node = 0; node < fixed.length; node += 1) {
-    if (fixed[node] >= 0) {
-      baseUsed[fixed[node]] = 1;
+    const color = fixed[node];
+    if (color >= 0) {
+      baseUsed[color] = onBoard[color] ? baseUsed[color] + 1 : 1;
+      onBoard[color] = 1;
     } else {
       freeRaw.push(node);
       isFree[node] = 1;
     }
   }
-  const avail = countAvailable(baseUsed);
-  const { adj, eu, ev } = activeGraph(fixed.length, edges, fixed);
-  const free = orderFree(freeRaw, isFree, adj);
-  const distinct = free.length <= avail;
-  const hasRecolorTarget = !distinct || free.length < avail;
-  return { adj, avail, baseUsed, distinct, eu, ev, free, hasRecolorTarget, isFree };
+  return { baseUsed, freeRaw, isFree };
 }
 
 function countAvailable(used: Uint8Array): number {
@@ -213,44 +276,35 @@ function openFreeDegree(
   return degree;
 }
 
-function searchHillClimb(fixed: readonly number[], problem: Problem): number[] {
+function searchHillClimb(fixed: readonly number[], problem: Problem): Candidate {
   const candidates = seedCandidates(fixed, problem);
-  candidates.sort((left, right) => compareScores(right.score, left.score));
+  candidates.sort((left, right) => compareScores(right.score, left.score, problem.reuseMode));
   const best = candidates[0];
   if (problem.free.length > PALETTE_SIZE) {
     fastClimb(best, problem, CLIMB_ROUNDS);
-    return best.colors;
+    return best;
   }
   if (!problem.distinct || problem.free.length <= 2) {
-    return best.colors;
+    return best;
   }
-  return polishCandidates(candidates, problem).colors;
+  return polishCandidates(candidates, problem);
 }
 
 function seedCandidates(fixed: readonly number[], problem: Problem): Candidate[] {
   const rounds = problem.free.length > PALETTE_SIZE ? WIDE_STAGE_ROUNDS : CLIMB_ROUNDS;
   const candidates: Candidate[] = [];
   for (let start = 0; start < PALETTE_SIZE; start += 1) {
-    if (problem.avail > 0 && problem.baseUsed[start] > 0) {
+    if (!problem.forceReuse && problem.avail > 0 && problem.baseUsed[start] > 0) {
       continue;
     }
-    const { colors, used } = greedyStart(fixed, problem, start);
-    const candidate: Candidate = {
-      colors,
-      score: scoreGraph(colors, problem.eu, problem.ev),
-      used,
-    };
+    const candidate = greedyStart(fixed, problem, start);
     fastClimb(candidate, problem, rounds);
     candidates.push(candidate);
   }
   return candidates;
 }
 
-function greedyStart(
-  fixed: readonly number[],
-  problem: Problem,
-  startColor: number
-): { colors: number[]; used: Uint8Array } {
+function greedyStart(fixed: readonly number[], problem: Problem, startColor: number): Candidate {
   const colors = fixed.slice();
   const used = problem.baseUsed.slice();
   let unusedLeft = problem.avail;
@@ -265,14 +319,15 @@ function greedyStart(
   }
   while (open.length > 0) {
     const node = open.splice(pickMostColored(open, colors, problem.adj), 1)[0];
-    const chosen = bestColorForNode(problem.adj[node], colors, used, unusedLeft > 0);
+    const preferFresh = !problem.forceReuse && unusedLeft > 0;
+    const chosen = bestColorForNode(problem.adj[node], colors, used, preferFresh, problem.reuseMode);
     colors[node] = chosen;
     if (used[chosen] === 0) {
       unusedLeft -= 1;
     }
     used[chosen] += 1;
   }
-  return { colors, used };
+  return { colors, score: scoreCandidate(colors, used, problem), used };
 }
 
 function pickMostColored(
@@ -310,44 +365,75 @@ function bestColorForNode(
   neighbors: readonly number[],
   colors: readonly number[],
   used: Uint8Array,
-  freshOnly: boolean
+  freshOnly: boolean,
+  reuseMode: boolean
 ): number {
   let chosen = 0;
-  let bestMin = -1;
-  let bestSum = -1;
+  let best: NodeFit | null = null;
   for (let color = 0; color < PALETTE_SIZE; color += 1) {
     if (freshOnly && used[color] > 0) {
       continue;
     }
-    const fit = againstColored(neighbors, colors, color);
-    if (fit.min > bestMin || (fit.min === bestMin && fit.sum > bestSum)) {
+    const fit = evaluateNodeFit(neighbors, colors, used, color);
+    if (!best || outranksFit(fit, best, reuseMode)) {
       chosen = color;
-      bestMin = fit.min;
-      bestSum = fit.sum;
+      best = fit;
     }
   }
   return chosen;
 }
 
-function againstColored(
+function evaluateNodeFit(
   neighbors: readonly number[],
   colors: readonly number[],
+  used: Uint8Array,
   color: number
-): { min: number; sum: number } {
+): NodeFit {
   let min = UNSEPARATED;
   let sum = 0;
+  const row = color * PALETTE_SIZE;
   for (const neighbor of neighbors) {
     const neighborColor = colors[neighbor];
     if (neighborColor < 0) {
       continue;
     }
-    const distance = FLAT_DISTANCE[(neighborColor << 4) | color];
+    const distance = FLAT_DISTANCE[row + neighborColor];
     sum += distance;
     if (distance < min) {
       min = distance;
     }
   }
-  return { min, sum };
+  let pairMin = UNSEPARATED;
+  for (let index = 0; index < colors.length; index += 1) {
+    const existing = colors[index];
+    if (existing >= 0 && existing !== color) {
+      const distance = FLAT_DISTANCE[row + existing];
+      if (distance < pairMin) {
+        pairMin = distance;
+      }
+    }
+  }
+  return { min, multiplicity: used[color], pairMin, sum };
+}
+
+function outranksFit(next: NodeFit, current: NodeFit, reuseMode: boolean): boolean {
+  if (reuseMode) {
+    const nextFloor = Math.min(next.min, REUSE_COMFORT_FLOOR);
+    const currentFloor = Math.min(current.min, REUSE_COMFORT_FLOOR);
+    if (nextFloor !== currentFloor) {
+      return nextFloor > currentFloor;
+    }
+    if (next.multiplicity !== current.multiplicity) {
+      return next.multiplicity < current.multiplicity;
+    }
+  }
+  if (next.min !== current.min) {
+    return next.min > current.min;
+  }
+  if (next.pairMin !== current.pairMin) {
+    return next.pairMin > current.pairMin;
+  }
+  return next.sum > current.sum;
 }
 
 function fastClimb(candidate: Candidate, problem: Problem, maxRounds: number): void {
@@ -383,7 +469,7 @@ function tryNodeSwaps(candidate: Candidate, problem: Problem, leftIndex: number)
 }
 
 function tryNodeRecolors(candidate: Candidate, problem: Problem, node: number): boolean {
-  const canDrop = !problem.distinct && candidate.used[candidate.colors[node]] > 1;
+  const canDrop = problem.reuseMode && (problem.forceReuse || candidate.used[candidate.colors[node]] > 1);
   let improved = false;
   for (let color = 0; color < PALETTE_SIZE; color += 1) {
     const previous = candidate.colors[node];
@@ -391,8 +477,6 @@ function tryNodeRecolors(candidate: Candidate, problem: Problem, node: number): 
       continue;
     }
     if (tryRecolorNode(candidate, node, color, problem)) {
-      candidate.used[previous] -= 1;
-      candidate.used[color] += 1;
       improved = true;
     }
   }
@@ -418,7 +502,7 @@ function trySwapPair(candidate: Candidate, left: number, right: number, problem:
   }
   colors[left] = rightColor;
   colors[right] = leftColor;
-  applyDeltaInPlace(candidate, problem, diff, DELTA_ACC[2]);
+  applySwapDelta(candidate, problem, diff, DELTA_ACC[2]);
   return true;
 }
 
@@ -428,7 +512,47 @@ function tryRecolorNode(
   nextColor: number,
   problem: Problem
 ): boolean {
-  const { colors, score } = candidate;
+  const { colors, score, used } = candidate;
+  const previous = colors[node];
+  if (problem.reuseMode && score.min >= REUSE_COMFORT_FLOOR && used[nextColor] + 1 > score.reuseMax) {
+    return false;
+  }
+  if (
+    problem.reuseMode &&
+    used[previous] > 1 &&
+    used[nextColor] > 0 &&
+    (used[nextColor] + 1 === used[previous] ||
+      (used[previous] < score.reuseMax && used[nextColor] + 1 <= score.reuseMax))
+  ) {
+    return tryRecolorFastDelta(candidate, node, nextColor, problem);
+  }
+  const floor = problem.reuseMode ? Math.min(score.min, REUSE_COMFORT_FLOOR) : score.min;
+  colors[node] = nextColor;
+  if (!incidentOk(colors, node, problem.adj, floor)) {
+    colors[node] = previous;
+    return false;
+  }
+  used[previous] -= 1;
+  used[nextColor] += 1;
+  const next = scoreCandidate(colors, used, problem);
+  if (outranks(next, score, problem.reuseMode)) {
+    candidate.score = next;
+    return true;
+  }
+  used[nextColor] -= 1;
+  used[previous] += 1;
+  colors[node] = previous;
+  return false;
+}
+
+function tryRecolorFastDelta(
+  candidate: Candidate,
+  node: number,
+  nextColor: number,
+  problem: Problem
+): boolean {
+  const { colors, score, used } = candidate;
+  const previous = colors[node];
   DELTA_ACC[0] = 0;
   DELTA_ACC[1] = 0;
   DELTA_ACC[2] = 0;
@@ -440,7 +564,9 @@ function tryRecolorNode(
     return false;
   }
   colors[node] = nextColor;
-  applyDeltaInPlace(candidate, problem, diff, DELTA_ACC[2]);
+  used[previous] -= 1;
+  used[nextColor] += 1;
+  applySwapDelta(candidate, problem, diff, DELTA_ACC[2]);
   return true;
 }
 
@@ -452,8 +578,8 @@ function addNodeDelta(
   adj: readonly (readonly number[])[],
   min: number
 ): boolean {
-  const oldRow = colors[node] << 4;
-  const newRow = nextColor << 4;
+  const oldRow = colors[node] * PALETTE_SIZE;
+  const newRow = nextColor * PALETTE_SIZE;
   const neighbors = adj[node];
   let lost = 0;
   let gained = 0;
@@ -464,8 +590,8 @@ function addNodeDelta(
       continue;
     }
     const otherColor = colors[other];
-    const oldDist = FLAT_DISTANCE[oldRow | otherColor];
-    const newDist = FLAT_DISTANCE[newRow | otherColor];
+    const oldDist = FLAT_DISTANCE[oldRow + otherColor];
+    const newDist = FLAT_DISTANCE[newRow + otherColor];
     if (newDist < min) {
       return false;
     }
@@ -483,14 +609,14 @@ function addNodeDelta(
   return true;
 }
 
-function applyDeltaInPlace(
+function applySwapDelta(
   candidate: Candidate,
   problem: Problem,
   diff: number,
   deltaSum: number
 ): void {
   if (diff === candidate.score.count) {
-    candidate.score = scoreGraph(candidate.colors, problem.eu, problem.ev);
+    candidate.score = scorePermutation(candidate.colors, problem, candidate.score);
     return;
   }
   candidate.score.count -= diff;
@@ -502,13 +628,13 @@ function polishCandidates(candidates: readonly Candidate[], problem: Problem): C
   let polished = 0;
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    const key = `${candidate.score.min}:${candidate.score.count}:${candidate.score.sum}`;
+    const key = scoreKey(candidate.score);
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
     polishCandidate(candidate, problem);
-    if (outranks(candidate.score, best.score)) {
+    if (outranks(candidate.score, best.score, false)) {
       best = candidate;
     }
     polished += 1;
@@ -517,6 +643,10 @@ function polishCandidates(candidates: readonly Candidate[], problem: Problem): C
     }
   }
   return best;
+}
+
+function scoreKey(score: Separation): string {
+  return `${score.min}:${score.count}:${score.pairMin}:${score.sum}`;
 }
 
 function polishCandidate(candidate: Candidate, problem: Problem): void {
@@ -540,13 +670,13 @@ function nextPolishMove(candidate: Candidate, problem: Problem): Separation | nu
 }
 
 function tryTwoOpt(colors: number[], problem: Problem, score: Separation): Separation | null {
-  const { adj, eu, ev, free } = problem;
+  const { adj, free } = problem;
   for (let start = 0; start < free.length - 1; start += 1) {
     for (let end = start + 2; end < free.length; end += 1) {
       reverseFreeSlice(colors, free, start, end);
       if (incidentOk(colors, free[start], adj, score.min) && incidentOk(colors, free[end], adj, score.min)) {
-        const next = scoreGraph(colors, eu, ev);
-        if (outranks(next, score)) {
+        const next = scorePermutation(colors, problem, score);
+        if (outranks(next, score, false)) {
           return next;
         }
       }
@@ -585,7 +715,7 @@ function tryRelocateDirection(
   step: 1 | -1,
   score: Separation
 ): Separation | null {
-  const { adj, eu, ev, free } = problem;
+  const { adj, free } = problem;
   const saved = colors[free[start]];
   const limit = step > 0 ? free.length : -1;
   let last = start;
@@ -598,8 +728,8 @@ function tryRelocateDirection(
       incidentOk(colors, free[target], adj, score.min) &&
       incidentOk(colors, free[start], adj, score.min)
     ) {
-      const next = scoreGraph(colors, eu, ev);
-      if (outranks(next, score)) {
+      const next = scorePermutation(colors, problem, score);
+      if (outranks(next, score, false)) {
         return next;
       }
     }
@@ -626,7 +756,7 @@ function tryUnusedShift(candidate: Candidate, problem: Problem): Separation | nu
 
 function tryShiftColor(candidate: Candidate, problem: Problem, unusedColor: number): Separation | null {
   const { colors, score, used } = candidate;
-  const { adj, eu, ev, free } = problem;
+  const { adj, free } = problem;
   for (const first of free) {
     const firstColor = colors[first];
     for (const second of free) {
@@ -637,12 +767,14 @@ function tryShiftColor(candidate: Candidate, problem: Problem, unusedColor: numb
       colors[first] = secondColor;
       colors[second] = unusedColor;
       if (incidentOk(colors, first, adj, score.min) && incidentOk(colors, second, adj, score.min)) {
-        const next = scoreGraph(colors, eu, ev);
-        if (outranks(next, score)) {
-          used[firstColor] -= 1;
-          used[unusedColor] += 1;
+        used[firstColor] -= 1;
+        used[unusedColor] += 1;
+        const next = scoreCandidate(colors, used, problem);
+        if (outranks(next, score, false)) {
           return next;
         }
+        used[unusedColor] -= 1;
+        used[firstColor] += 1;
       }
       colors[first] = firstColor;
       colors[second] = secondColor;
@@ -667,7 +799,7 @@ function bottleneckNodes(colors: readonly number[], problem: Problem, min: numbe
   for (let edge = 0; edge < problem.eu.length; edge += 1) {
     const left = problem.eu[edge];
     const right = problem.ev[edge];
-    if (FLAT_DISTANCE[(colors[left] << 4) | colors[right]] !== min) {
+    if (FLAT_DISTANCE[colors[left] * PALETTE_SIZE + colors[right]] !== min) {
       continue;
     }
     if (problem.isFree[left] && !seen[left]) {
@@ -688,7 +820,7 @@ function tryCycleFrom(
   problem: Problem,
   score: Separation
 ): Separation | null {
-  const { adj, eu, ev, free } = problem;
+  const { adj, free } = problem;
   const firstColor = colors[first];
   for (const second of free) {
     if (second === first || colors[second] === firstColor) {
@@ -708,8 +840,8 @@ function tryCycleFrom(
         incidentOk(colors, second, adj, score.min) &&
         incidentOk(colors, third, adj, score.min)
       ) {
-        const next = scoreGraph(colors, eu, ev);
-        if (outranks(next, score)) {
+        const next = scorePermutation(colors, problem, score);
+        if (outranks(next, score, false)) {
           return next;
         }
       }
@@ -727,17 +859,48 @@ function incidentOk(
   adj: readonly (readonly number[])[],
   min: number
 ): boolean {
-  const row = colors[node] << 4;
+  const row = colors[node] * PALETTE_SIZE;
   const neighbors = adj[node];
   for (let index = 0; index < neighbors.length; index += 1) {
-    if (FLAT_DISTANCE[row | colors[neighbors[index]]] < min) {
+    if (FLAT_DISTANCE[row + colors[neighbors[index]]] < min) {
       return false;
     }
   }
   return true;
 }
 
-function scoreGraph(colors: readonly number[], eu: Int32Array, ev: Int32Array): Separation {
+function scoreCandidate(
+  colors: readonly number[],
+  used: Uint8Array,
+  problem: Problem
+): Separation {
+  const edge = scoreEdges(colors, problem.eu, problem.ev);
+  const metrics = paletteMetrics(colors, used);
+  return { ...edge, ...metrics };
+}
+
+function scorePermutation(
+  colors: readonly number[],
+  problem: Problem,
+  base: Separation
+): Separation {
+  const edge = scoreEdges(colors, problem.eu, problem.ev);
+  return {
+    count: edge.count,
+    min: edge.min,
+    pairCount: base.pairCount,
+    pairMin: base.pairMin,
+    reuseExcess: base.reuseExcess,
+    reuseMax: base.reuseMax,
+    sum: edge.sum,
+  };
+}
+
+function scoreEdges(
+  colors: readonly number[],
+  eu: Int32Array,
+  ev: Int32Array
+): { count: number; min: number; sum: number } {
   if (eu.length === 0) {
     return { count: 0, min: UNSEPARATED, sum: 0 };
   }
@@ -745,7 +908,7 @@ function scoreGraph(colors: readonly number[], eu: Int32Array, ev: Int32Array): 
   let count = 0;
   let sum = 0;
   for (let index = 0; index < eu.length; index += 1) {
-    const distance = FLAT_DISTANCE[(colors[eu[index]] << 4) | colors[ev[index]]];
+    const distance = FLAT_DISTANCE[colors[eu[index]] * PALETTE_SIZE + colors[ev[index]]];
     sum += distance;
     if (distance < min) {
       min = distance;
@@ -757,16 +920,91 @@ function scoreGraph(colors: readonly number[], eu: Int32Array, ev: Int32Array): 
   return { count, min, sum };
 }
 
-function compareScores(left: Separation, right: Separation): number {
+function paletteMetrics(colors: readonly number[], used: Uint8Array): PaletteMetrics {
+  let reuseMax = 0;
+  let reuseExcess = 0;
+  for (let color = 0; color < PALETTE_SIZE; color += 1) {
+    const count = used[color];
+    if (count > reuseMax) {
+      reuseMax = count;
+    }
+    if (count > 1) {
+      reuseExcess += count - 1;
+    }
+  }
+  let boardMask = 0;
+  for (let index = 0; index < colors.length; index += 1) {
+    boardMask |= 1 << colors[index];
+  }
+  const dispersion = maskDispersion(boardMask);
+  return { pairCount: dispersion.count, pairMin: dispersion.min, reuseExcess, reuseMax };
+}
+
+function maskDispersion(boardMask: number): { count: number; min: number } {
+  if (boardMask === ALL_COLORS_MASK) {
+    return ALL_DISPERSION;
+  }
+  return computeMaskDispersion(boardMask);
+}
+
+function computeMaskDispersion(boardMask: number): { count: number; min: number } {
+  let min = UNSEPARATED;
+  let count = 0;
+  for (let first = 0; first < PALETTE_SIZE; first += 1) {
+    if ((boardMask & (1 << first)) === 0) {
+      continue;
+    }
+    const row = first * PALETTE_SIZE;
+    for (let second = first + 1; second < PALETTE_SIZE; second += 1) {
+      if ((boardMask & (1 << second)) === 0) {
+        continue;
+      }
+      const distance = FLAT_DISTANCE[row + second];
+      if (distance < min) {
+        min = distance;
+        count = 1;
+      } else if (distance === min) {
+        count += 1;
+      }
+    }
+  }
+  return { count, min };
+}
+
+function compareScores(left: Separation, right: Separation, reuseMode: boolean): number {
+  if (reuseMode) {
+    const reuseRank = compareReusePriority(left, right);
+    if (reuseRank !== 0) {
+      return reuseRank;
+    }
+  }
   if (left.min !== right.min) {
     return left.min - right.min;
   }
   if (left.count !== right.count) {
     return right.count - left.count;
   }
+  if (left.pairMin !== right.pairMin) {
+    return left.pairMin - right.pairMin;
+  }
+  if (left.pairCount !== right.pairCount) {
+    return right.pairCount - left.pairCount;
+  }
   return left.sum - right.sum;
 }
 
-function outranks(next: Separation, current: Separation): boolean {
-  return compareScores(next, current) > 0;
+function compareReusePriority(left: Separation, right: Separation): number {
+  const leftFloor = Math.min(left.min, REUSE_COMFORT_FLOOR);
+  const rightFloor = Math.min(right.min, REUSE_COMFORT_FLOOR);
+  if (leftFloor !== rightFloor) {
+    return leftFloor - rightFloor;
+  }
+  if (left.reuseMax !== right.reuseMax) {
+    return right.reuseMax - left.reuseMax;
+  }
+  return right.reuseExcess - left.reuseExcess;
+}
+
+function outranks(next: Separation, current: Separation, reuseMode: boolean): boolean {
+  return compareScores(next, current, reuseMode) > 0;
 }

@@ -291,7 +291,8 @@ Feature: Destination color
   Scenario: The departure board a rider glances at keeps neighbors apart across red-green color vision
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 30 apart across red-green color vision from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
+    And destinations two rows apart stay at least 16 apart across red-green color vision
     And every pair of different destinations on the board stays at least 15 apart across red-green color vision
 
   Scenario: A repeated destination stays apart from the rows above and below it

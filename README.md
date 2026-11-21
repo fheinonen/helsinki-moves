@@ -59,8 +59,6 @@ From `web/`, run `vercel --prod --yes`.
 
 Vercel serves the built client from `dist/` and the API entrypoints from `web/api/`. The production domain is [https://helsinkimoves.fheinonen.eu](https://helsinkimoves.fheinonen.eu).
 
-Cutover checks are in the [release checklist](docs/RELEASE-CHECKLIST-greenfield-rewrite.md) and the [deploy plan](docs/DEPLOY-PLAN-greenfield-rewrite.md).
-
 ## Rules the board follows
 
 - The mode names are `RAIL`, `TRAM`, `METRO`, and `BUS`. A metro request uses Digitransit mode `SUBWAY`.
@@ -100,8 +98,6 @@ The running app is the TypeScript client and Hono API in `web/`.
 - `web/api/` holds the Vercel route entrypoints.
 - Import rules are in [web/src/README.md](web/src/README.md).
 - `cli/` is the Go CLI.
-
-Rewrite status is in the [rewrite tracker](docs/REWRITE-TRACKER.md). The backlog is in [epics](docs/EPICS-greenfield-rewrite.md). The planned sequence is in the [sprint plan](docs/SPRINT-PLAN-greenfield-rewrite.md).
 
 ## API
 

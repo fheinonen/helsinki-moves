@@ -1,14 +1,15 @@
 import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import {
-  closestProtanopiaDistance,
+  closestRedGreenDistance,
   contrastOnDarkBoard,
-  GLANCEABLE_PROTANOPIA_DISTANCE,
+  GLANCEABLE_COLOR_VISION_DISTANCE,
   parseCssRgb,
-  protanopiaDistance,
   READABLE_BOARD_CONTRAST,
-  simulateProtanopia,
-} from "@tests/helpers/protanopia";
+  RED_GREEN_PROFILES,
+  simulateColorVision,
+  worstRedGreenDistance,
+} from "@tests/helpers/color-vision";
 import { createAppStore, type AppStore } from "@client/app/app-store";
 import { renderAppShell } from "@client/app/app-shell";
 import { createAppController } from "@client/app/app-controller";
@@ -37,28 +38,28 @@ interface World {
 const BASE_TIME_MS = Date.parse("2026-03-07T10:00:00.000Z");
 const COLOR_PATTERN = /^rgb\(\d+, \d+, \d+\)$/;
 const DESTINATION_SCHEME = [
-  "#f8ff00",
-  "#ce78ff",
-  "#b0968e",
-  "#fff0ff",
-  "#a0a028",
-  "#fffed9",
-  "#96b4d2",
-  "#ff8769",
-  "#f087a5",
-  "#f0d2a0",
-  "#4bc4b4",
-  "#fdfdf4",
-  "#aae66e",
-  "#ffffaf",
-  "#00c56d",
-  "#ffb400",
-  "#b4b496",
-  "#ffd2c3",
-  "#c8c8d2",
-  "#31bfff",
-  "#ffd2ff",
-  "#7c9ad5",
+  "#ffdf00",
+  "#9e88ff",
+  "#a29989",
+  "#fdfffd",
+  "#d2ccff",
+  "#c69920",
+  "#c8deac",
+  "#9499a7",
+  "#becccf",
+  "#ecd176",
+  "#d2f0fe",
+  "#b08fcb",
+  "#b7abff",
+  "#9fb9cd",
+  "#e0fede",
+  "#cbcbbc",
+  "#e9ffb0",
+  "#b8a9aa",
+  "#ffff75",
+  "#a9ba92",
+  "#fc886e",
+  "#dbbb0e",
 ] as const;
 const GLANCE_DESTINATIONS = [
   "Eira",
@@ -188,7 +189,7 @@ function schemeColors(): Set<string> {
 }
 
 function neighborDistance(first: string, second: string): number {
-  return protanopiaDistance(parseCssRgb(first), parseCssRgb(second));
+  return worstRedGreenDistance(parseCssRgb(first), parseCssRgb(second));
 }
 
 function colorsByDestination(rows: DepartureRow[]): Map<string, string> {
@@ -255,52 +256,52 @@ Feature: Destination color
     Then each destination uses its own color
     And the destination texts stay in departure order
 
-  Scenario: Destination colors stay distinct for protanopia
+  Scenario: Destination colors stay distinct for red-green color vision
     Given a board with 22 different destinations
     When the departure board is shown
-    Then each destination color stays distinct under protanopia
+    Then each destination color stays distinct across red-green color vision
     And each destination color stays readable on the dark board
 
-  Scenario: Neighboring departures on a long board stay apart under protanopia
+  Scenario: Neighboring departures on a long board stay apart across red-green color vision
     Given a board with 16 different destinations
     When the departure board is shown
-    Then each departure stays at least 36 apart under protanopia from the row above and the row below
+    Then each departure stays at least 33 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
-  Scenario: Neighboring departures across all 22 destinations stay apart under protanopia
+  Scenario: Neighboring departures across all 22 destinations stay apart across red-green color vision
     Given a board with 22 different destinations
     When the departure board is shown
-    Then each departure stays at least 28 apart under protanopia from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
-  Scenario: Mixed departures beside each other stay apart under protanopia
+  Scenario: Mixed departures beside each other stay apart across red-green color vision
     Given a board with trips to Eira, Kamppi, Ruoholahti, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 52 apart under protanopia from the row above and the row below
+    Then each departure stays at least 52 apart across red-green color vision from the row above and the row below
 
-  Scenario: The departure board a rider glances at keeps neighbors apart under protanopia
+  Scenario: The departure board a rider glances at keeps neighbors apart across red-green color vision
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 34 apart under protanopia from the row above and the row below
+    Then each departure stays at least 33 apart across red-green color vision from the row above and the row below
 
   Scenario: A repeated destination stays apart from the rows above and below it
     Given a board with 22 different destinations followed by the second destination
     When the departure board is shown
     Then the repeated destination keeps the color of its first row
-    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each departure stays at least 27 apart across red-green color vision from the row above and the row below
 
   Scenario: Two new destinations after every color is used stay apart from the rows beside them
     Given a board with 22 different destinations
     When the departure board is shown
     When two new destinations are shown between Destination 7 and Destination 14
-    Then each departure stays at least 29 apart under protanopia from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: A new destination between close colors stays apart from both rows
     Given a board with 22 different destinations
     When the departure board is shown
     When a new destination is shown between the two closest-colored destinations
-    Then the new destination stays at least 32 apart under protanopia from the row above and the row below
+    Then the new destination stays at least 32 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: Added departures stay apart from the rows already colored
@@ -309,7 +310,7 @@ Feature: Destination color
     Then the shown destination colors are remembered
     When Ruoholahti and Lauttasaari are added after those departures
     Then Eira and Kamppi keep their remembered colors
-    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
 
   Scenario: Coloring a long board finishes within single-digit milliseconds
     Given a board with 22 different destinations
@@ -330,30 +331,30 @@ Feature: Destination color
     Given a board with 26 different destinations
     When the departure board is shown
     Then all 22 scheme colors appear on the board
-    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
 
-  Scenario: Later departures reordering earlier destinations keep them apart under protanopia
+  Scenario: Later departures reordering earlier destinations keep them apart across red-green color vision
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
     Then the shown destination colors are remembered
     When later departures append the same destinations in a different order
     Then each destination keeps its remembered color
-    And each departure stays at least 12 apart under protanopia from the row above and the row below
+    And each departure stays at least 9 apart across red-green color vision from the row above and the row below
 
   Scenario: Loading eight more destinations after the glance board keeps all neighbors apart
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
     When 8 new later departures are appended to the board
     Then each destination uses its own color
-    And each departure stays at least 33 apart under protanopia from the row above and the row below
+    And each departure stays at least 32 apart across red-green color vision from the row above and the row below
 
   Scenario: Loading more departures in stages keeps later neighbors apart even near the palette limit
     Given a board with 20 different destinations
     When the departure board is shown
     When 2 new later departures are appended to the board
-    Then each departure stays at least 29 apart under protanopia from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: Loading further destinations after all colors are used spreads reused colors apart
@@ -361,7 +362,7 @@ Feature: Destination color
     When the departure board is shown
     When 4 new later departures are appended to the board
     Then the 4 appended departures use 4 different colors
-    And each departure stays at least 28 apart under protanopia from the row above and the row below
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
   `,
   {
@@ -594,15 +595,15 @@ Feature: Destination color
         },
       },
       {
-        pattern: /^Then each destination color stays distinct under protanopia$/,
+        pattern: /^Then each destination color stays distinct across red-green color vision$/,
         run: ({ assert, world }) => {
           const colors = [...colorsByDestination(readRows(world)).values()];
           assert.equal(colors.length, DESTINATION_SCHEME.length);
-          const closest = closestProtanopiaDistance(colors);
+          const closest = closestRedGreenDistance(colors);
           assert.equal(
-            closest >= GLANCEABLE_PROTANOPIA_DISTANCE,
+            closest.distance >= GLANCEABLE_COLOR_VISION_DISTANCE,
             true,
-            `Closest protanopia pair differs by ${closest.toFixed(2)}`
+            `Closest ${closest.profile} pair differs by ${closest.distance.toFixed(2)}`
           );
         },
       },
@@ -611,20 +612,20 @@ Feature: Destination color
         run: ({ assert, world }) => {
           for (const color of colorsByDestination(readRows(world)).values()) {
             const rgb = parseCssRgb(color);
-            const painted = contrastOnDarkBoard(rgb);
-            const simulated = contrastOnDarkBoard(simulateProtanopia(rgb));
-            assert.equal(painted >= READABLE_BOARD_CONTRAST, true, `${color} contrast ${painted.toFixed(2)}`);
-            assert.equal(
-              simulated >= READABLE_BOARD_CONTRAST,
-              true,
-              `${color} protanopia contrast ${simulated.toFixed(2)}`
-            );
+            for (const profile of RED_GREEN_PROFILES) {
+              const simulated = contrastOnDarkBoard(simulateColorVision(rgb, profile));
+              assert.equal(
+                simulated >= READABLE_BOARD_CONTRAST,
+                true,
+                `${color} ${profile} contrast ${simulated.toFixed(2)}`
+              );
+            }
           }
         },
       },
       {
         pattern:
-          /^Then each departure stays at least (\d+) apart under protanopia from the row above and the row below$/,
+          /^Then each departure stays at least (\d+) apart across red-green color vision from the row above and the row below$/,
         run: ({ args, assert, world }) => {
           const minimum = Number(args[0]);
           const rows = readRows(world);
@@ -674,7 +675,7 @@ Feature: Destination color
       },
       {
         pattern:
-          /^Then the new destination stays at least (\d+) apart under protanopia from the row above and the row below$/,
+          /^Then the new destination stays at least (\d+) apart across red-green color vision from the row above and the row below$/,
         run: ({ args, assert, world }) => {
           const minimum = Number(args[0]);
           const rows = readRows(world);

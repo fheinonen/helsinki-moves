@@ -19,15 +19,38 @@ export const DESTINATION_COLORS = [
 
 const PALETTE_SIZE = DESTINATION_COLORS.length;
 const UNSEPARATED = 1_000_000;
-const SEARCH_EXACTLY_UNTIL = 8;
-const LOCAL_ROUNDS = 40;
+const CLIMB_ROUNDS = 40;
+const WIDE_STAGE_ROUNDS = 4;
+const POLISH_ROUNDS = 20;
+const POLISH_CANDIDATES = 4;
 
 type Edge = readonly [number, number];
 
 interface Separation {
+  count: number;
   min: number;
   sum: number;
 }
+
+interface Problem {
+  adj: number[][];
+  avail: number;
+  baseUsed: Uint8Array;
+  distinct: boolean;
+  eu: Int32Array;
+  ev: Int32Array;
+  free: number[];
+  hasRecolorTarget: boolean;
+  isFree: Uint8Array;
+}
+
+interface Candidate {
+  colors: number[];
+  score: Separation;
+  used: Uint8Array;
+}
+
+const DELTA_ACC = new Int32Array(3);
 
 // Protanopia CIEDE2000, in hundredths, for DESTINATION_COLORS in order.
 const DISTANCE = [
@@ -49,543 +72,276 @@ const DISTANCE = [
   [6511, 768, 3162, 3730, 1893, 5087, 5263, 2352, 1710, 3638, 5378, 4263, 1191, 5290, 1197, 0],
 ];
 
+const FLAT_DISTANCE = flattenDistances(DISTANCE);
+
+function flattenDistances(matrix: readonly (readonly number[])[]): Int32Array {
+  const flat = new Int32Array(PALETTE_SIZE * PALETTE_SIZE);
+  for (let row = 0; row < PALETTE_SIZE; row += 1) {
+    for (let col = 0; col < PALETTE_SIZE; col += 1) {
+      flat[(row << 4) | col] = matrix[row][col];
+    }
+  }
+  return flat;
+}
+
 export function separateNeighbors(
   fixed: readonly number[],
   edges: readonly Edge[],
   reserved: ReadonlySet<number> = new Set()
 ): number[] {
-  if (fixed.every((color) => color >= 0)) {
+  const problem = buildProblem(fixed, edges, reserved);
+  if (problem.free.length === 0) {
     return fixed.slice();
   }
-  const free = freeIndexes(fixed);
-  if (free.length === 1) {
-    return paintOne(fixed, edges, free[0], reserved);
+  if (problem.free.length === 1) {
+    return greedyStart(fixed, problem, -1).colors;
   }
-  const ordered = singlePath(fixed, edges);
-  const painted = ordered ? paintPath(fixed, ordered, edges, reserved) : null;
-  if (painted) {
-    return painted;
-  }
-  if (free.length <= SEARCH_EXACTLY_UNTIL) {
-    return searchExact(fixed, edges, reserved);
-  }
-  return searchLocal(fixed, edges, reserved);
+  return searchHillClimb(fixed, problem);
 }
 
-function paintOne(
+function buildProblem(
   fixed: readonly number[],
   edges: readonly Edge[],
-  node: number,
   reserved: ReadonlySet<number>
-): number[] {
-  const colors = fixed.slice();
-  const used = visitColors(colors, reserved);
-  colors[node] = bestColor(neighborColors(node, colors, edges), used, used.size < PALETTE_SIZE);
-  return colors;
-}
-
-function paintPath(
-  fixed: readonly number[],
-  ordered: readonly number[],
-  edges: readonly Edge[],
-  reserved: ReadonlySet<number>
-): number[] | null {
-  const pool = unusedColors(fixed, reserved);
-  if (pool.length < ordered.length) {
-    return null;
+): Problem {
+  const baseUsed = new Uint8Array(PALETTE_SIZE);
+  for (const color of reserved) {
+    baseUsed[color] = 1;
   }
-  const penalties = ordered.map((node) => neighborColors(node, fixed, edges));
-  const chosen = solvePath(pool, penalties);
-  const colors = fixed.slice();
-  ordered.forEach((node, position) => {
-    colors[node] = chosen[position];
-  });
-  return colors;
-}
-
-function searchExact(fixed: readonly number[], edges: readonly Edge[], reserved: ReadonlySet<number>): number[] {
-  const free = freeIndexes(fixed);
-  const assign = fixed.slice();
-  const distinct = free.length <= unusedColors(assign, reserved).length;
-  let best = climb(greedy(fixed, edges, reserved), free, edges);
-  let bestScore = scoreEdges(best, edges);
-
-  const visit = (step: number, mask: number): void => {
-    if (step === free.length) {
-      const score = scoreEdges(assign, edges);
-      if (outranks(score, bestScore)) {
-        best = assign.slice();
-        bestScore = score;
-      }
-      return;
+  const freeRaw: number[] = [];
+  const isFree = new Uint8Array(fixed.length);
+  for (let node = 0; node < fixed.length; node += 1) {
+    if (fixed[node] >= 0) {
+      baseUsed[fixed[node]] = 1;
+    } else {
+      freeRaw.push(node);
+      isFree[node] = 1;
     }
-    tryColors(assign, free[step], edges, distinct, mask, bestScore.min, (color, nextMask) => {
-      assign[free[step]] = color;
-      visit(step + 1, nextMask);
-      assign[free[step]] = -1;
-    });
-  };
-
-  visit(0, usedMask(assign));
-  return best;
+  }
+  const avail = countAvailable(baseUsed);
+  const { adj, eu, ev } = activeGraph(fixed.length, edges, fixed);
+  const free = orderFree(freeRaw, isFree, adj);
+  const distinct = free.length <= avail;
+  const hasRecolorTarget = !distinct || free.length < avail;
+  return { adj, avail, baseUsed, distinct, eu, ev, free, hasRecolorTarget, isFree };
 }
 
-function tryColors(
-  assign: readonly number[],
-  node: number,
-  edges: readonly Edge[],
-  distinct: boolean,
-  mask: number,
-  bestMin: number,
-  accept: (color: number, mask: number) => void
-): void {
+function countAvailable(used: Uint8Array): number {
+  let avail = 0;
   for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (distinct && (mask & (1 << color)) !== 0) {
-      continue;
-    }
-    if (worstPlaced(assign, node, color, edges) < bestMin) {
-      continue;
-    }
-    accept(color, distinct ? mask | (1 << color) : mask);
-  }
-}
-
-function searchLocal(fixed: readonly number[], edges: readonly Edge[], reserved: ReadonlySet<number>): number[] {
-  const free = freeIndexes(fixed);
-  let best = fixed.slice();
-  let bestScore: Separation = { min: -1, sum: -1 };
-  const pathSeed = paintPath(fixed, free, edges, reserved);
-  if (pathSeed) {
-    best = climb(pathSeed, free, edges);
-    bestScore = scoreEdges(best, edges);
-  }
-  for (let start = 0; start < PALETTE_SIZE; start += 1) {
-    const seeded = climb(greedy(forceStart(fixed, start, reserved), edges, reserved), free, edges);
-    const score = scoreEdges(seeded, edges);
-    if (outranks(score, bestScore)) {
-      best = seeded;
-      bestScore = score;
+    if (used[color] === 0) {
+      avail += 1;
     }
   }
-  return best;
+  return avail;
 }
 
-function forceStart(fixed: readonly number[], start: number, reserved: ReadonlySet<number>): number[] {
-  const colors = fixed.slice();
-  const free = freeIndexes(colors);
-  if (free.length === 0 || visitColors(colors, reserved).has(start)) {
-    return colors;
-  }
-  colors[free[0]] = start;
-  return colors;
-}
-
-function greedy(assign: readonly number[], edges: readonly Edge[], reserved: ReadonlySet<number>): number[] {
-  return fillGreedy(assign.slice(), adjacency(assign.length, edges), reserved);
-}
-
-function fillGreedy(colors: number[], neigh: number[][], reserved: ReadonlySet<number>): number[] {
-  const open = freeIndexes(colors);
-  const used = visitColors(colors, reserved);
-  while (open.length > 0) {
-    const node = open.splice(mostColored(open, colors, neigh), 1)[0];
-    const fresh = used.size + open.length < PALETTE_SIZE;
-    colors[node] = bestColor(coloredNeighbors(node, colors, neigh), used, fresh);
-    used.add(colors[node]);
-  }
-  return colors;
-}
-
-function mostColored(open: readonly number[], colors: readonly number[], neigh: readonly number[][]): number {
-  let pick = 0;
-  let rank = -1;
-  for (let index = 0; index < open.length; index += 1) {
-    const colored = coloredNeighbors(open[index], colors, neigh).length;
-    if (colored > rank) {
-      rank = colored;
-      pick = index;
-    }
-  }
-  return pick;
-}
-
-function climb(colors: number[], free: readonly number[], edges: readonly Edge[]): number[] {
-  let current = colors;
-  let currentScore = scoreEdges(current, edges);
-  for (let round = 0; round < LOCAL_ROUNDS; round += 1) {
-    const next = improvePass(current, free, edges, currentScore);
-    if (!next) {
-      return current;
-    }
-    current = next.colors;
-    currentScore = next.score;
-  }
-  return current;
-}
-
-function improvePass(
-  colors: number[],
-  free: readonly number[],
+function activeGraph(
+  size: number,
   edges: readonly Edge[],
-  currentScore: Separation
-): { colors: number[]; score: Separation } | null {
-  let working = colors;
-  let score = currentScore;
-  let changed = false;
-  for (let left = 0; left < free.length; left += 1) {
-    const swapped = improveBySwap(working, free, left, edges, score);
-    if (swapped) {
-      working = swapped.colors;
-      score = swapped.score;
-      changed = true;
-    }
-    const replaced = improveByUnused(working, free[left], edges, score);
-    if (replaced) {
-      working = replaced.colors;
-      score = replaced.score;
-      changed = true;
-    }
-  }
-  return changed ? { colors: working, score } : null;
-}
-
-function improveBySwap(
-  colors: readonly number[],
-  free: readonly number[],
-  left: number,
-  edges: readonly Edge[],
-  currentScore: Separation
-): { colors: number[]; score: Separation } | null {
-  let working = colors.slice();
-  let score = currentScore;
-  let changed = false;
-  for (let right = left + 1; right < free.length; right += 1) {
-    if (working[free[left]] === working[free[right]]) {
-      continue;
-    }
-    const next = working.slice();
-    const saved = next[free[left]];
-    next[free[left]] = next[free[right]];
-    next[free[right]] = saved;
-    const nextScore = scoreEdges(next, edges);
-    if (!outranks(nextScore, score)) {
-      continue;
-    }
-    working = next;
-    score = nextScore;
-    changed = true;
-  }
-  return changed ? { colors: working, score } : null;
-}
-
-function improveByUnused(
-  colors: readonly number[],
-  node: number,
-  edges: readonly Edge[],
-  currentScore: Separation
-): { colors: number[]; score: Separation } | null {
-  let working = colors.slice();
-  let score = currentScore;
-  let changed = false;
-  for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (working.includes(color)) {
-      continue;
-    }
-    const next = working.slice();
-    next[node] = color;
-    const nextScore = scoreEdges(next, edges);
-    if (!outranks(nextScore, score)) {
-      continue;
-    }
-    working = next;
-    score = nextScore;
-    changed = true;
-  }
-  return changed ? { colors: working, score } : null;
-}
-
-function solvePath(pool: readonly number[], penalties: readonly (readonly number[])[]): number[] {
-  const width = pool.length;
-  const length = penalties.length;
-  const mins = new Int32Array((1 << width) * width);
-  const sums = new Int32Array(mins.length);
-  const previous = new Int16Array(mins.length);
-  mins.fill(-1);
-  previous.fill(-1);
-  seedPath(pool, penalties[0], mins, sums, width);
-  extendPath(pool, penalties, mins, sums, previous, width, length);
-  return readPath(pool, mins, sums, previous, width, length);
-}
-
-function seedPath(
-  pool: readonly number[],
-  penalty: readonly number[],
-  mins: Int32Array,
-  sums: Int32Array,
-  width: number
-): void {
-  for (let index = 0; index < width; index += 1) {
-    const score = against(penalty, pool[index]);
-    const slot = (1 << index) * width + index;
-    mins[slot] = score.min;
-    sums[slot] = score.sum;
-  }
-}
-
-function extendPath(
-  pool: readonly number[],
-  penalties: readonly (readonly number[])[],
-  mins: Int32Array,
-  sums: Int32Array,
-  previous: Int16Array,
-  width: number,
-  length: number
-): void {
-  const states = 1 << width;
-  for (let mask = 0; mask < states; mask += 1) {
-    const used = popcount(mask);
-    if (used === 0 || used >= length) {
-      continue;
-    }
-    for (let last = 0; last < width; last += 1) {
-      extendFrom(pool, penalties[used], mins, sums, previous, width, mask, last);
-    }
-  }
-}
-
-function extendFrom(
-  pool: readonly number[],
-  penalty: readonly number[],
-  mins: Int32Array,
-  sums: Int32Array,
-  previous: Int16Array,
-  width: number,
-  mask: number,
-  last: number
-): void {
-  if ((mask & (1 << last)) === 0) {
-    return;
-  }
-  const base = mask * width + last;
-  const baseMin = mins[base];
-  if (baseMin < 0) {
-    return;
-  }
-  for (let next = 0; next < width; next += 1) {
-    if ((mask & (1 << next)) !== 0) {
-      continue;
-    }
-    writeStep(pool, penalty, mins, sums, previous, width, mask, last, next, baseMin, sums[base]);
-  }
-}
-
-function writeStep(
-  pool: readonly number[],
-  penalty: readonly number[],
-  mins: Int32Array,
-  sums: Int32Array,
-  previous: Int16Array,
-  width: number,
-  mask: number,
-  last: number,
-  next: number,
-  baseMin: number,
-  baseSum: number
-): void {
-  const edge = DISTANCE[pool[last]][pool[next]];
-  const extra = against(penalty, pool[next]);
-  const nextMin = Math.min(baseMin, edge, extra.min);
-  const nextSum = baseSum + edge + extra.sum;
-  const slot = (mask | (1 << next)) * width + next;
-  if (nextMin > mins[slot] || (nextMin === mins[slot] && nextSum > sums[slot])) {
-    mins[slot] = nextMin;
-    sums[slot] = nextSum;
-    previous[slot] = last;
-  }
-}
-
-function readPath(
-  pool: readonly number[],
-  mins: Int32Array,
-  sums: Int32Array,
-  previous: Int16Array,
-  width: number,
-  length: number
-): number[] {
-  const slot = bestSlot(mins, sums, width, length);
-  const colors: number[] = [];
-  let cursor = slot;
-  while (colors.length < length && cursor >= 0) {
-    const index = cursor % width;
-    colors.push(pool[index]);
-    const parent = previous[cursor];
-    if (parent < 0) {
-      break;
-    }
-    cursor = (Math.floor(cursor / width) ^ (1 << index)) * width + parent;
-  }
-  colors.reverse();
-  return colors;
-}
-
-function bestSlot(mins: Int32Array, sums: Int32Array, width: number, length: number): number {
-  let chosen = -1;
-  let bestMin = -1;
-  let bestSum = -1;
-  const states = 1 << width;
-  for (let mask = 0; mask < states; mask += 1) {
-    if (popcount(mask) !== length) {
-      continue;
-    }
-    for (let last = 0; last < width; last += 1) {
-      const slot = mask * width + last;
-      const min = mins[slot];
-      if (min > bestMin || (min === bestMin && sums[slot] > bestSum)) {
-        bestMin = min;
-        bestSum = sums[slot];
-        chosen = slot;
-      }
-    }
-  }
-  return chosen;
-}
-
-function singlePath(fixed: readonly number[], edges: readonly Edge[]): number[] | null {
-  const free = freeIndexes(fixed);
-  if (free.length <= 1) {
-    return free;
-  }
-  const pairs = inducedPairs(free, edges);
-  if (pairs.length !== free.length - 1) {
-    return null;
-  }
-  const links = free.map(() => [] as number[]);
-  for (const [left, right] of pairs) {
-    links[left].push(right);
-    links[right].push(left);
-  }
-  if (links.some((list) => list.length > 2)) {
-    return null;
-  }
-  return orderPath(free, links);
-}
-
-function inducedPairs(free: readonly number[], edges: readonly Edge[]): Array<[number, number]> {
-  const id = new Map(free.map((node, index) => [node, index]));
-  const seen = new Set<string>();
-  const pairs: Array<[number, number]> = [];
+  fixed: readonly number[]
+): { adj: number[][]; eu: Int32Array; ev: Int32Array } {
+  const eu: number[] = [];
+  const ev: number[] = [];
+  const adj = Array.from({ length: size }, () => [] as number[]);
   for (const [left, right] of edges) {
-    const pair = pairIndex(id, left, right);
-    if (!pair || seen.has(pair.key)) {
+    if (fixed[left] >= 0 && fixed[right] >= 0) {
       continue;
     }
-    seen.add(pair.key);
-    pairs.push(pair.nodes);
+    eu.push(left);
+    ev.push(right);
+    adj[left].push(right);
+    adj[right].push(left);
   }
-  return pairs;
+  return { adj, eu: Int32Array.from(eu), ev: Int32Array.from(ev) };
 }
 
-function pairIndex(
-  id: ReadonlyMap<number, number>,
-  left: number,
-  right: number
-): { key: string; nodes: [number, number] } | null {
-  const a = id.get(left);
-  const b = id.get(right);
-  if (a === undefined || b === undefined || a === b) {
-    return null;
+function orderFree(
+  free: readonly number[],
+  isFree: Uint8Array,
+  adj: readonly (readonly number[])[]
+): number[] {
+  if (free.length <= 2) {
+    return free.slice();
   }
-  const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-  return { key, nodes: [a, b] };
-}
-
-function orderPath(free: readonly number[], links: readonly number[][]): number[] | null {
-  const start = links.findIndex((list) => list.length <= 1);
-  if (start < 0) {
-    return null;
-  }
-  const ordered = [free[start]];
-  let previous = -1;
-  let cursor = start;
+  const visited = new Uint8Array(isFree.length);
+  const ordered: number[] = [];
   while (ordered.length < free.length) {
-    const next = links[cursor].find((candidate) => candidate !== previous);
-    if (next === undefined) {
-      return null;
+    let cursor = pickLeastFreeNeighbor(free, isFree, visited, adj);
+    while (cursor >= 0) {
+      visited[cursor] = 1;
+      ordered.push(cursor);
+      cursor = pickLeastFreeNeighbor(adj[cursor], isFree, visited, adj);
     }
-    previous = cursor;
-    cursor = next;
-    ordered.push(free[cursor]);
   }
   return ordered;
 }
 
-function adjacency(size: number, edges: readonly Edge[]): number[][] {
-  const neigh = Array.from({ length: size }, () => [] as number[]);
-  for (const [left, right] of edges) {
-    neigh[left].push(right);
-    neigh[right].push(left);
-  }
-  return neigh;
-}
-
-function neighborColors(node: number, colors: readonly number[], edges: readonly Edge[]): number[] {
-  const found: number[] = [];
-  for (const [left, right] of edges) {
-    const other = left === node ? right : right === node ? left : -1;
-    if (other >= 0 && colors[other] >= 0) {
-      found.push(colors[other]);
-    }
-  }
-  return found;
-}
-
-function coloredNeighbors(node: number, colors: readonly number[], neigh: readonly number[][]): number[] {
-  const found: number[] = [];
-  for (const other of neigh[node]) {
-    if (colors[other] >= 0) {
-      found.push(colors[other]);
-    }
-  }
-  return found;
-}
-
-function worstPlaced(assign: readonly number[], node: number, color: number, edges: readonly Edge[]): number {
-  let worst = UNSEPARATED;
-  for (const [left, right] of edges) {
-    const other = left === node ? right : right === node ? left : -1;
-    if (other >= 0 && assign[other] >= 0) {
-      worst = Math.min(worst, DISTANCE[assign[other]][color]);
-    }
-  }
-  return worst;
-}
-
-function bestColor(neighbors: readonly number[], used: ReadonlySet<number>, freshOnly: boolean): number {
-  let chosen = 0;
-  let bestMin = -1;
-  let bestSum = -1;
-  for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (freshOnly && used.has(color)) {
+function pickLeastFreeNeighbor(
+  candidates: readonly number[],
+  isFree: Uint8Array,
+  visited: Uint8Array,
+  adj: readonly (readonly number[])[]
+): number {
+  let chosen = -1;
+  let bestDegree = UNSEPARATED;
+  for (const node of candidates) {
+    if (!isFree[node] || visited[node]) {
       continue;
     }
-    const score = against(neighbors, color);
-    if (score.min > bestMin || (score.min === bestMin && (score.sum > bestSum || (score.sum === bestSum && color < chosen)))) {
-      chosen = color;
-      bestMin = score.min;
-      bestSum = score.sum;
+    const degree = openFreeDegree(node, isFree, visited, adj);
+    if (degree < bestDegree) {
+      bestDegree = degree;
+      chosen = node;
     }
   }
   return chosen;
 }
 
-function against(neighbors: readonly number[], color: number): Separation {
-  if (neighbors.length === 0) {
-    return { min: UNSEPARATED, sum: 0 };
+function openFreeDegree(
+  node: number,
+  isFree: Uint8Array,
+  visited: Uint8Array,
+  adj: readonly (readonly number[])[]
+): number {
+  let degree = 0;
+  for (const neighbor of adj[node]) {
+    if (isFree[neighbor] && !visited[neighbor]) {
+      degree += 1;
+    }
   }
+  return degree;
+}
+
+function searchHillClimb(fixed: readonly number[], problem: Problem): number[] {
+  const candidates = seedCandidates(fixed, problem);
+  candidates.sort((left, right) => compareScores(right.score, left.score));
+  const best = candidates[0];
+  if (problem.free.length > PALETTE_SIZE) {
+    fastClimb(best, problem, CLIMB_ROUNDS);
+    return best.colors;
+  }
+  if (!problem.distinct || problem.free.length <= 2) {
+    return best.colors;
+  }
+  return polishCandidates(candidates, problem).colors;
+}
+
+function seedCandidates(fixed: readonly number[], problem: Problem): Candidate[] {
+  const rounds = problem.free.length > PALETTE_SIZE ? WIDE_STAGE_ROUNDS : CLIMB_ROUNDS;
+  const candidates: Candidate[] = [];
+  for (let start = 0; start < PALETTE_SIZE; start += 1) {
+    if (problem.avail > 0 && problem.baseUsed[start] > 0) {
+      continue;
+    }
+    const { colors, used } = greedyStart(fixed, problem, start);
+    const candidate: Candidate = {
+      colors,
+      score: scoreGraph(colors, problem.eu, problem.ev),
+      used,
+    };
+    fastClimb(candidate, problem, rounds);
+    candidates.push(candidate);
+  }
+  return candidates;
+}
+
+function greedyStart(
+  fixed: readonly number[],
+  problem: Problem,
+  startColor: number
+): { colors: number[]; used: Uint8Array } {
+  const colors = fixed.slice();
+  const used = problem.baseUsed.slice();
+  let unusedLeft = problem.avail;
+  const open = problem.free.slice();
+  if (startColor >= 0) {
+    colors[open[0]] = startColor;
+    if (used[startColor] === 0) {
+      unusedLeft -= 1;
+    }
+    used[startColor] += 1;
+    open.shift();
+  }
+  while (open.length > 0) {
+    const node = open.splice(pickMostColored(open, colors, problem.adj), 1)[0];
+    const chosen = bestColorForNode(problem.adj[node], colors, used, unusedLeft > 0);
+    colors[node] = chosen;
+    if (used[chosen] === 0) {
+      unusedLeft -= 1;
+    }
+    used[chosen] += 1;
+  }
+  return { colors, used };
+}
+
+function pickMostColored(
+  open: readonly number[],
+  colors: readonly number[],
+  adj: readonly (readonly number[])[]
+): number {
+  let chosen = 0;
+  let best = -1;
+  for (let index = 0; index < open.length; index += 1) {
+    const degree = coloredDegree(open[index], colors, adj);
+    if (degree > best) {
+      best = degree;
+      chosen = index;
+    }
+  }
+  return chosen;
+}
+
+function coloredDegree(
+  node: number,
+  colors: readonly number[],
+  adj: readonly (readonly number[])[]
+): number {
+  let count = 0;
+  for (const neighbor of adj[node]) {
+    if (colors[neighbor] >= 0) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function bestColorForNode(
+  neighbors: readonly number[],
+  colors: readonly number[],
+  used: Uint8Array,
+  freshOnly: boolean
+): number {
+  let chosen = 0;
+  let bestMin = -1;
+  let bestSum = -1;
+  for (let color = 0; color < PALETTE_SIZE; color += 1) {
+    if (freshOnly && used[color] > 0) {
+      continue;
+    }
+    const fit = againstColored(neighbors, colors, color);
+    if (fit.min > bestMin || (fit.min === bestMin && fit.sum > bestSum)) {
+      chosen = color;
+      bestMin = fit.min;
+      bestSum = fit.sum;
+    }
+  }
+  return chosen;
+}
+
+function againstColored(
+  neighbors: readonly number[],
+  colors: readonly number[],
+  color: number
+): { min: number; sum: number } {
   let min = UNSEPARATED;
   let sum = 0;
   for (const neighbor of neighbors) {
-    const distance = DISTANCE[neighbor][color];
+    const neighborColor = colors[neighbor];
+    if (neighborColor < 0) {
+      continue;
+    }
+    const distance = FLAT_DISTANCE[(neighborColor << 4) | color];
     sum += distance;
     if (distance < min) {
       min = distance;
@@ -594,76 +350,423 @@ function against(neighbors: readonly number[], color: number): Separation {
   return { min, sum };
 }
 
-function scoreEdges(colors: readonly number[], edges: readonly Edge[]): Separation {
-  if (edges.length === 0) {
-    return { min: UNSEPARATED, sum: 0 };
+function fastClimb(candidate: Candidate, problem: Problem, maxRounds: number): void {
+  for (let round = 0; round < maxRounds; round += 1) {
+    let improved = false;
+    for (let index = 0; index < problem.free.length; index += 1) {
+      if (tryNodeSwaps(candidate, problem, index)) {
+        improved = true;
+      }
+      if (problem.hasRecolorTarget && tryNodeRecolors(candidate, problem, problem.free[index])) {
+        improved = true;
+      }
+    }
+    if (!improved) {
+      return;
+    }
+  }
+}
+
+function tryNodeSwaps(candidate: Candidate, problem: Problem, leftIndex: number): boolean {
+  const left = problem.free[leftIndex];
+  let improved = false;
+  for (let rightIndex = leftIndex + 1; rightIndex < problem.free.length; rightIndex += 1) {
+    const right = problem.free[rightIndex];
+    if (candidate.colors[left] === candidate.colors[right]) {
+      continue;
+    }
+    if (trySwapPair(candidate, left, right, problem)) {
+      improved = true;
+    }
+  }
+  return improved;
+}
+
+function tryNodeRecolors(candidate: Candidate, problem: Problem, node: number): boolean {
+  const canDrop = !problem.distinct && candidate.used[candidate.colors[node]] > 1;
+  let improved = false;
+  for (let color = 0; color < PALETTE_SIZE; color += 1) {
+    const previous = candidate.colors[node];
+    if (color === previous || (candidate.used[color] > 0 && !canDrop)) {
+      continue;
+    }
+    if (tryRecolorNode(candidate, node, color, problem)) {
+      candidate.used[previous] -= 1;
+      candidate.used[color] += 1;
+      improved = true;
+    }
+  }
+  return improved;
+}
+
+function trySwapPair(candidate: Candidate, left: number, right: number, problem: Problem): boolean {
+  const { colors, score } = candidate;
+  const leftColor = colors[left];
+  const rightColor = colors[right];
+  DELTA_ACC[0] = 0;
+  DELTA_ACC[1] = 0;
+  DELTA_ACC[2] = 0;
+  if (!addNodeDelta(colors, left, rightColor, right, problem.adj, score.min)) {
+    return false;
+  }
+  if (!addNodeDelta(colors, right, leftColor, left, problem.adj, score.min)) {
+    return false;
+  }
+  const diff = DELTA_ACC[0] - DELTA_ACC[1];
+  if (diff < 0 || (diff === 0 && DELTA_ACC[2] <= 0)) {
+    return false;
+  }
+  colors[left] = rightColor;
+  colors[right] = leftColor;
+  applyDeltaInPlace(candidate, problem, diff, DELTA_ACC[2]);
+  return true;
+}
+
+function tryRecolorNode(
+  candidate: Candidate,
+  node: number,
+  nextColor: number,
+  problem: Problem
+): boolean {
+  const { colors, score } = candidate;
+  DELTA_ACC[0] = 0;
+  DELTA_ACC[1] = 0;
+  DELTA_ACC[2] = 0;
+  if (!addNodeDelta(colors, node, nextColor, -1, problem.adj, score.min)) {
+    return false;
+  }
+  const diff = DELTA_ACC[0] - DELTA_ACC[1];
+  if (diff < 0 || (diff === 0 && DELTA_ACC[2] <= 0)) {
+    return false;
+  }
+  colors[node] = nextColor;
+  applyDeltaInPlace(candidate, problem, diff, DELTA_ACC[2]);
+  return true;
+}
+
+function addNodeDelta(
+  colors: readonly number[],
+  node: number,
+  nextColor: number,
+  skip: number,
+  adj: readonly (readonly number[])[],
+  min: number
+): boolean {
+  const oldRow = colors[node] << 4;
+  const newRow = nextColor << 4;
+  const neighbors = adj[node];
+  let lost = 0;
+  let gained = 0;
+  let sum = 0;
+  for (let index = 0; index < neighbors.length; index += 1) {
+    const other = neighbors[index];
+    if (other === skip) {
+      continue;
+    }
+    const otherColor = colors[other];
+    const oldDist = FLAT_DISTANCE[oldRow | otherColor];
+    const newDist = FLAT_DISTANCE[newRow | otherColor];
+    if (newDist < min) {
+      return false;
+    }
+    if (oldDist === min) {
+      lost += 1;
+    }
+    if (newDist === min) {
+      gained += 1;
+    }
+    sum += newDist - oldDist;
+  }
+  DELTA_ACC[0] += lost;
+  DELTA_ACC[1] += gained;
+  DELTA_ACC[2] += sum;
+  return true;
+}
+
+function applyDeltaInPlace(
+  candidate: Candidate,
+  problem: Problem,
+  diff: number,
+  deltaSum: number
+): void {
+  if (diff === candidate.score.count) {
+    candidate.score = scoreGraph(candidate.colors, problem.eu, problem.ev);
+    return;
+  }
+  candidate.score.count -= diff;
+  candidate.score.sum += deltaSum;
+}
+
+function polishCandidates(candidates: readonly Candidate[], problem: Problem): Candidate {
+  let best = candidates[0];
+  let polished = 0;
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = `${candidate.score.min}:${candidate.score.count}:${candidate.score.sum}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    polishCandidate(candidate, problem);
+    if (outranks(candidate.score, best.score)) {
+      best = candidate;
+    }
+    polished += 1;
+    if (polished >= POLISH_CANDIDATES) {
+      break;
+    }
+  }
+  return best;
+}
+
+function polishCandidate(candidate: Candidate, problem: Problem): void {
+  for (let round = 0; round < POLISH_ROUNDS; round += 1) {
+    const improved = nextPolishMove(candidate, problem);
+    if (!improved) {
+      return;
+    }
+    candidate.score = improved;
+    fastClimb(candidate, problem, CLIMB_ROUNDS);
+  }
+}
+
+function nextPolishMove(candidate: Candidate, problem: Problem): Separation | null {
+  return (
+    tryTwoOpt(candidate.colors, problem, candidate.score) ??
+    tryRelocate(candidate.colors, problem, candidate.score) ??
+    (problem.hasRecolorTarget ? tryUnusedShift(candidate, problem) : null) ??
+    tryBottleneckCycle(candidate.colors, problem, candidate.score)
+  );
+}
+
+function tryTwoOpt(colors: number[], problem: Problem, score: Separation): Separation | null {
+  const { adj, eu, ev, free } = problem;
+  for (let start = 0; start < free.length - 1; start += 1) {
+    for (let end = start + 2; end < free.length; end += 1) {
+      reverseFreeSlice(colors, free, start, end);
+      if (incidentOk(colors, free[start], adj, score.min) && incidentOk(colors, free[end], adj, score.min)) {
+        const next = scoreGraph(colors, eu, ev);
+        if (outranks(next, score)) {
+          return next;
+        }
+      }
+      reverseFreeSlice(colors, free, start, end);
+    }
+  }
+  return null;
+}
+
+function reverseFreeSlice(colors: number[], free: readonly number[], start: number, end: number): void {
+  for (let left = start, right = end; left < right; left += 1, right -= 1) {
+    const u = free[left];
+    const v = free[right];
+    const saved = colors[u];
+    colors[u] = colors[v];
+    colors[v] = saved;
+  }
+}
+
+function tryRelocate(colors: number[], problem: Problem, score: Separation): Separation | null {
+  for (let index = 0; index < problem.free.length; index += 1) {
+    const moved =
+      tryRelocateDirection(colors, problem, index, 1, score) ??
+      tryRelocateDirection(colors, problem, index, -1, score);
+    if (moved) {
+      return moved;
+    }
+  }
+  return null;
+}
+
+function tryRelocateDirection(
+  colors: number[],
+  problem: Problem,
+  start: number,
+  step: 1 | -1,
+  score: Separation
+): Separation | null {
+  const { adj, eu, ev, free } = problem;
+  const saved = colors[free[start]];
+  const limit = step > 0 ? free.length : -1;
+  let last = start;
+  for (let target = start + step; target !== limit; target += step) {
+    colors[free[target - step]] = colors[free[target]];
+    colors[free[target]] = saved;
+    last = target;
+    if (
+      Math.abs(target - start) > 1 &&
+      incidentOk(colors, free[target], adj, score.min) &&
+      incidentOk(colors, free[start], adj, score.min)
+    ) {
+      const next = scoreGraph(colors, eu, ev);
+      if (outranks(next, score)) {
+        return next;
+      }
+    }
+  }
+  for (let cursor = last; cursor !== start; cursor -= step) {
+    colors[free[cursor]] = colors[free[cursor - step]];
+  }
+  colors[free[start]] = saved;
+  return null;
+}
+
+function tryUnusedShift(candidate: Candidate, problem: Problem): Separation | null {
+  for (let color = 0; color < PALETTE_SIZE; color += 1) {
+    if (candidate.used[color] > 0) {
+      continue;
+    }
+    const shifted = tryShiftColor(candidate, problem, color);
+    if (shifted) {
+      return shifted;
+    }
+  }
+  return null;
+}
+
+function tryShiftColor(candidate: Candidate, problem: Problem, unusedColor: number): Separation | null {
+  const { colors, score, used } = candidate;
+  const { adj, eu, ev, free } = problem;
+  for (const first of free) {
+    const firstColor = colors[first];
+    for (const second of free) {
+      if (first === second) {
+        continue;
+      }
+      const secondColor = colors[second];
+      colors[first] = secondColor;
+      colors[second] = unusedColor;
+      if (incidentOk(colors, first, adj, score.min) && incidentOk(colors, second, adj, score.min)) {
+        const next = scoreGraph(colors, eu, ev);
+        if (outranks(next, score)) {
+          used[firstColor] -= 1;
+          used[unusedColor] += 1;
+          return next;
+        }
+      }
+      colors[first] = firstColor;
+      colors[second] = secondColor;
+    }
+  }
+  return null;
+}
+
+function tryBottleneckCycle(colors: number[], problem: Problem, score: Separation): Separation | null {
+  for (const target of bottleneckNodes(colors, problem, score.min)) {
+    const cycled = tryCycleFrom(colors, target, problem, score);
+    if (cycled) {
+      return cycled;
+    }
+  }
+  return null;
+}
+
+function bottleneckNodes(colors: readonly number[], problem: Problem, min: number): number[] {
+  const nodes: number[] = [];
+  const seen = new Uint8Array(colors.length);
+  for (let edge = 0; edge < problem.eu.length; edge += 1) {
+    const left = problem.eu[edge];
+    const right = problem.ev[edge];
+    if (FLAT_DISTANCE[(colors[left] << 4) | colors[right]] !== min) {
+      continue;
+    }
+    if (problem.isFree[left] && !seen[left]) {
+      seen[left] = 1;
+      nodes.push(left);
+    }
+    if (problem.isFree[right] && !seen[right]) {
+      seen[right] = 1;
+      nodes.push(right);
+    }
+  }
+  return nodes;
+}
+
+function tryCycleFrom(
+  colors: number[],
+  first: number,
+  problem: Problem,
+  score: Separation
+): Separation | null {
+  const { adj, eu, ev, free } = problem;
+  const firstColor = colors[first];
+  for (const second of free) {
+    if (second === first || colors[second] === firstColor) {
+      continue;
+    }
+    const secondColor = colors[second];
+    for (const third of free) {
+      if (third === first || third === second) {
+        continue;
+      }
+      const thirdColor = colors[third];
+      colors[first] = secondColor;
+      colors[second] = thirdColor;
+      colors[third] = firstColor;
+      if (
+        incidentOk(colors, first, adj, score.min) &&
+        incidentOk(colors, second, adj, score.min) &&
+        incidentOk(colors, third, adj, score.min)
+      ) {
+        const next = scoreGraph(colors, eu, ev);
+        if (outranks(next, score)) {
+          return next;
+        }
+      }
+      colors[first] = firstColor;
+      colors[second] = secondColor;
+      colors[third] = thirdColor;
+    }
+  }
+  return null;
+}
+
+function incidentOk(
+  colors: readonly number[],
+  node: number,
+  adj: readonly (readonly number[])[],
+  min: number
+): boolean {
+  const row = colors[node] << 4;
+  const neighbors = adj[node];
+  for (let index = 0; index < neighbors.length; index += 1) {
+    if (FLAT_DISTANCE[row | colors[neighbors[index]]] < min) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function scoreGraph(colors: readonly number[], eu: Int32Array, ev: Int32Array): Separation {
+  if (eu.length === 0) {
+    return { count: 0, min: UNSEPARATED, sum: 0 };
   }
   let min = UNSEPARATED;
+  let count = 0;
   let sum = 0;
-  for (const [left, right] of edges) {
-    const distance = DISTANCE[colors[left]][colors[right]];
+  for (let index = 0; index < eu.length; index += 1) {
+    const distance = FLAT_DISTANCE[(colors[eu[index]] << 4) | colors[ev[index]]];
     sum += distance;
     if (distance < min) {
       min = distance;
+      count = 1;
+    } else if (distance === min) {
+      count += 1;
     }
   }
-  return { min, sum };
+  return { count, min, sum };
+}
+
+function compareScores(left: Separation, right: Separation): number {
+  if (left.min !== right.min) {
+    return left.min - right.min;
+  }
+  if (left.count !== right.count) {
+    return right.count - left.count;
+  }
+  return left.sum - right.sum;
 }
 
 function outranks(next: Separation, current: Separation): boolean {
-  if (next.min !== current.min) {
-    return next.min > current.min;
-  }
-  return next.sum > current.sum;
-}
-
-function freeIndexes(colors: readonly number[]): number[] {
-  const free: number[] = [];
-  for (let index = 0; index < colors.length; index += 1) {
-    if (colors[index] < 0) {
-      free.push(index);
-    }
-  }
-  return free;
-}
-
-function unusedColors(colors: readonly number[], reserved: ReadonlySet<number>): number[] {
-  const used = visitColors(colors, reserved);
-  const pool: number[] = [];
-  for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (!used.has(color)) {
-      pool.push(color);
-    }
-  }
-  return pool;
-}
-
-function visitColors(colors: readonly number[], reserved: ReadonlySet<number>): Set<number> {
-  const used = new Set(reserved);
-  for (const color of colors) {
-    if (color >= 0) {
-      used.add(color);
-    }
-  }
-  return used;
-}
-
-function usedMask(colors: readonly number[]): number {
-  let mask = 0;
-  for (const color of colors) {
-    if (color >= 0) {
-      mask |= 1 << color;
-    }
-  }
-  return mask;
-}
-
-function popcount(mask: number): number {
-  let count = 0;
-  let bits = mask;
-  while (bits) {
-    bits &= bits - 1;
-    count += 1;
-  }
-  return count;
+  return compareScores(next, current) > 0;
 }

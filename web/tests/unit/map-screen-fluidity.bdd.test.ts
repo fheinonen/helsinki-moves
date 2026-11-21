@@ -257,14 +257,14 @@ defineFeature<World>(
   `
 Feature: Fluid vehicle map and walking route screens
 
-  Scenario: Zoom controls, drag pan, reset, expand, wheel zoom, double click, and keyboard controls work on the vehicle map
+  Scenario: Keyboard zoom, drag pan, keyboard reset, expand, wheel zoom, and double click work on the vehicle map
     Given a departure board with line 550 to Kamppi and user coordinates
     And the vehicle map is open on the live vehicle
-    When the user zooms in with the map control
-    Then the map zoom is above 1 and reset is available
+    When the user zooms in with the keyboard
+    Then the map zoom is above 1
     When the user drags the open map by 40 pixels
     Then the open map pans from its center
-    When the user resets the open map view
+    When the user resets the open map with the keyboard
     Then the open map returns to the fitted span
     When the user expands and collapses the open map
     Then the open map toggles its expanded state
@@ -273,12 +273,12 @@ Feature: Fluid vehicle map and walking route screens
     When the user uses keyboard zoom and arrow panning on the open map
     Then the open map zooms and pans with the keyboard
 
-  Scenario: Pinch gesture zooms the walking route map and reset restores the fitted route
+  Scenario: Pinch gesture zooms the walking route map and keyboard reset restores the fitted route
     Given a departure board with line 550 to Kamppi and user coordinates
     And the walking route map is open
     When two fingers pinch outward on the open map
-    Then the map zoom is above 1 and reset is available
-    When the user resets the open map view
+    Then the map zoom is above 1
+    When the user resets the open map with the keyboard
     Then the open map returns to the fitted span
 
   Scenario: Switching directly between the vehicle map and walking route screen
@@ -327,10 +327,10 @@ Feature: Fluid vehicle map and walking route screens
     When the street tiles finish loading
     Then each street tile is marked loaded
 
-  Scenario: Zooming out, double clicking to zoom in, keyboard directions, and control button clicks behave cleanly
+  Scenario: Zooming out, double clicking to zoom in, keyboard directions, and control presses behave cleanly
     Given a departure board with line 550 to Kamppi and user coordinates
     And the vehicle map is open on the live vehicle
-    When the user double clicks the fitted map then zooms out with control and wheel
+    When the user double clicks the fitted map then zooms out with the keyboard and wheel
     Then the map returns cleanly to 1x zoom
     When the user navigates in all directions and resets with the keyboard
     Then the open map returns to the fitted span
@@ -360,6 +360,18 @@ Feature: Fluid vehicle map and walking route screens
     And the user closes the open vehicle map before the walking route arrives
     And the pending walking route arrives
     Then both map screens are closed
+
+  Scenario: The open vehicle map keeps only the expand control
+    Given a departure board with line 550 to Kamppi and user coordinates
+    And the vehicle map is open on the live vehicle
+    Then the map tools show only the expand control
+    And the vehicle map still shows the walk switch and the close control
+
+  Scenario: The open walking route keeps only the expand control
+    Given a departure board with line 550 to Kamppi and user coordinates
+    And the walking route map is open
+    Then the map tools show only the expand control
+    And the walking route map still shows the vehicle switch and the close control
   `,
   {
     createWorld,
@@ -384,22 +396,19 @@ Feature: Fluid vehicle map and walking route screens
         },
       },
       {
-        pattern: /^When the user zooms in with the map control$/,
+        pattern: /^When the user zooms in with the keyboard$/,
         run({ world }) {
-          const zoomIn = world.root?.querySelector<HTMLButtonElement>("[data-map-zoom-in]");
-          if (!zoomIn) {
-            throw new Error("Expected zoom in control");
+          const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
+          if (!glass) {
+            throw new Error("Expected map glass");
           }
-          zoomIn.click();
+          glass.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "+" }));
         },
       },
       {
-        pattern: /^Then the map zoom is above 1 and reset is available$/,
+        pattern: /^Then the map zoom is above 1$/,
         run({ assert, world }) {
-          const reset = world.root?.querySelector<HTMLButtonElement>("[data-map-reset]");
           assert.equal(readZoom(world.root) > 1, true);
-          assert.equal(reset instanceof HTMLButtonElement, true);
-          assert.equal(reset?.disabled, false);
         },
       },
       {
@@ -424,24 +433,22 @@ Feature: Fluid vehicle map and walking route screens
         },
       },
       {
-        pattern: /^When the user resets the open map view$/,
+        pattern: /^When the user resets the open map with the keyboard$/,
         run({ world }) {
-          const reset = world.root?.querySelector<HTMLButtonElement>("[data-map-reset]");
-          if (!reset) {
-            throw new Error("Expected reset control");
+          const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
+          if (!glass) {
+            throw new Error("Expected map glass");
           }
-          reset.click();
+          glass.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "0" }));
         },
       },
       {
         pattern: /^Then the open map returns to the fitted span$/,
         run({ assert, world }) {
-          const reset = world.root?.querySelector<HTMLButtonElement>("[data-map-reset]");
           const pan = readPan(world.root);
           assert.equal(readZoom(world.root), 1);
           assert.equal(pan.x, 0);
           assert.equal(pan.y, 0);
-          assert.equal(reset?.disabled, true);
         },
       },
       {
@@ -684,16 +691,15 @@ Feature: Fluid vehicle map and walking route screens
         },
       },
       {
-        pattern: /^When the user double clicks the fitted map then zooms out with control and wheel$/,
+        pattern: /^When the user double clicks the fitted map then zooms out with the keyboard and wheel$/,
         run({ world }) {
           const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
-          const zoomOut = world.root?.querySelector<HTMLButtonElement>("[data-map-zoom-out]");
-          if (!glass || !zoomOut) {
-            throw new Error("Expected glass and zoom out control");
+          if (!glass) {
+            throw new Error("Expected map glass");
           }
           glass.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 220, clientY: 140 }));
           world.zoomBefore = readZoom(world.root);
-          zoomOut.click();
+          glass.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "-" }));
           glass.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 0 }));
           for (let step = 0; step < 6; step += 1) {
             glass.dispatchEvent(
@@ -725,12 +731,12 @@ Feature: Fluid vehicle map and walking route screens
         pattern: /^When pointer interactions start on map controls or outside drag$/,
         run({ world }) {
           const glass = world.root?.querySelector<HTMLElement>(".vehicle-span__glass");
-          const zoomIn = world.root?.querySelector<HTMLButtonElement>("[data-map-zoom-in]");
-          if (!glass || !zoomIn) {
-            throw new Error("Expected glass and zoom in button");
+          const expand = world.root?.querySelector<HTMLButtonElement>("[data-map-expand]");
+          if (!glass || !expand) {
+            throw new Error("Expected glass and expand control");
           }
-          zoomIn.dispatchEvent(pointerEvent("pointerdown", 10, 10, 9));
-          zoomIn.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 10, clientY: 10 }));
+          expand.dispatchEvent(pointerEvent("pointerdown", 10, 10, 9));
+          expand.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 10, clientY: 10 }));
           glass.dispatchEvent(pointerEvent("pointermove", 50, 50, 77));
           glass.dispatchEvent(pointerEvent("pointerup", 50, 50, 77));
         },
@@ -804,6 +810,38 @@ Feature: Fluid vehicle map and walking route screens
         pattern: /^When the user closes the open vehicle map before the walking route arrives$/,
         run({ world }) {
           world.root?.querySelector<HTMLButtonElement>("[data-vehicle-span-close]")?.click();
+        },
+      },
+      {
+        pattern: /^Then the map tools show only the expand control$/,
+        run({ assert, world }) {
+          const buttons = [...(world.root?.querySelectorAll<HTMLButtonElement>("[data-map-controls] button") ?? [])];
+          assert.equal(buttons.length, 1);
+          assert.equal(buttons[0]?.dataset.mapExpand, "true");
+          assert.equal(buttons[0]?.getAttribute("aria-label"), "Expand map");
+          assert.equal(world.root?.querySelector("[data-map-zoom-in]"), null);
+          assert.equal(world.root?.querySelector("[data-map-zoom-out]"), null);
+          assert.equal(world.root?.querySelector("[data-map-reset]"), null);
+        },
+      },
+      {
+        pattern: /^Then the vehicle map still shows the walk switch and the close control$/,
+        run({ assert, world }) {
+          const mode = world.root?.querySelector<HTMLButtonElement>("[data-map-switch='walk']");
+          const close = world.root?.querySelector<HTMLButtonElement>("[data-vehicle-span-close]");
+          assert.equal(mode?.textContent, "Walk");
+          assert.equal(mode?.getAttribute("aria-label"), "Show walking route");
+          assert.equal(close?.textContent, "Close");
+        },
+      },
+      {
+        pattern: /^Then the walking route map still shows the vehicle switch and the close control$/,
+        run({ assert, world }) {
+          const mode = world.root?.querySelector<HTMLButtonElement>("[data-map-switch='vehicle']");
+          const close = world.root?.querySelector<HTMLButtonElement>("[data-walk-close]");
+          assert.equal(mode?.textContent, "Vehicle");
+          assert.equal(mode?.getAttribute("aria-label"), "Show live vehicle");
+          assert.equal(close?.textContent, "Close");
         },
       },
     ],

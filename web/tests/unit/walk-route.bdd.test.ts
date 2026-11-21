@@ -44,6 +44,12 @@ interface HungWalk {
 type FetchMode = "hang" | "inject" | "json" | "string";
 type PlannerMode = "empty" | "nostop" | "walk";
 
+interface WalkScroll {
+  behavior: string;
+  block: string;
+  element: HTMLElement;
+}
+
 interface World {
   cleanup?: () => void;
   coords: GeoPoint | null;
@@ -57,6 +63,7 @@ interface World {
   planBodies: string[];
   planner: PlannerMode;
   root?: HTMLElement;
+  scrollCalls: WalkScroll[];
   scrolls: number;
   secondDeparture: boolean;
   serverApp?: ReturnType<typeof createApp>;
@@ -93,6 +100,7 @@ function createWorld(): World {
     openMap: null,
     planBodies: [],
     planner: "walk",
+    scrollCalls: [],
     scrolls: 0,
     secondDeparture: false,
     serverBody: "",
@@ -113,10 +121,25 @@ function coord(value: number): string {
   return value.toFixed(6);
 }
 
+function readScrollOptions(arg: boolean | ScrollIntoViewOptions | undefined): { behavior: string; block: string } {
+  if (typeof arg !== "object" || arg == null) {
+    return { behavior: "", block: "" };
+  }
+  return {
+    behavior: arg.behavior ?? "",
+    block: arg.block ?? "",
+  };
+}
+
 function installScrollSpy(world: World): void {
-  HTMLElement.prototype.scrollIntoView = function spy(this: HTMLElement) {
+  HTMLElement.prototype.scrollIntoView = function spy(
+    this: HTMLElement,
+    arg?: boolean | ScrollIntoViewOptions,
+  ) {
     if (this.dataset.walkMap === "true") {
+      const options = readScrollOptions(arg);
       world.scrolls += 1;
+      world.scrollCalls.push({ behavior: options.behavior, block: options.block, element: this });
     }
   };
 }
@@ -237,6 +260,7 @@ function stubNetwork(world: World): void {
 function renderBoard(world: World): void {
   world.cleanup?.();
   world.fetches = [];
+  world.scrollCalls = [];
   world.scrolls = 0;
   world.vehicleOpens = 0;
   const store = createAppStore();
@@ -490,6 +514,32 @@ Feature: Walking route from a held departure
     Then the same walk map shows line 560 to Ruoholahti
     And the vehicle map stays closed
 
+  Scenario: Holding another departure jumps to the open walk map once the new route is drawn.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And another departure for line 560 to Ruoholahti
+    And the person is at latitude 60.1706 and longitude 24.9414
+    When the card is held
+    And the route arrives
+    Then the walk map shows the route points
+    When the user holds the other departure
+    And the following click lands
+    Then the same walk map stays open
+    When the other route arrives
+    Then the page jumps to that same walk map with smooth scrolling
+
+  Scenario: Holding another departure jumps to the open walk map instantly when motion is reduced.
+    Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And another departure for line 560 to Ruoholahti
+    And the person is at latitude 60.1706 and longitude 24.9414
+    And the person prefers reduced motion
+    When the card is held
+    And the route arrives
+    When the user holds the other departure
+    And the following click lands
+    Then the same walk map stays open
+    When the other route arrives
+    Then the page jumps to that same walk map with instant scrolling
+
   Scenario: Holding another departure while the vehicle map is open keeps that map until the walk replaces it.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
     And another departure for line 560 to Ruoholahti
@@ -696,6 +746,23 @@ Feature: Walking route from a held departure
         run({ world }) {
           world.secondDeparture = true;
           renderBoard(world);
+        },
+      },
+      {
+        pattern: /^Given the person prefers reduced motion$/,
+        run({ world }) {
+          const documentRef = world.documentRef;
+          if (!documentRef) {
+            throw new Error("Expected a document");
+          }
+          Object.defineProperty(documentRef, "defaultView", {
+            configurable: true,
+            value: {
+              matchMedia(query: string) {
+                return { matches: query === "(prefers-reduced-motion: reduce)" };
+              },
+            },
+          });
         },
       },
       {
@@ -1041,6 +1108,22 @@ Feature: Walking route from a held departure
           assert.equal(map instanceof HTMLElement, true);
           assert.equal(map?.getAttribute("aria-label"), "560 walk to Ruoholahti");
           assert.equal(world.openMap?.isConnected, false);
+          assert.equal(world.root?.querySelector("[data-vehicle-map]"), null);
+          assert.equal(world.scrolls, 0);
+        },
+      },
+      {
+        pattern: /^Then the page jumps to that same walk map with (smooth|instant) scrolling$/,
+        run({ args, assert, world }) {
+          const map = walkMap(world);
+          const jump = world.scrollCalls.at(-1);
+          assert.equal(world.scrolls, 2);
+          assert.equal(map, world.openMap);
+          assert.equal(map?.isConnected, true);
+          assert.equal(map?.getAttribute("aria-label"), "560 walk to Ruoholahti");
+          assert.equal(jump?.element, map ?? undefined);
+          assert.equal(jump?.behavior, args[0] === "smooth" ? "smooth" : "auto");
+          assert.equal(jump?.block, "start");
           assert.equal(world.root?.querySelector("[data-vehicle-map]"), null);
         },
       },

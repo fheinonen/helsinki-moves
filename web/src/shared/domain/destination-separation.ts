@@ -1,30 +1,37 @@
 export const DESTINATION_COLORS = [
-  "#ffff22",
-  "#a283ff",
-  "#cb9484",
-  "#b5ffe4",
-  "#d4d6ff",
-  "#7ca51b",
-  "#feffb5",
-  "#adcac7",
-  "#a4959c",
-  "#e5c7ac",
-  "#a5ca00",
-  "#dd9f6a",
-  "#b3a8c2",
-  "#f7e678",
-  "#65c1ff",
-  "#c684cf",
+  "#f8ff00",
+  "#ce78ff",
+  "#b0968e",
+  "#fff0ff",
+  "#a0a028",
+  "#fffed9",
+  "#96b4d2",
+  "#ff8769",
+  "#f087a5",
+  "#f0d2a0",
+  "#4bc4b4",
+  "#fdfdf4",
+  "#aae66e",
+  "#ffffaf",
+  "#00c56d",
+  "#ffb400",
+  "#b4b496",
+  "#ffd2c3",
+  "#c8c8d2",
+  "#31bfff",
+  "#ffd2ff",
+  "#7c9ad5",
 ] as const;
 
 const PALETTE_SIZE = DESTINATION_COLORS.length;
 const UNSEPARATED = 1_000_000;
 const SOFT_DISTINCT_FLOOR = 2900;
 const REUSE_COMFORT_FLOOR = 3500;
+const MAX_STARTS = 12;
 const CLIMB_ROUNDS = 40;
 const WIDE_STAGE_ROUNDS = 4;
 const POLISH_ROUNDS = 20;
-const POLISH_CANDIDATES = 4;
+const POLISH_CANDIDATES = 3;
 
 type Edge = readonly [number, number];
 
@@ -62,7 +69,6 @@ interface Problem {
   forceReuse: boolean;
   free: number[];
   hasRecolorTarget: boolean;
-  isFree: Uint8Array;
   reuseMode: boolean;
 }
 
@@ -74,24 +80,30 @@ interface Candidate {
 
 const DELTA_ACC = new Int32Array(3);
 
-// Protanopia CIEDE2000, in hundredths, for DESTINATION_COLORS in order.
+// Protanopia CIEDE2000, in hundredths, for DESTINATION_COLORS in farthest-point order.
 const DISTANCE = [
-  [0, 6829, 3202, 2547, 5235, 2298, 1469, 3149, 4046, 2404, 1285, 2419, 4893, 929, 6222, 6511],
-  [6829, 0, 3804, 4203, 2185, 5884, 6027, 2829, 2252, 4238, 6170, 4986, 1796, 6011, 1343, 768],
-  [3202, 3804, 0, 2291, 3073, 1925, 2572, 1617, 1285, 1297, 2359, 1066, 2209, 2523, 3350, 3162],
-  [2547, 4203, 2291, 0, 2362, 3136, 1378, 1300, 2564, 1102, 2653, 2349, 2565, 1987, 3122, 3730],
-  [5235, 2185, 3073, 2362, 0, 4710, 3972, 1454, 2129, 2792, 4599, 3855, 1238, 4226, 879, 1893],
-  [2298, 5884, 1925, 3136, 4710, 0, 2554, 2969, 3030, 2206, 1073, 1061, 3959, 1887, 5209, 5087],
-  [1469, 6027, 2572, 1378, 3972, 2554, 0, 2297, 3338, 1426, 1830, 2036, 3844, 939, 4859, 5263],
-  [3149, 2829, 1617, 1300, 1454, 2969, 2297, 0, 1345, 1197, 2847, 2164, 1234, 2587, 1941, 2352],
-  [4046, 2252, 1285, 2564, 2129, 3030, 3338, 1345, 0, 1998, 3374, 2288, 1005, 3445, 2083, 1710],
-  [2404, 4238, 1297, 1102, 2792, 2206, 1426, 1197, 1998, 0, 2006, 1296, 2456, 1665, 3375, 3638],
-  [1285, 6170, 2359, 2653, 4599, 1073, 1830, 2847, 3374, 2006, 0, 1440, 4107, 979, 5261, 5378],
-  [2419, 4986, 1066, 2349, 3855, 1061, 2036, 2164, 2288, 1296, 1440, 0, 3164, 1728, 4320, 4263],
-  [4893, 1796, 2209, 2565, 1238, 3959, 3844, 1234, 1005, 2456, 4107, 3164, 0, 3985, 1179, 1191],
-  [929, 6011, 2523, 1987, 4226, 1887, 939, 2587, 3445, 1665, 979, 1728, 3985, 0, 4979, 5290],
-  [6222, 1343, 3350, 3122, 879, 5209, 4859, 1941, 2083, 3375, 5261, 4320, 1179, 4979, 0, 1197],
-  [6511, 768, 3162, 3730, 1893, 5087, 5263, 2352, 1710, 3638, 5378, 4263, 1191, 5290, 1197, 0],
+  [0, 6810, 3435, 3915, 2292, 2162, 5185, 2783, 4443, 1864, 3101, 2811, 954, 1359, 1899, 1416, 2678, 2534, 3894, 6326, 5104, 5893],
+  [6810, 0, 3298, 3075, 5852, 5070, 1695, 4729, 2058, 4965, 3070, 3883, 5996, 6169, 5319, 6115, 4084, 3983, 2540, 1235, 2256, 844],
+  [3435, 3298, 0, 2576, 2230, 2523, 2141, 1218, 1210, 1962, 981, 2462, 2711, 2849, 1859, 2583, 943, 1675, 1761, 3019, 2726, 2662],
+  [3915, 3075, 2576, 0, 4040, 2014, 1647, 3326, 2208, 2521, 1619, 981, 3300, 2922, 3222, 3775, 2408, 1614, 947, 1951, 911, 2529],
+  [2292, 5852, 2230, 4040, 0, 2930, 4269, 1176, 3331, 1964, 2609, 3420, 1701, 2497, 1050, 927, 1883, 2606, 3525, 5230, 4607, 5030],
+  [2162, 5070, 2523, 2014, 2930, 0, 3272, 2470, 3081, 1023, 1817, 985, 1705, 954, 1935, 2449, 1726, 932, 2207, 4017, 2978, 4286],
+  [5185, 1695, 2141, 1647, 4269, 3272, 0, 3332, 1032, 3306, 1618, 2374, 4196, 4162, 3682, 4363, 2612, 2406, 954, 913, 1013, 961],
+  [2783, 4729, 1218, 3326, 1176, 2470, 3332, 0, 2421, 1555, 1751, 2831, 1985, 2395, 950, 1678, 955, 1908, 2708, 4217, 3742, 3994],
+  [4443, 2058, 1210, 2208, 3331, 3081, 1032, 2421, 0, 2827, 1240, 2572, 3624, 3694, 2940, 3590, 1931, 2167, 1282, 1808, 1904, 1401],
+  [1864, 4965, 1962, 2521, 1964, 1023, 3306, 1555, 2827, 0, 1588, 1672, 1069, 970, 934, 1597, 1040, 940, 2344, 4097, 3467, 4209],
+  [3101, 3070, 981, 1619, 2609, 1817, 1618, 1751, 1240, 1588, 0, 1538, 2452, 2356, 1923, 2618, 918, 916, 915, 2386, 1881, 2419],
+  [2811, 3883, 2462, 981, 3420, 985, 2374, 2831, 2572, 1672, 1538, 0, 2407, 1835, 2502, 3021, 1936, 957, 1438, 2842, 1865, 3298],
+  [954, 5996, 2711, 3300, 1701, 1705, 4196, 1985, 3624, 1069, 2452, 2407, 0, 990, 1050, 919, 1889, 1896, 3184, 5067, 4148, 5162],
+  [1359, 6169, 2849, 2922, 2497, 954, 4162, 2395, 3694, 970, 2356, 1835, 990, 0, 1598, 1857, 1966, 1565, 2997, 5094, 3983, 5253],
+  [1899, 5319, 1859, 3222, 1050, 1935, 3682, 950, 2940, 934, 1923, 2502, 1050, 1598, 0, 950, 1130, 1673, 2831, 4581, 3865, 4523],
+  [1416, 6115, 2583, 3775, 927, 2449, 4363, 1678, 3590, 1597, 2618, 3021, 919, 1857, 950, 0, 1972, 2355, 3455, 5305, 4505, 5256],
+  [2678, 4084, 943, 2408, 1883, 1726, 2612, 955, 1931, 1040, 918, 1936, 1889, 1966, 1130, 1972, 0, 999, 1861, 3439, 2978, 3379],
+  [2534, 3983, 1675, 1614, 2606, 932, 2406, 1908, 2167, 940, 916, 957, 1896, 1565, 1673, 2355, 999, 0, 1443, 3109, 2383, 3314],
+  [3894, 2540, 1761, 947, 3525, 2207, 954, 2708, 1282, 2344, 915, 1438, 3184, 2997, 2831, 3455, 1861, 1443, 0, 1616, 964, 1886],
+  [6326, 1235, 3019, 1951, 5230, 4017, 913, 4217, 1808, 4097, 2386, 2842, 5067, 5094, 4581, 5305, 3439, 3109, 1616, 0, 1067, 910],
+  [5104, 2256, 2726, 911, 4607, 2978, 1013, 3742, 1904, 3467, 1881, 1865, 4148, 3983, 3865, 4505, 2978, 2383, 964, 1067, 0, 1746],
+  [5893, 844, 2662, 2529, 5030, 4286, 961, 3994, 1401, 4209, 2419, 3298, 5162, 5253, 4523, 5256, 3379, 3314, 1886, 910, 1746, 0],
 ];
 
 const FLAT_DISTANCE = flattenDistances(DISTANCE);
@@ -162,7 +174,7 @@ function buildProblem(
   const distinct = !forceReuse && free.length <= avail;
   const reuseMode = !distinct;
   const hasRecolorTarget = reuseMode || free.length < avail;
-  return { adj, avail, baseUsed, distinct, eu, ev, forceReuse, free, hasRecolorTarget, isFree, reuseMode };
+  return { adj, avail, baseUsed, distinct, eu, ev, forceReuse, free, hasRecolorTarget, reuseMode };
 }
 
 function scanFixed(
@@ -293,7 +305,7 @@ function searchHillClimb(fixed: readonly number[], problem: Problem): Candidate 
 function seedCandidates(fixed: readonly number[], problem: Problem): Candidate[] {
   const rounds = problem.free.length > PALETTE_SIZE ? WIDE_STAGE_ROUNDS : CLIMB_ROUNDS;
   const candidates: Candidate[] = [];
-  for (let start = 0; start < PALETTE_SIZE; start += 1) {
+  for (let start = 0; start < PALETTE_SIZE && candidates.length < MAX_STARTS; start += 1) {
     if (!problem.forceReuse && problem.avail > 0 && problem.baseUsed[start] > 0) {
       continue;
     }
@@ -309,6 +321,7 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
   const used = problem.baseUsed.slice();
   let unusedLeft = problem.avail;
   const open = problem.free.slice();
+  const trackDispersion = problem.free.length < problem.avail;
   if (startColor >= 0) {
     colors[open[0]] = startColor;
     if (used[startColor] === 0) {
@@ -320,7 +333,14 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
   while (open.length > 0) {
     const node = open.splice(pickMostColored(open, colors, problem.adj), 1)[0];
     const preferFresh = !problem.forceReuse && unusedLeft > 0;
-    const chosen = bestColorForNode(problem.adj[node], colors, used, preferFresh, problem.reuseMode);
+    const chosen = bestColorForNode(
+      problem.adj[node],
+      colors,
+      used,
+      preferFresh,
+      problem.reuseMode,
+      trackDispersion
+    );
     colors[node] = chosen;
     if (used[chosen] === 0) {
       unusedLeft -= 1;
@@ -366,7 +386,8 @@ function bestColorForNode(
   colors: readonly number[],
   used: Uint8Array,
   freshOnly: boolean,
-  reuseMode: boolean
+  reuseMode: boolean,
+  trackDispersion: boolean
 ): number {
   let chosen = 0;
   let best: NodeFit | null = null;
@@ -374,7 +395,7 @@ function bestColorForNode(
     if (freshOnly && used[color] > 0) {
       continue;
     }
-    const fit = evaluateNodeFit(neighbors, colors, used, color);
+    const fit = evaluateNodeFit(neighbors, colors, used, color, trackDispersion);
     if (!best || outranksFit(fit, best, reuseMode)) {
       chosen = color;
       best = fit;
@@ -387,7 +408,8 @@ function evaluateNodeFit(
   neighbors: readonly number[],
   colors: readonly number[],
   used: Uint8Array,
-  color: number
+  color: number,
+  trackDispersion: boolean
 ): NodeFit {
   let min = UNSEPARATED;
   let sum = 0;
@@ -404,12 +426,14 @@ function evaluateNodeFit(
     }
   }
   let pairMin = UNSEPARATED;
-  for (let index = 0; index < colors.length; index += 1) {
-    const existing = colors[index];
-    if (existing >= 0 && existing !== color) {
-      const distance = FLAT_DISTANCE[row + existing];
-      if (distance < pairMin) {
-        pairMin = distance;
+  if (trackDispersion) {
+    for (let index = 0; index < colors.length; index += 1) {
+      const existing = colors[index];
+      if (existing >= 0 && existing !== color) {
+        const distance = FLAT_DISTANCE[row + existing];
+        if (distance < pairMin) {
+          pairMin = distance;
+        }
       }
     }
   }
@@ -517,13 +541,7 @@ function tryRecolorNode(
   if (problem.reuseMode && score.min >= REUSE_COMFORT_FLOOR && used[nextColor] + 1 > score.reuseMax) {
     return false;
   }
-  if (
-    problem.reuseMode &&
-    used[previous] > 1 &&
-    used[nextColor] > 0 &&
-    (used[nextColor] + 1 === used[previous] ||
-      (used[previous] < score.reuseMax && used[nextColor] + 1 <= score.reuseMax))
-  ) {
+  if (isReuseInvariant(problem.reuseMode, used[previous], used[nextColor], score.reuseMax)) {
     return tryRecolorFastDelta(candidate, node, nextColor, problem);
   }
   const floor = problem.reuseMode ? Math.min(score.min, REUSE_COMFORT_FLOOR) : score.min;
@@ -543,6 +561,18 @@ function tryRecolorNode(
   used[previous] += 1;
   colors[node] = previous;
   return false;
+}
+
+function isReuseInvariant(
+  reuseMode: boolean,
+  previousCount: number,
+  nextCount: number,
+  reuseMax: number
+): boolean {
+  if (!reuseMode || previousCount <= 1 || nextCount === 0) {
+    return false;
+  }
+  return nextCount + 1 === previousCount || (previousCount < reuseMax && nextCount + 1 <= reuseMax);
 }
 
 function tryRecolorFastDelta(
@@ -651,22 +681,13 @@ function scoreKey(score: Separation): string {
 
 function polishCandidate(candidate: Candidate, problem: Problem): void {
   for (let round = 0; round < POLISH_ROUNDS; round += 1) {
-    const improved = nextPolishMove(candidate, problem);
+    const improved = tryTwoOpt(candidate.colors, problem, candidate.score);
     if (!improved) {
       return;
     }
     candidate.score = improved;
     fastClimb(candidate, problem, CLIMB_ROUNDS);
   }
-}
-
-function nextPolishMove(candidate: Candidate, problem: Problem): Separation | null {
-  return (
-    tryTwoOpt(candidate.colors, problem, candidate.score) ??
-    tryRelocate(candidate.colors, problem, candidate.score) ??
-    (problem.hasRecolorTarget ? tryUnusedShift(candidate, problem) : null) ??
-    tryBottleneckCycle(candidate.colors, problem, candidate.score)
-  );
 }
 
 function tryTwoOpt(colors: number[], problem: Problem, score: Separation): Separation | null {
@@ -676,7 +697,7 @@ function tryTwoOpt(colors: number[], problem: Problem, score: Separation): Separ
       reverseFreeSlice(colors, free, start, end);
       if (incidentOk(colors, free[start], adj, score.min) && incidentOk(colors, free[end], adj, score.min)) {
         const next = scorePermutation(colors, problem, score);
-        if (outranks(next, score, false)) {
+        if (outranks(next, score, problem.reuseMode)) {
           return next;
         }
       }
@@ -694,163 +715,6 @@ function reverseFreeSlice(colors: number[], free: readonly number[], start: numb
     colors[u] = colors[v];
     colors[v] = saved;
   }
-}
-
-function tryRelocate(colors: number[], problem: Problem, score: Separation): Separation | null {
-  for (let index = 0; index < problem.free.length; index += 1) {
-    const moved =
-      tryRelocateDirection(colors, problem, index, 1, score) ??
-      tryRelocateDirection(colors, problem, index, -1, score);
-    if (moved) {
-      return moved;
-    }
-  }
-  return null;
-}
-
-function tryRelocateDirection(
-  colors: number[],
-  problem: Problem,
-  start: number,
-  step: 1 | -1,
-  score: Separation
-): Separation | null {
-  const { adj, free } = problem;
-  const saved = colors[free[start]];
-  const limit = step > 0 ? free.length : -1;
-  let last = start;
-  for (let target = start + step; target !== limit; target += step) {
-    colors[free[target - step]] = colors[free[target]];
-    colors[free[target]] = saved;
-    last = target;
-    if (
-      Math.abs(target - start) > 1 &&
-      incidentOk(colors, free[target], adj, score.min) &&
-      incidentOk(colors, free[start], adj, score.min)
-    ) {
-      const next = scorePermutation(colors, problem, score);
-      if (outranks(next, score, false)) {
-        return next;
-      }
-    }
-  }
-  for (let cursor = last; cursor !== start; cursor -= step) {
-    colors[free[cursor]] = colors[free[cursor - step]];
-  }
-  colors[free[start]] = saved;
-  return null;
-}
-
-function tryUnusedShift(candidate: Candidate, problem: Problem): Separation | null {
-  for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (candidate.used[color] > 0) {
-      continue;
-    }
-    const shifted = tryShiftColor(candidate, problem, color);
-    if (shifted) {
-      return shifted;
-    }
-  }
-  return null;
-}
-
-function tryShiftColor(candidate: Candidate, problem: Problem, unusedColor: number): Separation | null {
-  const { colors, score, used } = candidate;
-  const { adj, free } = problem;
-  for (const first of free) {
-    const firstColor = colors[first];
-    for (const second of free) {
-      if (first === second) {
-        continue;
-      }
-      const secondColor = colors[second];
-      colors[first] = secondColor;
-      colors[second] = unusedColor;
-      if (incidentOk(colors, first, adj, score.min) && incidentOk(colors, second, adj, score.min)) {
-        used[firstColor] -= 1;
-        used[unusedColor] += 1;
-        const next = scoreCandidate(colors, used, problem);
-        if (outranks(next, score, false)) {
-          return next;
-        }
-        used[unusedColor] -= 1;
-        used[firstColor] += 1;
-      }
-      colors[first] = firstColor;
-      colors[second] = secondColor;
-    }
-  }
-  return null;
-}
-
-function tryBottleneckCycle(colors: number[], problem: Problem, score: Separation): Separation | null {
-  for (const target of bottleneckNodes(colors, problem, score.min)) {
-    const cycled = tryCycleFrom(colors, target, problem, score);
-    if (cycled) {
-      return cycled;
-    }
-  }
-  return null;
-}
-
-function bottleneckNodes(colors: readonly number[], problem: Problem, min: number): number[] {
-  const nodes: number[] = [];
-  const seen = new Uint8Array(colors.length);
-  for (let edge = 0; edge < problem.eu.length; edge += 1) {
-    const left = problem.eu[edge];
-    const right = problem.ev[edge];
-    if (FLAT_DISTANCE[colors[left] * PALETTE_SIZE + colors[right]] !== min) {
-      continue;
-    }
-    if (problem.isFree[left] && !seen[left]) {
-      seen[left] = 1;
-      nodes.push(left);
-    }
-    if (problem.isFree[right] && !seen[right]) {
-      seen[right] = 1;
-      nodes.push(right);
-    }
-  }
-  return nodes;
-}
-
-function tryCycleFrom(
-  colors: number[],
-  first: number,
-  problem: Problem,
-  score: Separation
-): Separation | null {
-  const { adj, free } = problem;
-  const firstColor = colors[first];
-  for (const second of free) {
-    if (second === first || colors[second] === firstColor) {
-      continue;
-    }
-    const secondColor = colors[second];
-    for (const third of free) {
-      if (third === first || third === second) {
-        continue;
-      }
-      const thirdColor = colors[third];
-      colors[first] = secondColor;
-      colors[second] = thirdColor;
-      colors[third] = firstColor;
-      if (
-        incidentOk(colors, first, adj, score.min) &&
-        incidentOk(colors, second, adj, score.min) &&
-        incidentOk(colors, third, adj, score.min)
-      ) {
-        const next = scorePermutation(colors, problem, score);
-        if (outranks(next, score, false)) {
-          return next;
-        }
-      }
-      colors[first] = firstColor;
-      colors[second] = secondColor;
-      colors[third] = thirdColor;
-    }
-  }
-  return null;
 }
 
 function incidentOk(

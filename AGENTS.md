@@ -40,12 +40,6 @@
 
 ## Git Discipline
 - Check test coverage before commit.
-- Never push to git without asking first.
-
-## Rewrite Tracking
-- For the greenfield rewrite, use `docs/REWRITE-TRACKER.md` as the live execution source of truth.
-- Keep `docs/EPICS-greenfield-rewrite.md` as the high-level backlog and `docs/SPRINT-PLAN-greenfield-rewrite.md` as the planned sequence.
-- Update `docs/REWRITE-TRACKER.md` whenever a rewrite task starts, completes, or becomes blocked so progress does not depend on chat history.
 
 ## Local Development
 

@@ -12,6 +12,7 @@ import {
 import { createAppStore, type AppStore } from "@client/app/app-store";
 import { renderAppShell } from "@client/app/app-shell";
 import { createAppController } from "@client/app/app-controller";
+import { createDestinationColorBook } from "@shared/domain/destination-color";
 import type { Departure } from "@shared/domain/departure";
 import type { DeparturesSuccessResponse } from "@shared/contracts/departures-contract";
 import type { DeparturesClient } from "@client/services/departures-client";
@@ -25,6 +26,7 @@ interface DepartureRow {
 
 interface World {
   cleanup?: () => void;
+  colorChoiceMs?: number;
   colors: Map<string, string>;
   container?: HTMLElement;
   store?: AppStore;
@@ -197,6 +199,19 @@ function colorsByDestination(rows: DepartureRow[]): Map<string, string> {
   return colors;
 }
 
+function measureColorChoiceMs(destinations: readonly string[]): number {
+  createDestinationColorBook().colorsFor(destinations);
+  const samples: number[] = [];
+  for (let run = 0; run < 3; run += 1) {
+    const book = createDestinationColorBook();
+    const start = performance.now();
+    book.colorsFor(destinations);
+    samples.push(performance.now() - start);
+  }
+  samples.sort((left, right) => left - right);
+  return samples[1];
+}
+
 defineFeature<World>(
   test,
   `
@@ -282,6 +297,29 @@ Feature: Destination color
     When Ruoholahti and Lauttasaari are added after those departures
     Then Eira and Kamppi keep their remembered colors
     And each departure stays at least 29 apart under protanopia from the row above and the row below
+
+  Scenario: Coloring a long board finishes within single-digit milliseconds
+    Given a board with 16 different destinations
+    When destination colors are chosen for the board
+    Then choosing the destination colors takes under 10 milliseconds
+
+  Scenario: Coloring a repeated long board finishes within single-digit milliseconds
+    Given a board with 16 different destinations followed by the second destination
+    When destination colors are chosen for the board
+    Then choosing the destination colors takes under 10 milliseconds
+
+  Scenario: Coloring a dense board of eight destinations finishes within single-digit milliseconds
+    Given a busy board with 8 destinations that meet across many rows
+    When destination colors are chosen for the board
+    Then choosing the destination colors takes under 10 milliseconds
+
+  Scenario: A board with more than 16 destinations uses the full scheme and stays fast
+    Given a board with 20 different destinations
+    When the departure board is shown
+    Then all 16 scheme colors appear on the board
+    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    When destination colors are chosen for the board
+    Then choosing the destination colors takes under 10 milliseconds
   `,
   {
     createWorld: () => ({
@@ -303,9 +341,10 @@ Feature: Destination color
         },
       },
       {
-        pattern: /^Given a board with 16 different destinations$/,
-        run: ({ world }) => {
-          const destinations = Array.from({ length: 16 }, (_, index) => `Destination ${index + 1}`);
+        pattern: /^Given a board with (\d+) different destinations$/,
+        run: ({ args, world }) => {
+          const count = Number(args[0]);
+          const destinations = Array.from({ length: count }, (_, index) => `Destination ${index + 1}`);
           world.trips = createTrips(destinations, destinations);
         },
       },
@@ -314,6 +353,14 @@ Feature: Destination color
         run: ({ world }) => {
           const destinations = Array.from({ length: 16 }, (_, index) => `Destination ${index + 1}`);
           destinations.push("Destination 2");
+          world.trips = createTrips(destinations, destinations);
+        },
+      },
+      {
+        pattern: /^Given a busy board with 8 destinations that meet across many rows$/,
+        run: ({ world }) => {
+          const order = [0, 1, 2, 3, 4, 5, 6, 7, 0, 7, 3, 7, 6, 1, 2, 5];
+          const destinations = order.map((index) => `Destination ${index + 1}`);
           world.trips = createTrips(destinations, destinations);
         },
       },
@@ -602,6 +649,32 @@ Feature: Destination color
           const rows = readRows(world);
           assert.equal(rows[0]?.destination, "Kamppi");
           assert.equal(rows[1]?.destination, "Kamppi ");
+        },
+      },
+      {
+        pattern: /^When destination colors are chosen for the board$/,
+        run: ({ world }) => {
+          const destinations = world.trips.map((trip) => trip.destination);
+          world.colorChoiceMs = measureColorChoiceMs(destinations);
+        },
+      },
+      {
+        pattern: /^Then choosing the destination colors takes under (\d+) milliseconds$/,
+        run: ({ args, assert, world }) => {
+          const limitMs = Number(args[0]);
+          const elapsed = world.colorChoiceMs ?? Infinity;
+          assert.equal(elapsed < limitMs, true, `Choosing destination colors took ${elapsed.toFixed(2)}ms`);
+        },
+      },
+      {
+        pattern: /^Then all 16 scheme colors appear on the board$/,
+        run: ({ assert, world }) => {
+          const seen = new Set(readRows(world).map((row) => row.color));
+          const allowed = schemeColors();
+          for (const color of seen) {
+            assert.equal(allowed.has(color), true, `Unexpected color ${color}`);
+          }
+          assert.equal(seen.size, DESTINATION_SCHEME.length);
         },
       },
     ],

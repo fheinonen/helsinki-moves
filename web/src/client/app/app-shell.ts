@@ -328,11 +328,11 @@ function createDeparturesTableView(
   let previousDepartures: readonly Departure[] = [];
   let previousPaintMode: Mode | null = null;
 
-  function paintDeparture(departure: Departure, mode: Mode): void {
+  function paintDeparture(departure: Departure, mode: Mode, destinationColor: string): void {
     departuresList.appendChild(
       renderDepartureCard({
         departure,
-        destinationColor: destinationColors.colorFor(departure.destination),
+        destinationColor,
         documentRef,
         mode,
       })
@@ -364,9 +364,10 @@ function createDeparturesTableView(
       if (replace) {
         departuresList.replaceChildren();
       }
-      const added = replace ? departures : departures.slice(prior.length);
-      for (const departure of added) {
-        paintDeparture(departure, state.activeMode);
+      const colors = destinationColors.colorsFor(departures.map((departure) => departure.destination));
+      const start = replace ? 0 : prior.length;
+      for (let index = start; index < departures.length; index += 1) {
+        paintDeparture(departures[index], state.activeMode, colors[index]);
       }
     },
   };

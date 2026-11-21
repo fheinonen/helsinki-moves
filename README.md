@@ -71,7 +71,7 @@ Vercel serves the built client from `dist/` and the API entrypoints from `web/ap
 - The shell has a stop selector, line filters, and destination filters.
 - Pressing a departure opens a street map of the span from the vehicle to that stop. The frame stays put while the vehicle marker moves. The Digitransit key stays on the server. The browser asks this app for `/api/v1/vehicle-span` and `/api/v1/map-tile`.
 - Trips to one destination share a color, and a different destination uses a different color. The destination name stays on the row. The color stays when the board refreshes or a line or destination filter is applied.
-- The colors stay distinct for protanopia. They separate by blue against yellow and by lightness, and each stays readable on the dark board. One visit uses 16 colors; a further new destination reuses an earlier color.
+- The colors stay distinct for protanopia. They separate by blue against yellow and by lightness, and each stays readable on the dark board. A departure's color is chosen from that same set so it stays apart, in color and hue, from the row above it and the row below it. One visit uses 16 colors. A further new destination reuses an earlier color that still stays apart from those neighbors.
 - Voice search posts audio to `POST /api/v1/speech-transcribe`, then geocodes the transcript.
 
 ## Run checks

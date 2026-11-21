@@ -38,6 +38,9 @@ jobs:
       - name: Build frontend bundles
         run: npm run build
         working-directory: web
+      - name: Test hygiene check
+        run: npm run test:hygiene
+        working-directory: web
       - name: Coverage + lint checks
         run: npm run test
         working-directory: web

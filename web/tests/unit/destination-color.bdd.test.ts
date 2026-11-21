@@ -26,6 +26,7 @@ interface DepartureRow {
 
 interface World {
   cleanup?: () => void;
+  closePair?: [string, string];
   colorChoiceMs?: number;
   colors: Map<string, string>;
   container?: HTMLElement;
@@ -36,22 +37,28 @@ interface World {
 const BASE_TIME_MS = Date.parse("2026-03-07T10:00:00.000Z");
 const COLOR_PATTERN = /^rgb\(\d+, \d+, \d+\)$/;
 const DESTINATION_SCHEME = [
-  "#ffff22",
-  "#a283ff",
-  "#cb9484",
-  "#b5ffe4",
-  "#d4d6ff",
-  "#7ca51b",
-  "#feffb5",
-  "#adcac7",
-  "#a4959c",
-  "#e5c7ac",
-  "#a5ca00",
-  "#dd9f6a",
-  "#b3a8c2",
-  "#f7e678",
-  "#65c1ff",
-  "#c684cf",
+  "#f8ff00",
+  "#ce78ff",
+  "#b0968e",
+  "#fff0ff",
+  "#a0a028",
+  "#fffed9",
+  "#96b4d2",
+  "#ff8769",
+  "#f087a5",
+  "#f0d2a0",
+  "#4bc4b4",
+  "#fdfdf4",
+  "#aae66e",
+  "#ffffaf",
+  "#00c56d",
+  "#ffb400",
+  "#b4b496",
+  "#ffd2c3",
+  "#c8c8d2",
+  "#31bfff",
+  "#ffd2ff",
+  "#7c9ad5",
 ] as const;
 const GLANCE_DESTINATIONS = [
   "Eira",
@@ -243,13 +250,13 @@ Feature: Destination color
     And both destination texts stay visible
 
   Scenario: Different destinations on a long board do not share a color
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When the departure board is shown
     Then each destination uses its own color
     And the destination texts stay in departure order
 
   Scenario: Destination colors stay distinct for protanopia
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When the departure board is shown
     Then each destination color stays distinct under protanopia
     And each destination color stays readable on the dark board
@@ -257,7 +264,13 @@ Feature: Destination color
   Scenario: Neighboring departures on a long board stay apart under protanopia
     Given a board with 16 different destinations
     When the departure board is shown
-    Then each departure stays at least 31 apart under protanopia from the row above and the row below
+    Then each departure stays at least 36 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
+
+  Scenario: Neighboring departures across all 22 destinations stay apart under protanopia
+    Given a board with 22 different destinations
+    When the departure board is shown
+    Then each departure stays at least 28 apart under protanopia from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: Mixed departures beside each other stay apart under protanopia
@@ -268,25 +281,25 @@ Feature: Destination color
   Scenario: The departure board a rider glances at keeps neighbors apart under protanopia
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 32 apart under protanopia from the row above and the row below
+    Then each departure stays at least 34 apart under protanopia from the row above and the row below
 
   Scenario: A repeated destination stays apart from the rows above and below it
-    Given a board with 16 different destinations followed by the second destination
+    Given a board with 22 different destinations followed by the second destination
     When the departure board is shown
     Then the repeated destination keeps the color of its first row
     And each departure stays at least 29 apart under protanopia from the row above and the row below
 
   Scenario: Two new destinations after every color is used stay apart from the rows beside them
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When the departure board is shown
     When two new destinations are shown between Destination 7 and Destination 14
     Then each departure stays at least 29 apart under protanopia from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: A new destination between close colors stays apart from both rows
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When the departure board is shown
-    When a new destination is shown between Destination 7 and Destination 14
+    When a new destination is shown between the two closest-colored destinations
     Then the new destination stays at least 32 apart under protanopia from the row above and the row below
     And each destination color stays in the existing scheme
 
@@ -299,12 +312,12 @@ Feature: Destination color
     And each departure stays at least 29 apart under protanopia from the row above and the row below
 
   Scenario: Coloring a long board finishes within single-digit milliseconds
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
 
   Scenario: Coloring a repeated long board finishes within single-digit milliseconds
-    Given a board with 16 different destinations followed by the second destination
+    Given a board with 22 different destinations followed by the second destination
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
 
@@ -313,10 +326,10 @@ Feature: Destination color
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
 
-  Scenario: A board with more than 16 destinations uses the full scheme and stays fast
-    Given a board with 20 different destinations
+  Scenario: A board with more than 22 destinations uses the full scheme and stays fast
+    Given a board with 26 different destinations
     When the departure board is shown
-    Then all 16 scheme colors appear on the board
+    Then all 22 scheme colors appear on the board
     And each departure stays at least 29 apart under protanopia from the row above and the row below
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
@@ -334,21 +347,21 @@ Feature: Destination color
     When the departure board is shown
     When 8 new later departures are appended to the board
     Then each destination uses its own color
-    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each departure stays at least 33 apart under protanopia from the row above and the row below
 
   Scenario: Loading more departures in stages keeps later neighbors apart even near the palette limit
-    Given a board with 14 different destinations
+    Given a board with 20 different destinations
     When the departure board is shown
     When 2 new later departures are appended to the board
     Then each departure stays at least 29 apart under protanopia from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: Loading further destinations after all colors are used spreads reused colors apart
-    Given a board with 16 different destinations
+    Given a board with 22 different destinations
     When the departure board is shown
     When 4 new later departures are appended to the board
     Then the 4 appended departures use 4 different colors
-    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each departure stays at least 28 apart under protanopia from the row above and the row below
     And each destination color stays in the existing scheme
   `,
   {
@@ -379,9 +392,10 @@ Feature: Destination color
         },
       },
       {
-        pattern: /^Given a board with 16 different destinations followed by the second destination$/,
-        run: ({ world }) => {
-          const destinations = Array.from({ length: 16 }, (_, index) => `Destination ${index + 1}`);
+        pattern: /^Given a board with (\d+) different destinations followed by the second destination$/,
+        run: ({ args, world }) => {
+          const count = Number(args[0]);
+          const destinations = Array.from({ length: count }, (_, index) => `Destination ${index + 1}`);
           destinations.push("Destination 2");
           world.trips = createTrips(destinations, destinations);
         },
@@ -447,9 +461,22 @@ Feature: Destination color
         },
       },
       {
-        pattern: /^When a new destination is shown between Destination 7 and Destination 14$/,
+        pattern: /^When a new destination is shown between the two closest-colored destinations$/,
         run: ({ world }) => {
-          replaceTrips(world, createTrips(["Destination 7", "Kallio", "Destination 14"], ["7", "17", "14"]));
+          const rows = readRows(world);
+          let bestPair: [string, string] = [rows[0].destination, rows[1].destination];
+          let bestDist = Infinity;
+          for (let left = 0; left < rows.length; left += 1) {
+            for (let right = left + 1; right < rows.length; right += 1) {
+              const distance = neighborDistance(rows[left].color, rows[right].color);
+              if (distance < bestDist) {
+                bestDist = distance;
+                bestPair = [rows[left].destination, rows[right].destination];
+              }
+            }
+          }
+          world.closePair = bestPair;
+          replaceTrips(world, createTrips([bestPair[0], "Kallio", bestPair[1]], ["7", "17", "14"]));
         },
       },
       {
@@ -570,7 +597,7 @@ Feature: Destination color
         pattern: /^Then each destination color stays distinct under protanopia$/,
         run: ({ assert, world }) => {
           const colors = [...colorsByDestination(readRows(world)).values()];
-          assert.equal(colors.length, 16);
+          assert.equal(colors.length, DESTINATION_SCHEME.length);
           const closest = closestProtanopiaDistance(colors);
           assert.equal(
             closest >= GLANCEABLE_PROTANOPIA_DISTANCE,
@@ -655,8 +682,8 @@ Feature: Destination color
           const row = rows[index];
           const above = rows[index - 1];
           const below = rows[index + 1];
-          assert.equal(above?.destination, "Destination 7");
-          assert.equal(below?.destination, "Destination 14");
+          assert.equal(above?.destination, world.closePair?.[0]);
+          assert.equal(below?.destination, world.closePair?.[1]);
           const aboveDistance = neighborDistance(above.color, row.color);
           const belowDistance = neighborDistance(row.color, below.color);
           assert.equal(aboveDistance >= minimum, true, `Kallio is ${aboveDistance.toFixed(2)} from the row above`);
@@ -697,7 +724,7 @@ Feature: Destination color
         },
       },
       {
-        pattern: /^Then all 16 scheme colors appear on the board$/,
+        pattern: /^Then all 22 scheme colors appear on the board$/,
         run: ({ assert, world }) => {
           const seen = new Set(readRows(world).map((row) => row.color));
           const allowed = schemeColors();

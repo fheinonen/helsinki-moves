@@ -1,18 +1,59 @@
 type Rgb = [number, number, number];
 type Lab = [number, number, number];
 type MatrixRow = readonly [number, number, number];
+type ColorMatrix = readonly [MatrixRow, MatrixRow, MatrixRow];
+
+export type ColorVisionProfile =
+  | "normal"
+  | "protanopia"
+  | "protanomaly"
+  | "deuteranopia"
+  | "deuteranomaly";
+
+export const RED_GREEN_PROFILES: readonly ColorVisionProfile[] = [
+  "normal",
+  "protanopia",
+  "protanomaly",
+  "deuteranopia",
+  "deuteranomaly",
+];
 
 const BOARD_BACKGROUND: Rgb = [5, 5, 5];
 const WHITE_X = 0.95047;
 const WHITE_Y = 1;
 const WHITE_Z = 1.08883;
-const PROTANOPIA_MATRIX: readonly MatrixRow[] = [
-  [0.152286, 1.052583, -0.204868],
-  [0.114503, 0.786281, 0.099216],
-  [-0.003882, -0.048116, 1.051998],
-];
 
-export const GLANCEABLE_PROTANOPIA_DISTANCE = 7;
+// Machado, Oliveira & Fernandes (2009) linear-RGB simulation matrices
+// (severity 1.0 for dichromacy, severity 0.6 for anomalous trichromacy).
+const VISION_MATRICES: Record<ColorVisionProfile, ColorMatrix> = {
+  deuteranomaly: [
+    [0.547494, 0.607765, -0.155259],
+    [0.181692, 0.781742, 0.036566],
+    [-0.01041, 0.027275, 0.983136],
+  ],
+  deuteranopia: [
+    [0.367322, 0.860646, -0.227968],
+    [0.280085, 0.672501, 0.047413],
+    [-0.01182, 0.04294, 0.968881],
+  ],
+  normal: [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ],
+  protanomaly: [
+    [0.458064, 0.679578, -0.137642],
+    [0.092785, 0.846313, 0.060902],
+    [-0.007494, -0.016807, 1.024301],
+  ],
+  protanopia: [
+    [0.152286, 1.052583, -0.204868],
+    [0.114503, 0.786281, 0.099216],
+    [-0.003882, -0.048116, 1.051998],
+  ],
+};
+
+export const GLANCEABLE_COLOR_VISION_DISTANCE = 7;
 export const READABLE_BOARD_CONTRAST = 7;
 
 function srgbChannelToLinear(channel: number): number {
@@ -38,8 +79,9 @@ function mixRow(row: MatrixRow, rgb: Rgb): number {
   );
 }
 
-export function simulateProtanopia(rgb: Rgb): Rgb {
-  return PROTANOPIA_MATRIX.map((row) => linearChannelToSrgb(mixRow(row, rgb))) as Rgb;
+export function simulateColorVision(rgb: Rgb, profile: ColorVisionProfile): Rgb {
+  const matrix = VISION_MATRICES[profile];
+  return matrix.map((row) => linearChannelToSrgb(mixRow(row, rgb))) as Rgb;
 }
 
 function relativeLuminance(rgb: Rgb): number {
@@ -165,13 +207,38 @@ export function parseCssRgb(color: string): Rgb {
   return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-export function closestProtanopiaDistance(colors: string[]): number {
-  const simulated = colors.map((color) => rgbToLab(simulateProtanopia(parseCssRgb(color))));
+export function colorVisionDistance(first: Rgb, second: Rgb, profile: ColorVisionProfile): number {
+  return deltaE00(
+    rgbToLab(simulateColorVision(first, profile)),
+    rgbToLab(simulateColorVision(second, profile))
+  );
+}
+
+export function worstRedGreenDistance(first: Rgb, second: Rgb): number {
+  let worst = Number.POSITIVE_INFINITY;
+  for (const profile of RED_GREEN_PROFILES) {
+    worst = Math.min(worst, colorVisionDistance(first, second, profile));
+  }
+  return worst;
+}
+
+export function closestRedGreenDistance(
+  colors: string[]
+): { distance: number; profile: ColorVisionProfile } {
+  const parsed = colors.map(parseCssRgb);
   let closest = Number.POSITIVE_INFINITY;
-  for (let left = 0; left < simulated.length; left += 1) {
-    for (let right = left + 1; right < simulated.length; right += 1) {
-      closest = Math.min(closest, deltaE00(simulated[left], simulated[right]));
+  let worstProfile: ColorVisionProfile = "normal";
+  for (const profile of RED_GREEN_PROFILES) {
+    const simulated = parsed.map((rgb) => rgbToLab(simulateColorVision(rgb, profile)));
+    for (let left = 0; left < simulated.length; left += 1) {
+      for (let right = left + 1; right < simulated.length; right += 1) {
+        const distance = deltaE00(simulated[left], simulated[right]);
+        if (distance < closest) {
+          closest = distance;
+          worstProfile = profile;
+        }
+      }
     }
   }
-  return closest;
+  return { distance: closest, profile: worstProfile };
 }

@@ -320,6 +320,36 @@ Feature: Destination color
     And each departure stays at least 29 apart under protanopia from the row above and the row below
     When destination colors are chosen for the board
     Then choosing the destination colors takes under 10 milliseconds
+
+  Scenario: Later departures reordering earlier destinations keep them apart under protanopia
+    Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
+    When the departure board is shown
+    Then the shown destination colors are remembered
+    When later departures append the same destinations in a different order
+    Then each destination keeps its remembered color
+    And each departure stays at least 12 apart under protanopia from the row above and the row below
+
+  Scenario: Loading eight more destinations after the glance board keeps all neighbors apart
+    Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
+    When the departure board is shown
+    When 8 new later departures are appended to the board
+    Then each destination uses its own color
+    And each departure stays at least 29 apart under protanopia from the row above and the row below
+
+  Scenario: Loading more departures in stages keeps later neighbors apart even near the palette limit
+    Given a board with 14 different destinations
+    When the departure board is shown
+    When 2 new later departures are appended to the board
+    Then each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
+
+  Scenario: Loading further destinations after all colors are used spreads reused colors apart
+    Given a board with 16 different destinations
+    When the departure board is shown
+    When 4 new later departures are appended to the board
+    Then the 4 appended departures use 4 different colors
+    And each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
   `,
   {
     createWorld: () => ({
@@ -675,6 +705,54 @@ Feature: Destination color
             assert.equal(allowed.has(color), true, `Unexpected color ${color}`);
           }
           assert.equal(seen.size, DESTINATION_SCHEME.length);
+        },
+      },
+      {
+        pattern: /^When later departures append the same destinations in a different order$/,
+        run: ({ world }) => {
+          const reordered = [
+            "Toolo",
+            "Herttoniemi",
+            "Ruskeasuo",
+            "Kamppi",
+            "Eira",
+            "Lauttasaari",
+            "Ruoholahti",
+            "Rautatientori",
+          ];
+          const suffix = createTrips(
+            reordered,
+            reordered.map((_, index) => `L${index + 1}`),
+            world.trips.length * 60_000
+          );
+          const combined = world.trips.concat(suffix);
+          world.trips = combined;
+          replaceTrips(world, combined);
+        },
+      },
+      {
+        pattern: /^When (\d+) new later departures are appended to the board$/,
+        run: ({ args, world }) => {
+          const count = Number(args[0]);
+          const added = Array.from({ length: count }, (_, index) => `Later ${index + 1}`);
+          const suffix = createTrips(
+            added,
+            added.map((_, index) => `M${index + 1}`),
+            world.trips.length * 60_000
+          );
+          const combined = world.trips.concat(suffix);
+          world.trips = combined;
+          replaceTrips(world, combined);
+        },
+      },
+      {
+        pattern: /^Then the (\d+) appended departures use (\d+) different colors$/,
+        run: ({ args, assert, world }) => {
+          const tailCount = Number(args[0]);
+          const expectedColors = Number(args[1]);
+          const tail = readRows(world).slice(-tailCount);
+          assert.equal(tail.length, tailCount);
+          assert.equal(new Set(tail.map((row) => row.color)).size, expectedColors);
         },
       },
     ],

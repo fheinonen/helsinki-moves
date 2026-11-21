@@ -28,6 +28,7 @@ export interface VehicleSpanMap {
   close(): void;
   element: HTMLElement;
   markSwitchBusy(): void;
+  retarget(next: { destination: string; destinationColor?: string; line: string }): void;
 }
 
 function place(marker: HTMLElement, frame: VehicleSpanFrame, point: GeoPoint): void {
@@ -54,6 +55,8 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     onSwitchToWalk,
     switched = false,
   } = options;
+  let shownDestination = destination;
+  let shownColor = destinationColor;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.vehicleMap = "true";
@@ -130,9 +133,9 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     clearStreets(glass);
     writeMapExtent(glass, frame);
     mountMapStreets({
-      ariaLabel: `Route to ${destination}`,
+      ariaLabel: `Route to ${shownDestination}`,
       canvas,
-      color: destinationColor,
+      color: shownColor,
       documentRef,
       extent: frame,
       points: frame.route,
@@ -163,9 +166,9 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
         clearStreets(glass);
         writeMapExtent(glass, view.frame);
         mountMapStreets({
-          ariaLabel: `Route to ${destination}`,
+          ariaLabel: `Route to ${shownDestination}`,
           canvas,
-          color: destinationColor,
+          color: shownColor,
           documentRef,
           extent: view.frame,
           points: view.frame.route,
@@ -195,6 +198,30 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
         button.setAttribute("aria-busy", "true");
         button.dataset.switchLoading = "true";
       }
+    },
+    retarget(next) {
+      shownDestination = next.destination;
+      shownColor = next.destinationColor;
+      element.setAttribute("aria-label", `${next.line} to ${next.destination}`);
+      if (next.destinationColor) {
+        element.style.setProperty("--destination-color", next.destinationColor);
+        vehicleMarker.style.background = next.destinationColor;
+      }
+      const lineText = head.querySelector(".vehicle-span__line");
+      const destinationText = head.querySelector(".vehicle-span__destination");
+      if (lineText) {
+        lineText.textContent = next.line;
+      }
+      if (destinationText) {
+        destinationText.textContent = next.destination;
+      }
+      stopMarker.setAttribute("aria-label", next.destination);
+      clearStreets(glass);
+      view = closedVehicleSpan();
+      hasVehicleFix = false;
+      delete glass.dataset.vehicleLive;
+      status.textContent = "Finding the vehicle";
+      interactive.reset();
     },
   };
 

@@ -45,6 +45,7 @@ export interface CreateWalkSessionInput {
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   onUserClose?: () => void;
   readCoords(): GeoPoint | null;
+  retargetVehicle?(card: HTMLTableRowElement): void;
   scheduleHold?: HoldScheduler;
   table: HTMLTableElement;
 }
@@ -72,6 +73,7 @@ type WalkAttempt =
   | {
       readonly id: WalkAttemptId;
       readonly label: HeldDeparture;
+      readonly next?: WalkRefresh;
       readonly route: WalkRoute;
       readonly status: "shown";
     }
@@ -80,6 +82,12 @@ type WalkAttempt =
       readonly label: HeldDeparture;
       readonly status: "failed";
     };
+
+interface WalkRefresh {
+  readonly id: WalkAttemptId;
+  readonly label: HeldDeparture;
+  readonly origin: GeoPoint;
+}
 
 type WalkCommand =
   | {
@@ -98,6 +106,7 @@ interface WalkProjection {
   readonly element: HTMLElement;
   readonly id: WalkAttemptId;
   readonly kind: "map" | "status";
+  show?(label: HeldDeparture, route: WalkRoute): void;
 }
 
 interface Arm {
@@ -133,20 +142,61 @@ function isPendingId(
   return attempt.status === "pending" && attempt.id === id;
 }
 
+function walkRequest(attempt: WalkAttempt, id: WalkAttemptId): WalkRequest | null {
+  if (attempt.status === "pending" && attempt.id === id) {
+    return { lat: attempt.origin.lat, lon: attempt.origin.lon, stopId: attempt.label.stopId };
+  }
+  if (attempt.status === "shown" && attempt.next?.id === id) {
+    return {
+      lat: attempt.next.origin.lat,
+      lon: attempt.next.origin.lon,
+      stopId: attempt.next.label.stopId,
+    };
+  }
+  return null;
+}
+
+function holdWalk(attempt: WalkAttempt, command: Extract<WalkCommand, { type: "hold" }>): WalkAttempt {
+  if (attempt.status !== "shown") {
+    return { id: command.id, label: command.label, origin: command.origin, status: "pending" };
+  }
+  return {
+    id: attempt.id,
+    label: attempt.label,
+    next: { id: command.id, label: command.label, origin: command.origin },
+    route: attempt.route,
+    status: "shown",
+  };
+}
+
+function arriveWalk(attempt: WalkAttempt, command: Extract<WalkCommand, { type: "arrive" }>): WalkAttempt {
+  if (attempt.status === "shown" && attempt.next?.id === command.id) {
+    return { id: command.id, label: attempt.next.label, route: command.route, status: "shown" };
+  }
+  return isPendingId(attempt, command.id)
+    ? { id: command.id, label: attempt.label, route: command.route, status: "shown" }
+    : attempt;
+}
+
+function failWalk(attempt: WalkAttempt, command: Extract<WalkCommand, { type: "fail" }>): WalkAttempt {
+  if (attempt.status === "shown" && attempt.next?.id === command.id) {
+    return { id: attempt.id, label: attempt.label, route: attempt.route, status: "shown" };
+  }
+  return isPendingId(attempt, command.id)
+    ? { id: command.id, label: attempt.label, status: "failed" }
+    : attempt;
+}
+
 function reduceWalk(attempt: WalkAttempt, command: WalkCommand): WalkAttempt {
   switch (command.type) {
     case "close":
       return { status: "idle" };
     case "hold":
-      return { id: command.id, label: command.label, origin: command.origin, status: "pending" };
+      return holdWalk(attempt, command);
     case "arrive":
-      return isPendingId(attempt, command.id)
-        ? { id: command.id, label: attempt.label, route: command.route, status: "shown" }
-        : attempt;
+      return arriveWalk(attempt, command);
     case "fail":
-      return isPendingId(attempt, command.id)
-        ? { id: command.id, label: attempt.label, status: "failed" }
-        : attempt;
+      return failWalk(attempt, command);
     default: {
       const unreachable: never = command;
       return unreachable;
@@ -220,6 +270,41 @@ function placeWalkTime(input: {
   input.canvas.append(label);
 }
 
+function paintWalkRoute(input: {
+  canvas: HTMLElement;
+  documentRef: Document;
+  glass: HTMLElement;
+  label: HeldDeparture;
+  origin: HTMLElement;
+  route: WalkRoute;
+  stop: HTMLElement;
+}): void {
+  for (const node of input.canvas.querySelectorAll("[data-street-tile], .vehicle-span__route, [data-walk-time]")) {
+    node.remove();
+  }
+  const extent = extentOf(input.route.points);
+  writeMapExtent(input.glass, extent);
+  mountMapStreets({
+    ariaLabel: `Walk to ${input.label.destination}`,
+    canvas: input.canvas,
+    color: input.label.color || undefined,
+    documentRef: input.documentRef,
+    extent,
+    points: input.route.points,
+    stopMarker: input.stop,
+  });
+  placeMarker(input.origin, extent, input.route.points[0]);
+  placeMarker(input.stop, extent, input.route.points.at(-1) ?? input.route.points[1]);
+  input.stop.setAttribute("aria-label", input.label.destination);
+  placeWalkTime({
+    canvas: input.canvas,
+    departureMs: input.label.departureMs,
+    documentRef: input.documentRef,
+    extent,
+    route: input.route,
+  });
+}
+
 function buildWalkMap(input: {
   documentRef: Document;
   initialExpanded?: boolean;
@@ -228,8 +313,9 @@ function buildWalkMap(input: {
   onExpandedChange?: (expanded: boolean) => void;
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   route: WalkRoute;
-}): { destroy: () => void; element: HTMLElement } {
-  const { documentRef, initialExpanded, label, onClose, onExpandedChange, onSwitchToVehicle, route } = input;
+}): { destroy: () => void; element: HTMLElement; show(label: HeldDeparture, route: WalkRoute): void } {
+  const { documentRef, initialExpanded, onClose, onExpandedChange, onSwitchToVehicle } = input;
+  let label = input.label;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
   element.dataset.walkMap = "true";
@@ -238,17 +324,18 @@ function buildWalkMap(input: {
     element.style.setProperty("--destination-color", label.color);
   }
 
-  const switchAction: MapSwitchAction | undefined =
-    label.tripId && onSwitchToVehicle
-      ? {
-          ariaLabel: "Show live vehicle",
-          label: "Vehicle",
-          onSwitch: () => {
+  const switchAction: MapSwitchAction | undefined = onSwitchToVehicle
+    ? {
+        ariaLabel: "Show live vehicle",
+        label: "Vehicle",
+        onSwitch: () => {
+          if (label.tripId) {
             onSwitchToVehicle(label.card);
-          },
-          target: "vehicle",
-        }
-      : undefined;
+          }
+        },
+        target: "vehicle",
+      }
+    : undefined;
 
   const head = buildMapHeader({
     closeAttr: "walkClose",
@@ -256,7 +343,7 @@ function buildWalkMap(input: {
     documentRef,
     line: label.line,
     onClose,
-    switchAction,
+    switchAction: label.tripId ? switchAction : undefined,
   });
 
   const glass = documentRef.createElement("div");
@@ -266,21 +353,7 @@ function buildWalkMap(input: {
   const origin = createMapMarker(documentRef, "walkOrigin", "Your location");
   const stop = createMapMarker(documentRef, "stopMarker", label.destination);
   canvas.append(origin, stop);
-
-  const extent = extentOf(route.points);
-  writeMapExtent(glass, extent);
-  mountMapStreets({
-    ariaLabel: `Walk to ${label.destination}`,
-    canvas,
-    color: label.color || undefined,
-    documentRef,
-    extent,
-    points: route.points,
-    stopMarker: stop,
-  });
-  placeMarker(origin, extent, route.points[0]);
-  placeMarker(stop, extent, route.points.at(-1) ?? route.points[1]);
-  placeWalkTime({ canvas, departureMs: label.departureMs, documentRef, extent, route });
+  paintWalkRoute({ canvas, documentRef, glass, label, origin, route: input.route, stop });
 
   const credit = documentRef.createElement("p");
   credit.className = "vehicle-span__credit";
@@ -296,12 +369,32 @@ function buildWalkMap(input: {
     onClose,
     onExpandedChange,
   });
+
+  const show = (nextLabel: HeldDeparture, route: WalkRoute) => {
+    label = nextLabel;
+    element.setAttribute("aria-label", `${label.line} walk to ${label.destination}`);
+    if (label.color) {
+      element.style.setProperty("--destination-color", label.color);
+    }
+    const lineText = head.querySelector(".vehicle-span__line");
+    const destinationText = head.querySelector(".vehicle-span__destination");
+    if (lineText) {
+      lineText.textContent = label.line;
+    }
+    if (destinationText) {
+      destinationText.textContent = label.destination;
+    }
+    paintWalkRoute({ canvas, documentRef, glass, label, origin, route, stop });
+    interactive.reset();
+  };
+
   return {
     destroy() {
       interactive.destroy();
       element.remove();
     },
     element,
+    show,
   };
 }
 
@@ -372,8 +465,20 @@ function projectWalk(input: {
       kind: "status",
     };
   }
-  if (sameProjection(mounted, attempt.id, "map")) {
-    return mounted;
+  if (mounted?.kind === "map" && mounted.element.isConnected && mounted.show) {
+    if (mounted.id !== attempt.id) {
+      clearCardWalkState(mounted.card);
+      mounted.show(attempt.label, attempt.route);
+      attempt.label.card.dataset.mapActive = "true";
+    }
+    return {
+      card: attempt.label.card,
+      destroy: mounted.destroy,
+      element: mounted.element,
+      id: attempt.id,
+      kind: "map",
+      show: mounted.show,
+    };
   }
   teardownProjection(mounted);
   const hadVehicleMap =
@@ -402,6 +507,7 @@ function projectWalk(input: {
     element: built.element,
     id: attempt.id,
     kind: "map",
+    show: built.show,
   };
 }
 
@@ -609,7 +715,12 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
   }
 
   function syncLoadingCard(): void {
-    const nextLoading = attempt.status === "pending" ? attempt.label.card : null;
+    const nextLoading =
+      attempt.status === "pending"
+        ? attempt.label.card
+        : attempt.status === "shown" && attempt.next
+          ? attempt.next.label.card
+          : null;
     if (loadingCard && loadingCard !== nextLoading) {
       delete loadingCard.dataset.walkLoading;
     }
@@ -660,12 +771,8 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     return fetchWalkRoute(request, (url, init) => fetch(url, { ...init, signal }));
   }
 
-  function mapAlreadyOpen(): boolean {
-    if (mounted?.kind === "map" && mounted.element.isConnected) {
-      return true;
-    }
-    const previous = input.table.previousElementSibling;
-    return previous?.matches("[data-vehicle-map='true']") ?? false;
+  function vehicleMapOpen(): boolean {
+    return input.table.previousElementSibling?.matches("[data-vehicle-map='true']") ?? false;
   }
 
   function startWalk(label: HeldDeparture): void {
@@ -676,18 +783,15 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     abortInFlight();
     const id = mintWalkAttemptId();
     apply({ id, label, origin, type: "hold" });
-    if (!isPendingId(attempt, id) || requestedId === id) {
+    const request = walkRequest(attempt, id);
+    if (!request || requestedId === id) {
       return;
     }
     requestedId = id;
-    const pending = attempt;
     const controller = new AbortController();
     flight = controller;
     void abortable(
-      loadWalk(
-        { lat: pending.origin.lat, lon: pending.origin.lon, stopId: pending.label.stopId },
-        controller.signal,
-      ),
+      loadWalk(request, controller.signal),
       controller.signal,
     ).then(
       (route) => {
@@ -700,7 +804,8 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
   }
 
   function beginWalk(label: HeldDeparture): void {
-    if (mapAlreadyOpen()) {
+    if (vehicleMapOpen()) {
+      input.retargetVehicle?.(label.card);
       return;
     }
     startWalk(label);

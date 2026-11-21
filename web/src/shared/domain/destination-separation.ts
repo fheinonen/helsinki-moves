@@ -25,8 +25,11 @@ export const DESTINATION_COLORS = [
 
 const PALETTE_SIZE = DESTINATION_COLORS.length;
 const UNSEPARATED = 1_000_000;
-const SOFT_DISTINCT_FLOOR = 2900;
+const NEIGHBOR_COMFORT_FLOOR = 2900;
+const TWO_HOP_COMFORT_FLOOR = 1600;
+const CLOSE_PAIR_THRESHOLD = 1400;
 const REUSE_COMFORT_FLOOR = 3500;
+const SCARCITY_SPARE_LIMIT = 2;
 const MAX_STARTS = 12;
 const CLIMB_ROUNDS = 40;
 const WIDE_STAGE_ROUNDS = 4;
@@ -36,7 +39,10 @@ const POLISH_CANDIDATES = 3;
 type Edge = readonly [number, number];
 
 interface Separation {
+  closePairs: number;
   count: number;
+  hop2Count: number;
+  hop2Min: number;
   min: number;
   pairCount: number;
   pairMin: number;
@@ -46,6 +52,7 @@ interface Separation {
 }
 
 interface PaletteMetrics {
+  closePairs: number;
   pairCount: number;
   pairMin: number;
   reuseExcess: number;
@@ -53,6 +60,8 @@ interface PaletteMetrics {
 }
 
 interface NodeFit {
+  addedClose: number;
+  hop2Min: number;
   min: number;
   multiplicity: number;
   pairMin: number;
@@ -61,9 +70,12 @@ interface NodeFit {
 
 interface Problem {
   adj: number[][];
+  adj2: number[][];
   avail: number;
   baseUsed: Uint8Array;
   distinct: boolean;
+  e2u: Int32Array;
+  e2v: Int32Array;
   eu: Int32Array;
   ev: Int32Array;
   forceReuse: boolean;
@@ -108,6 +120,7 @@ const DISTANCE = [
 ];
 
 const FLAT_DISTANCE = flattenDistances(DISTANCE);
+const CLOSE_MASK = buildCloseMask(DISTANCE);
 const ALL_COLORS_MASK = (1 << PALETTE_SIZE) - 1;
 const ALL_DISPERSION = computeMaskDispersion(ALL_COLORS_MASK);
 
@@ -121,37 +134,60 @@ function flattenDistances(matrix: readonly (readonly number[])[]): Int32Array {
   return flat;
 }
 
+function buildCloseMask(matrix: readonly (readonly number[])[]): Int32Array {
+  const masks = new Int32Array(PALETTE_SIZE);
+  for (let row = 0; row < PALETTE_SIZE; row += 1) {
+    let mask = 0;
+    for (let col = 0; col < PALETTE_SIZE; col += 1) {
+      if (row !== col && matrix[row][col] < CLOSE_PAIR_THRESHOLD) {
+        mask |= 1 << col;
+      }
+    }
+    masks[row] = mask;
+  }
+  return masks;
+}
+
+function popcount(bits: number): number {
+  let count = 0;
+  let value = bits;
+  while (value !== 0) {
+    value &= value - 1;
+    count += 1;
+  }
+  return count;
+}
+
 export function separateNeighbors(
   fixed: readonly number[],
   edges: readonly Edge[],
   reserved: ReadonlySet<number> = new Set()
 ): number[] {
-  const first = solvePass(fixed, edges, reserved, false);
-  if (!shouldFallbackReuse(first.score.min, fixed, reserved)) {
+  const problem = buildProblem(fixed, edges, reserved, false);
+  const first = solveProblem(fixed, problem);
+  if (!shouldFallbackReuse(first.score.min, problem, fixed, reserved)) {
     return first.colors;
   }
-  const fallback = solvePass(fixed, edges, reserved, true);
+  const fallback = solveProblem(fixed, buildProblem(fixed, edges, reserved, true));
   return fallback.score.min > first.score.min ? fallback.colors : first.colors;
 }
 
 function shouldFallbackReuse(
   min: number,
+  problem: Problem,
   fixed: readonly number[],
   reserved: ReadonlySet<number>
 ): boolean {
-  if (min >= SOFT_DISTINCT_FLOOR) {
+  if (min >= NEIGHBOR_COMFORT_FLOOR || problem.reuseMode) {
+    return false;
+  }
+  if (problem.avail - problem.free.length > SCARCITY_SPARE_LIMIT) {
     return false;
   }
   return reserved.size > 0 || fixed.some((color) => color >= 0);
 }
 
-function solvePass(
-  fixed: readonly number[],
-  edges: readonly Edge[],
-  reserved: ReadonlySet<number>,
-  forceReuse: boolean
-): Candidate {
-  const problem = buildProblem(fixed, edges, reserved, forceReuse);
+function solveProblem(fixed: readonly number[], problem: Problem): Candidate {
   if (problem.free.length === 0) {
     const colors = fixed.slice();
     return { colors, score: scoreCandidate(colors, problem.baseUsed, problem), used: problem.baseUsed };
@@ -175,7 +211,23 @@ function buildProblem(
   const distinct = !forceReuse && free.length <= avail;
   const reuseMode = !distinct;
   const hasRecolorTarget = reuseMode || free.length < avail;
-  return { adj, avail, baseUsed, distinct, eu, ev, forceReuse, free, hasRecolorTarget, reuseMode };
+  const twoHop =
+    reuseMode || free.length >= avail ? emptyTwoHop(fixed.length) : activeTwoHopGraph(fixed.length, edges, fixed);
+  return {
+    adj,
+    adj2: twoHop.adj2,
+    avail,
+    baseUsed,
+    distinct,
+    e2u: twoHop.e2u,
+    e2v: twoHop.e2v,
+    eu,
+    ev,
+    forceReuse,
+    free,
+    hasRecolorTarget,
+    reuseMode,
+  };
 }
 
 function scanFixed(
@@ -230,6 +282,70 @@ function activeGraph(
     adj[right].push(left);
   }
   return { adj, eu: Int32Array.from(eu), ev: Int32Array.from(ev) };
+}
+
+function emptyTwoHop(size: number): { adj2: number[][]; e2u: Int32Array; e2v: Int32Array } {
+  return {
+    adj2: Array.from({ length: size }, () => [] as number[]),
+    e2u: new Int32Array(0),
+    e2v: new Int32Array(0),
+  };
+}
+
+function activeTwoHopGraph(
+  size: number,
+  edges: readonly Edge[],
+  fixed: readonly number[]
+): { adj2: number[][]; e2u: Int32Array; e2v: Int32Array } {
+  const fullAdj = Array.from({ length: size }, () => [] as number[]);
+  const direct = new Set<number>();
+  for (const [left, right] of edges) {
+    fullAdj[left].push(right);
+    fullAdj[right].push(left);
+    direct.add(pairCode(left, right, size));
+  }
+  const adj2 = Array.from({ length: size }, () => [] as number[]);
+  const seen = new Set<number>();
+  const e2u: number[] = [];
+  const e2v: number[] = [];
+  for (let mid = 0; mid < size; mid += 1) {
+    collectTwoHopPairs(fullAdj[mid], size, fixed, direct, seen, adj2, e2u, e2v);
+  }
+  return { adj2, e2u: Int32Array.from(e2u), e2v: Int32Array.from(e2v) };
+}
+
+function collectTwoHopPairs(
+  neighbors: readonly number[],
+  size: number,
+  fixed: readonly number[],
+  direct: ReadonlySet<number>,
+  seen: Set<number>,
+  adj2: number[][],
+  e2u: number[],
+  e2v: number[]
+): void {
+  for (let i = 0; i < neighbors.length; i += 1) {
+    for (let j = i + 1; j < neighbors.length; j += 1) {
+      const left = neighbors[i];
+      const right = neighbors[j];
+      if (left === right || (fixed[left] >= 0 && fixed[right] >= 0)) {
+        continue;
+      }
+      const code = pairCode(left, right, size);
+      if (direct.has(code) || seen.has(code)) {
+        continue;
+      }
+      seen.add(code);
+      e2u.push(left);
+      e2v.push(right);
+      adj2[left].push(right);
+      adj2[right].push(left);
+    }
+  }
+}
+
+function pairCode(left: number, right: number, size: number): number {
+  return left < right ? left * size + right : right * size + left;
 }
 
 function orderFree(
@@ -321,6 +437,7 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
   const colors = fixed.slice();
   const used = problem.baseUsed.slice();
   let unusedLeft = problem.avail;
+  let boardMask = buildBoardMask(colors);
   const open = problem.free.slice();
   const trackDispersion = problem.free.length < problem.avail;
   if (startColor >= 0) {
@@ -329,6 +446,7 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
       unusedLeft -= 1;
     }
     used[startColor] += 1;
+    boardMask |= 1 << startColor;
     open.shift();
   }
   while (open.length > 0) {
@@ -336,8 +454,10 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
     const preferFresh = !problem.forceReuse && unusedLeft > 0;
     const chosen = bestColorForNode(
       problem.adj[node],
+      problem.adj2[node],
       colors,
       used,
+      boardMask,
       preferFresh,
       problem.reuseMode,
       trackDispersion
@@ -347,8 +467,19 @@ function greedyStart(fixed: readonly number[], problem: Problem, startColor: num
       unusedLeft -= 1;
     }
     used[chosen] += 1;
+    boardMask |= 1 << chosen;
   }
   return { colors, score: scoreCandidate(colors, used, problem), used };
+}
+
+function buildBoardMask(colors: readonly number[]): number {
+  let mask = 0;
+  for (let index = 0; index < colors.length; index += 1) {
+    if (colors[index] >= 0) {
+      mask |= 1 << colors[index];
+    }
+  }
+  return mask;
 }
 
 function pickMostColored(
@@ -384,8 +515,10 @@ function coloredDegree(
 
 function bestColorForNode(
   neighbors: readonly number[],
+  twoHopNeighbors: readonly number[],
   colors: readonly number[],
   used: Uint8Array,
+  boardMask: number,
   freshOnly: boolean,
   reuseMode: boolean,
   trackDispersion: boolean
@@ -396,7 +529,15 @@ function bestColorForNode(
     if (freshOnly && used[color] > 0) {
       continue;
     }
-    const fit = evaluateNodeFit(neighbors, colors, used, color, trackDispersion);
+    const fit = evaluateNodeFit(
+      neighbors,
+      twoHopNeighbors,
+      colors,
+      used,
+      boardMask,
+      color,
+      trackDispersion
+    );
     if (!best || outranksFit(fit, best, reuseMode)) {
       chosen = color;
       best = fit;
@@ -407,8 +548,10 @@ function bestColorForNode(
 
 function evaluateNodeFit(
   neighbors: readonly number[],
+  twoHopNeighbors: readonly number[],
   colors: readonly number[],
   used: Uint8Array,
+  boardMask: number,
   color: number,
   trackDispersion: boolean
 ): NodeFit {
@@ -426,31 +569,78 @@ function evaluateNodeFit(
       min = distance;
     }
   }
-  let pairMin = UNSEPARATED;
-  if (trackDispersion) {
-    for (let index = 0; index < colors.length; index += 1) {
-      const existing = colors[index];
-      if (existing >= 0 && existing !== color) {
-        const distance = FLAT_DISTANCE[row + existing];
-        if (distance < pairMin) {
-          pairMin = distance;
-        }
+  const hop2Min = twoHopNeighbors.length > 0 ? minNeighborDistance(twoHopNeighbors, colors, row) : UNSEPARATED;
+  const addedClose = trackDispersion ? popcount(CLOSE_MASK[color] & boardMask) : 0;
+  const pairMin = trackDispersion ? minBoardDistance(colors, color, row) : UNSEPARATED;
+  return { addedClose, hop2Min, min, multiplicity: used[color], pairMin, sum };
+}
+
+function minNeighborDistance(
+  neighbors: readonly number[],
+  colors: readonly number[],
+  row: number
+): number {
+  let min = UNSEPARATED;
+  for (const neighbor of neighbors) {
+    const neighborColor = colors[neighbor];
+    if (neighborColor >= 0) {
+      const distance = FLAT_DISTANCE[row + neighborColor];
+      if (distance < min) {
+        min = distance;
       }
     }
   }
-  return { min, multiplicity: used[color], pairMin, sum };
+  return min;
+}
+
+function minBoardDistance(colors: readonly number[], color: number, row: number): number {
+  let pairMin = UNSEPARATED;
+  for (let index = 0; index < colors.length; index += 1) {
+    const existing = colors[index];
+    if (existing >= 0 && existing !== color) {
+      const distance = FLAT_DISTANCE[row + existing];
+      if (distance < pairMin) {
+        pairMin = distance;
+      }
+    }
+  }
+  return pairMin;
 }
 
 function outranksFit(next: NodeFit, current: NodeFit, reuseMode: boolean): boolean {
   if (reuseMode) {
-    const nextFloor = Math.min(next.min, REUSE_COMFORT_FLOOR);
-    const currentFloor = Math.min(current.min, REUSE_COMFORT_FLOOR);
-    if (nextFloor !== currentFloor) {
-      return nextFloor > currentFloor;
-    }
-    if (next.multiplicity !== current.multiplicity) {
-      return next.multiplicity < current.multiplicity;
-    }
+    return outranksReuseFit(next, current);
+  }
+  const nextFloor = Math.min(next.min, NEIGHBOR_COMFORT_FLOOR);
+  const currentFloor = Math.min(current.min, NEIGHBOR_COMFORT_FLOOR);
+  if (nextFloor !== currentFloor) {
+    return nextFloor > currentFloor;
+  }
+  if (next.addedClose !== current.addedClose) {
+    return next.addedClose < current.addedClose;
+  }
+  if (next.pairMin !== current.pairMin) {
+    return next.pairMin > current.pairMin;
+  }
+  const nextHop2 = Math.min(next.hop2Min, TWO_HOP_COMFORT_FLOOR);
+  const currentHop2 = Math.min(current.hop2Min, TWO_HOP_COMFORT_FLOOR);
+  if (nextHop2 !== currentHop2) {
+    return nextHop2 > currentHop2;
+  }
+  if (next.min !== current.min) {
+    return next.min > current.min;
+  }
+  return next.sum > current.sum;
+}
+
+function outranksReuseFit(next: NodeFit, current: NodeFit): boolean {
+  const nextFloor = Math.min(next.min, REUSE_COMFORT_FLOOR);
+  const currentFloor = Math.min(current.min, REUSE_COMFORT_FLOOR);
+  if (nextFloor !== currentFloor) {
+    return nextFloor > currentFloor;
+  }
+  if (next.multiplicity !== current.multiplicity) {
+    return next.multiplicity < current.multiplicity;
   }
   if (next.min !== current.min) {
     return next.min > current.min;
@@ -509,6 +699,23 @@ function tryNodeRecolors(candidate: Candidate, problem: Problem, node: number): 
 }
 
 function trySwapPair(candidate: Candidate, left: number, right: number, problem: Problem): boolean {
+  const { score } = candidate;
+  if (problem.reuseMode || score.min < NEIGHBOR_COMFORT_FLOOR || problem.e2u.length === 0) {
+    return trySwapOneHop(candidate, left, right, problem, false);
+  }
+  if (score.hop2Min < TWO_HOP_COMFORT_FLOOR) {
+    return trySwapTwoHop(candidate, left, right, problem);
+  }
+  return trySwapOneHop(candidate, left, right, problem, true);
+}
+
+function trySwapOneHop(
+  candidate: Candidate,
+  left: number,
+  right: number,
+  problem: Problem,
+  guardTwoHop: boolean
+): boolean {
   const { colors, score } = candidate;
   const leftColor = colors[left];
   const rightColor = colors[right];
@@ -527,8 +734,59 @@ function trySwapPair(candidate: Candidate, left: number, right: number, problem:
   }
   colors[left] = rightColor;
   colors[right] = leftColor;
+  if (guardTwoHop && !twoHopPairOk(colors, left, right, problem.adj2)) {
+    colors[left] = leftColor;
+    colors[right] = rightColor;
+    return false;
+  }
   applySwapDelta(candidate, problem, diff, DELTA_ACC[2]);
   return true;
+}
+
+function trySwapTwoHop(candidate: Candidate, left: number, right: number, problem: Problem): boolean {
+  const { colors, score } = candidate;
+  const leftColor = colors[left];
+  const rightColor = colors[right];
+  DELTA_ACC[0] = 0;
+  DELTA_ACC[1] = 0;
+  DELTA_ACC[2] = 0;
+  if (!addNodeDelta(colors, left, rightColor, right, problem.adj2, score.hop2Min)) {
+    return false;
+  }
+  if (!addNodeDelta(colors, right, leftColor, left, problem.adj2, score.hop2Min)) {
+    return false;
+  }
+  const diff = DELTA_ACC[0] - DELTA_ACC[1];
+  if (diff < 0) {
+    return false;
+  }
+  if (diff === 0) {
+    return trySwapOneHop(candidate, left, right, problem, false);
+  }
+  colors[left] = rightColor;
+  colors[right] = leftColor;
+  if (
+    !incidentOk(colors, left, problem.adj, NEIGHBOR_COMFORT_FLOOR) ||
+    !incidentOk(colors, right, problem.adj, NEIGHBOR_COMFORT_FLOOR)
+  ) {
+    colors[left] = leftColor;
+    colors[right] = rightColor;
+    return false;
+  }
+  candidate.score = scorePermutation(colors, problem, score);
+  return true;
+}
+
+function twoHopPairOk(
+  colors: readonly number[],
+  left: number,
+  right: number,
+  adj2: readonly (readonly number[])[]
+): boolean {
+  return (
+    incidentOk(colors, left, adj2, TWO_HOP_COMFORT_FLOOR) &&
+    incidentOk(colors, right, adj2, TWO_HOP_COMFORT_FLOOR)
+  );
 }
 
 function tryRecolorNode(
@@ -545,7 +803,8 @@ function tryRecolorNode(
   if (isReuseInvariant(problem.reuseMode, used[previous], used[nextColor], score.reuseMax)) {
     return tryRecolorFastDelta(candidate, node, nextColor, problem);
   }
-  const floor = problem.reuseMode ? Math.min(score.min, REUSE_COMFORT_FLOOR) : score.min;
+  const comfort = problem.reuseMode ? REUSE_COMFORT_FLOOR : NEIGHBOR_COMFORT_FLOOR;
+  const floor = Math.min(score.min, comfort);
   colors[node] = nextColor;
   if (!incidentOk(colors, node, problem.adj, floor)) {
     colors[node] = previous;
@@ -677,7 +936,7 @@ function polishCandidates(candidates: readonly Candidate[], problem: Problem): C
 }
 
 function scoreKey(score: Separation): string {
-  return `${score.min}:${score.count}:${score.pairMin}:${score.sum}`;
+  return `${score.min}:${score.count}:${score.closePairs}:${score.hop2Min}:${score.pairMin}:${score.sum}`;
 }
 
 function polishCandidate(candidate: Candidate, problem: Problem): void {
@@ -693,10 +952,11 @@ function polishCandidate(candidate: Candidate, problem: Problem): void {
 
 function tryTwoOpt(colors: number[], problem: Problem, score: Separation): Separation | null {
   const { adj, free } = problem;
+  const floor = Math.min(score.min, NEIGHBOR_COMFORT_FLOOR);
   for (let start = 0; start < free.length - 1; start += 1) {
     for (let end = start + 2; end < free.length; end += 1) {
       reverseFreeSlice(colors, free, start, end);
-      if (incidentOk(colors, free[start], adj, score.min) && incidentOk(colors, free[end], adj, score.min)) {
+      if (incidentOk(colors, free[start], adj, floor) && incidentOk(colors, free[end], adj, floor)) {
         const next = scorePermutation(colors, problem, score);
         if (outranks(next, score, problem.reuseMode)) {
           return next;
@@ -740,8 +1000,14 @@ function scoreCandidate(
   problem: Problem
 ): Separation {
   const edge = scoreEdges(colors, problem.eu, problem.ev);
+  const hop2 = problem.e2u.length > 0 ? scoreEdges(colors, problem.e2u, problem.e2v) : null;
   const metrics = paletteMetrics(colors, used);
-  return { ...edge, ...metrics };
+  return {
+    ...edge,
+    hop2Count: hop2 ? hop2.count : 0,
+    hop2Min: hop2 ? hop2.min : UNSEPARATED,
+    ...metrics,
+  };
 }
 
 function scorePermutation(
@@ -750,8 +1016,12 @@ function scorePermutation(
   base: Separation
 ): Separation {
   const edge = scoreEdges(colors, problem.eu, problem.ev);
+  const hop2 = problem.e2u.length > 0 ? scoreEdges(colors, problem.e2u, problem.e2v) : null;
   return {
+    closePairs: base.closePairs,
     count: edge.count,
+    hop2Count: hop2 ? hop2.count : 0,
+    hop2Min: hop2 ? hop2.min : UNSEPARATED,
     min: edge.min,
     pairCount: base.pairCount,
     pairMin: base.pairMin,
@@ -802,23 +1072,31 @@ function paletteMetrics(colors: readonly number[], used: Uint8Array): PaletteMet
     boardMask |= 1 << colors[index];
   }
   const dispersion = maskDispersion(boardMask);
-  return { pairCount: dispersion.count, pairMin: dispersion.min, reuseExcess, reuseMax };
+  return {
+    closePairs: dispersion.closePairs,
+    pairCount: dispersion.count,
+    pairMin: dispersion.min,
+    reuseExcess,
+    reuseMax,
+  };
 }
 
-function maskDispersion(boardMask: number): { count: number; min: number } {
+function maskDispersion(boardMask: number): { closePairs: number; count: number; min: number } {
   if (boardMask === ALL_COLORS_MASK) {
     return ALL_DISPERSION;
   }
   return computeMaskDispersion(boardMask);
 }
 
-function computeMaskDispersion(boardMask: number): { count: number; min: number } {
+function computeMaskDispersion(boardMask: number): { closePairs: number; count: number; min: number } {
   let min = UNSEPARATED;
   let count = 0;
+  let closeDegreeSum = 0;
   for (let first = 0; first < PALETTE_SIZE; first += 1) {
     if ((boardMask & (1 << first)) === 0) {
       continue;
     }
+    closeDegreeSum += popcount(CLOSE_MASK[first] & boardMask);
     const row = first * PALETTE_SIZE;
     for (let second = first + 1; second < PALETTE_SIZE; second += 1) {
       if ((boardMask & (1 << second)) === 0) {
@@ -833,29 +1111,85 @@ function computeMaskDispersion(boardMask: number): { count: number; min: number 
       }
     }
   }
-  return { count, min };
+  return { closePairs: closeDegreeSum >> 1, count, min };
 }
 
 function compareScores(left: Separation, right: Separation, reuseMode: boolean): number {
   if (reuseMode) {
-    const reuseRank = compareReusePriority(left, right);
-    if (reuseRank !== 0) {
-      return reuseRank;
-    }
+    return compareReuseScores(left, right);
   }
+  const floorRank = compareDistinctFloor(left, right);
+  if (floorRank !== 0) {
+    return floorRank;
+  }
+  const diversityRank = compareDiversity(left, right);
+  if (diversityRank !== 0) {
+    return diversityRank;
+  }
+  const hop2Rank = compareTwoHop(left, right);
+  if (hop2Rank !== 0) {
+    return hop2Rank;
+  }
+  return compareEdgeTail(left, right);
+}
+
+function compareDistinctFloor(left: Separation, right: Separation): number {
+  const leftFloor = Math.min(left.min, NEIGHBOR_COMFORT_FLOOR);
+  const rightFloor = Math.min(right.min, NEIGHBOR_COMFORT_FLOOR);
+  if (leftFloor !== rightFloor) {
+    return leftFloor - rightFloor;
+  }
+  if (leftFloor < NEIGHBOR_COMFORT_FLOOR && left.count !== right.count) {
+    return right.count - left.count;
+  }
+  return 0;
+}
+
+function compareDiversity(left: Separation, right: Separation): number {
+  if (left.closePairs !== right.closePairs) {
+    return right.closePairs - left.closePairs;
+  }
+  if (left.pairMin !== right.pairMin) {
+    return left.pairMin - right.pairMin;
+  }
+  return right.pairCount - left.pairCount;
+}
+
+function compareTwoHop(left: Separation, right: Separation): number {
+  const leftHop = Math.min(left.hop2Min, TWO_HOP_COMFORT_FLOOR);
+  const rightHop = Math.min(right.hop2Min, TWO_HOP_COMFORT_FLOOR);
+  if (leftHop !== rightHop) {
+    return leftHop - rightHop;
+  }
+  if (leftHop < TWO_HOP_COMFORT_FLOOR && left.hop2Count !== right.hop2Count) {
+    return right.hop2Count - left.hop2Count;
+  }
+  return 0;
+}
+
+function compareEdgeTail(left: Separation, right: Separation): number {
   if (left.min !== right.min) {
     return left.min - right.min;
   }
   if (left.count !== right.count) {
     return right.count - left.count;
   }
+  return left.sum - right.sum;
+}
+
+function compareReuseScores(left: Separation, right: Separation): number {
+  const reuseRank = compareReusePriority(left, right);
+  if (reuseRank !== 0) {
+    return reuseRank;
+  }
+  const edgeRank = compareEdgeTail(left, right);
+  if (edgeRank !== 0) {
+    return edgeRank;
+  }
   if (left.pairMin !== right.pairMin) {
     return left.pairMin - right.pairMin;
   }
-  if (left.pairCount !== right.pairCount) {
-    return right.pairCount - left.pairCount;
-  }
-  return left.sum - right.sum;
+  return right.pairCount - left.pairCount;
 }
 
 function compareReusePriority(left: Separation, right: Separation): number {

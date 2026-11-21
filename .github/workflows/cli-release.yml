@@ -79,7 +79,7 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
       - name: Upload release archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hm-${{ matrix.goos }}-${{ matrix.goarch }}
           path: cli/dist/hm_${{ env.VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.archive_ext }}

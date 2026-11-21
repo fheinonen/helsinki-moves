@@ -24,8 +24,12 @@ func TestReleaseArchiveNaming(t *testing.T) {
 		t.Run(sc.Name, func(t *testing.T) {
 			cliDir := cliRootDir(t)
 			distDir := t.TempDir()
-			runReleaseScript(t, cliDir, distDir, sc.Values["version"], "build-release.sh", sc.Values["goos"], sc.Values["goarch"])
-			runReleaseScript(t, cliDir, distDir, sc.Values["version"], "archive-release.sh", sc.Values["goos"], sc.Values["goarch"])
+			runReleaseScript(t, cliDir, distDir, sc.Values["version"], "build-release.sh", sc.Values["goos"], sc.Values["goarch"], nil)
+			var extraEnv []string
+			if sc.Values["zipFallback"] == "pwsh" {
+				extraEnv = []string{"PATH=" + createPowerShellFallbackPath(t)}
+			}
+			runReleaseScript(t, cliDir, distDir, sc.Values["version"], "archive-release.sh", sc.Values["goos"], sc.Values["goarch"], extraEnv)
 			testruntime.RunChecksWithEvidence(t, testruntime.Evidence{Archives: releaseArchives(t, distDir)}, sc.Checks)
 		})
 	}
@@ -44,7 +48,10 @@ func cliRootDir(t *testing.T) string {
 func parseReleaseArchiveStep(line string, sc *testruntime.Scenario) error {
 	switch {
 	case strings.HasPrefix(line, "Given the release version is "):
-		sc.Values["version"] = unquote(strings.TrimPrefix(line, "Given the release version is "))
+		sc.Values["version"] = testruntime.Unquote(strings.TrimPrefix(line, "Given the release version is "))
+		return nil
+	case line == "Given zip is unavailable and PowerShell is available":
+		sc.Values["zipFallback"] = "pwsh"
 		return nil
 	case strings.HasPrefix(line, "When the release matrix builds and archives "):
 		target := strings.Fields(strings.TrimPrefix(line, "When the release matrix builds and archives "))
@@ -59,15 +66,36 @@ func parseReleaseArchiveStep(line string, sc *testruntime.Scenario) error {
 	}
 }
 
-func runReleaseScript(t *testing.T, cliDir, distDir, version, scriptName, goos, goarch string) {
+func createPowerShellFallbackPath(t *testing.T) string {
+	t.Helper()
+
+	pwshDir := t.TempDir()
+	pwshPath := filepath.Join(pwshDir, "pwsh")
+	pwshScript := "#!/bin/sh\nset -eu\ncase \"$*\" in *Compress-Archive*) ;; *) exit 1 ;; esac\n: > \"$DIST_DIR/hm_${VERSION}_windows_amd64.zip\"\n"
+	if err := os.WriteFile(pwshPath, []byte(pwshScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"dirname", "rm"} {
+		toolPath, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(toolPath, filepath.Join(pwshDir, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pwshDir
+}
+
+func runReleaseScript(t *testing.T, cliDir, distDir, version, scriptName, goos, goarch string, extraEnv []string) {
 	t.Helper()
 
 	cmd := exec.Command(filepath.Join(cliDir, "scripts", scriptName), goos, goarch)
 	cmd.Dir = cliDir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(append(os.Environ(),
 		"VERSION="+version,
 		"DIST_DIR="+distDir,
-	)
+	), extraEnv...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s failed: %v\n%s", scriptName, err, output)

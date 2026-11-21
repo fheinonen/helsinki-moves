@@ -109,7 +109,7 @@ Feature: Mode switch responsiveness
         },
       },
       {
-        pattern: /^(?:Given|And) browser geolocation is pre-granted$/,
+        pattern: /^Given browser geolocation is pre-granted$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.addInitScript(() => {
@@ -195,7 +195,7 @@ Feature: Mode switch responsiveness
         },
       },
       {
-        pattern: /^(?:Then|And) the BUS mode button becomes active within 120 milliseconds$/,
+        pattern: /^Then the BUS mode button becomes active within 120 milliseconds$/,
         run: ({ assert, world }) => {
           assert.equal(Boolean(world.timing), true);
           assert.equal(Boolean(world.timing?.activationMs != null), true);
@@ -203,7 +203,7 @@ Feature: Mode switch responsiveness
         },
       },
       {
-        pattern: /^(?:Then|And) the station title eventually becomes Kamppi Terminal$/,
+        pattern: /^Then the station title eventually becomes Kamppi Terminal$/,
         run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.waitForFunction(() => {

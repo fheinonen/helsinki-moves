@@ -203,7 +203,7 @@ Feature: Filter background stability
         },
       },
       {
-        pattern: /^(?:Given|And) the departure board is open for background sampling$/,
+        pattern: /^Given the departure board is open for background sampling$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.setViewportSize({ width: 390, height: 844 });
@@ -327,7 +327,7 @@ Feature: Filter background stability
         },
       },
       {
-        pattern: /^(?:Given|And) filters are open on the tall board$/,
+        pattern: /^Given filters are open on the tall board$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator("[data-filter-toggle]").click();

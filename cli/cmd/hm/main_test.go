@@ -8,14 +8,14 @@ import (
 
 func TestRunUsesEnvironmentBaseURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--help"}, "http://example.invalid", &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0", code)
+	code := run([]string{"-l", "Kamppi"}, ":", &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "Helsinki Moves CLI") {
+	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid base URL") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }

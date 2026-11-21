@@ -12,19 +12,16 @@ defineFeature<World>(
 Feature: Voice line intent parsing
 
   Scenario: Treat numeric transcript with trailing period as a line number
-    Given voice line-intent parsing is available
     When voice line intent is parsed from "10."
     Then parsed voice line equals "10"
     And parsed voice line mode equals ""
 
   Scenario: Treat explicit bus transcript with trailing period as a line number
-    Given voice line-intent parsing is available
     When voice line intent is parsed from "bus 10."
     Then parsed voice line equals "10"
     And parsed voice line mode equals "BUS"
 
   Scenario: Treat letter transcript with trailing period as a line token
-    Given voice line-intent parsing is available
     When voice line intent is parsed from "A."
     Then parsed voice line equals "A"
     And parsed voice line mode equals ""
@@ -32,10 +29,6 @@ Feature: Voice line intent parsing
   {
     createWorld: () => ({}),
     stepDefinitions: [
-      {
-        pattern: /^Given voice line-intent parsing is available$/,
-        run: () => {},
-      },
       {
         pattern: /^When voice line intent is parsed from "([^"]*)"$/,
         run: ({ args, world }) => {

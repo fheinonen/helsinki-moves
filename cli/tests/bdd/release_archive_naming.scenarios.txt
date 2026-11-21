@@ -9,3 +9,9 @@ Feature: hm CLI release archives
     Given the release version is "2026.3.19"
     When the release matrix builds and archives windows amd64
     Then the archive name is "hm_2026.3.19_windows_amd64.zip"
+
+  Scenario: Windows release archives fall back to PowerShell when zip is missing
+    Given the release version is "2026.3.20"
+    And zip is unavailable and PowerShell is available
+    When the release matrix builds and archives windows amd64
+    Then the archive name is "hm_2026.3.20_windows_amd64.zip"

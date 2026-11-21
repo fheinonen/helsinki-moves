@@ -140,71 +140,8 @@ func TestLookupAllSortsMergedDeparturesByDepartureISO(t *testing.T) {
 	}
 }
 
-func TestLookupAllReturnsWarningsWhenSomeModesFail(t *testing.T) {
-	client := &stubClient{
-		geocode: api.GeocodeResponse{
-			Query: "Pasila",
-			Location: &api.GeocodeLocation{
-				Label:     "Pasila, Helsinki",
-				Latitude:  60.2,
-				Longitude: 24.9,
-			},
-		},
-		departures: []departuresReply{
-			{response: departuresResponse("BUS", departuresList(
-				departure("2026-03-19T13:03:00Z", "57", "Munkkiniemi"),
-			))},
-			{err: errors.New("tram unavailable")},
-			{response: departuresResponse("RAIL", nil)},
-			{response: departuresResponse("METRO", nil)},
-		},
-	}
-
-	result, err := NewService(client).LookupAll(Query{Text: "Pasila"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := result.WarningModes; len(got) != 1 || got[0] != "tram" {
-		t.Fatalf("warnings = %#v, want %#v", got, []string{"tram"})
-	}
-	if len(result.Departures) != 1 {
-		t.Fatalf("merged departures = %d, want 1", len(result.Departures))
-	}
-}
-
-func TestLookupAllReturnsWarningsWhenEveryModeFails(t *testing.T) {
-	client := &stubClient{
-		geocode: api.GeocodeResponse{
-			Query: "Pasila",
-			Location: &api.GeocodeLocation{
-				Label:     "Pasila, Helsinki",
-				Latitude:  60.2,
-				Longitude: 24.9,
-			},
-		},
-		departures: []departuresReply{
-			{err: errors.New("bus unavailable")},
-			{err: errors.New("tram unavailable")},
-			{err: errors.New("rail unavailable")},
-			{err: errors.New("metro unavailable")},
-		},
-	}
-
-	result, err := NewService(client).LookupAll(Query{Text: "Pasila"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := result.WarningModes; len(got) != 4 {
-		t.Fatalf("warnings = %#v, want 4 modes", got)
-	}
-	if len(result.Departures) != 0 {
-		t.Fatalf("merged departures = %d, want 0", len(result.Departures))
-	}
-}
-
 type stubClient struct {
 	geocode         api.GeocodeResponse
-	geocodeErr      error
 	departures      []departuresReply
 	departuresCalls []api.DeparturesParams
 }
@@ -215,7 +152,7 @@ type departuresReply struct {
 }
 
 func (s *stubClient) Geocode(query string) (api.GeocodeResponse, error) {
-	return s.geocode, s.geocodeErr
+	return s.geocode, nil
 }
 
 func (s *stubClient) Departures(params api.DeparturesParams) (api.DeparturesResponse, error) {

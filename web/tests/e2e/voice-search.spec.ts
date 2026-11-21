@@ -479,17 +479,6 @@ Feature: Voice search
         },
       },
       {
-        pattern: /^Then the status message is Captured voice query: Kamppi$/,
-        run: async ({ assert, fixtures }) => {
-          const page = fixtures.page as import("@playwright/test").Page;
-          await page.waitForFunction(() => {
-            const element = document.querySelector("[data-status]");
-            return element?.textContent === "Captured voice query: Kamppi";
-          });
-          assert.equal(await page.locator("[data-status]").textContent(), "Captured voice query: Kamppi");
-        },
-      },
-      {
         pattern: /^Then the station title is Kamppi$/,
         run: async ({ assert, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
@@ -530,7 +519,7 @@ Feature: Voice search
         },
       },
       {
-        pattern: /^(?:Then|And) the typed voice fallback prompt call count is (\d+)$/,
+        pattern: /^Then the typed voice fallback prompt call count is (\d+)$/,
         run: async ({ assert, args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.waitForFunction(
@@ -547,7 +536,7 @@ Feature: Voice search
         },
       },
       {
-        pattern: /^(?:Then|And) the last typed voice fallback prompt is "([^"]*)"$/,
+        pattern: /^Then the last typed voice fallback prompt is "([^"]*)"$/,
         run: async ({ assert, args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           assert.equal(

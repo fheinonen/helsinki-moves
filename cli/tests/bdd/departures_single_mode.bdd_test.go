@@ -67,7 +67,7 @@ func TestSingleModeDepartureScenarios(t *testing.T) {
 }
 
 func parseDeparturesFixture(text string) (departuresFixture, error) {
-	switch strings.TrimSpace(strings.Trim(text, `"`)) {
+	switch testruntime.Unquote(text) {
 	case string(fixtureLocationBus):
 		return fixtureLocationBus, nil
 	case string(fixtureStopFlow):

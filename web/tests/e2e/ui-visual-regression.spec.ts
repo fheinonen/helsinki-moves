@@ -169,9 +169,8 @@ Feature: UI visual regression
       },
       {
         pattern: /^Then the desktop app shell matches the approved baseline$/,
-        run: async ({ assert, fixtures }) => {
+        run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          assert.equal(true, true);
           await expect(page.locator(".app-shell")).toHaveScreenshot("app-shell-desktop.png", {
             animations: "disabled",
             caret: "hide",
@@ -182,9 +181,8 @@ Feature: UI visual regression
       },
       {
         pattern: /^Then the mobile app shell matches the approved baseline$/,
-        run: async ({ assert, fixtures }) => {
+        run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
-          assert.equal(true, true);
           await expect(page.locator(".app-shell")).toHaveScreenshot("app-shell-mobile.png", {
             animations: "disabled",
             caret: "hide",

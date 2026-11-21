@@ -95,7 +95,7 @@ Feature: Destination filter route integration
         },
       },
       {
-        pattern: /^(?:Given|And) deterministic time is configured for route filtering$/,
+        pattern: /^Given deterministic time is configured for route filtering$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await installFixedNow(page, FIXED_NOW_MS);
@@ -132,7 +132,7 @@ Feature: Destination filter route integration
         },
       },
       {
-        pattern: /^(?:When|And) the user opens the filters for route filtering$/,
+        pattern: /^When the user opens the filters for route filtering$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator("[data-filter-toggle]").click();
@@ -140,7 +140,7 @@ Feature: Destination filter route integration
         },
       },
       {
-        pattern: /^(?:When|And) the user selects destination filter (.+)$/,
+        pattern: /^When the user selects destination filter (.+)$/,
         run: async ({ args, fixtures }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           await page.locator(`[data-destination-filter="${args[0]}"]`).click();

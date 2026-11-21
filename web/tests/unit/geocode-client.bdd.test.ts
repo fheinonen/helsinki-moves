@@ -13,9 +13,11 @@ interface FetchCall {
 }
 
 interface World {
+  apiKey?: string;
   errorMessage?: string;
   fetchCalls?: FetchCall[];
   geocodeResult?: Awaited<ReturnType<typeof geocode>>;
+  hangingUpstream?: boolean;
   invalidJsonResponse?: boolean;
   nearbyStopCallCount?: number;
   rawCandidates?: RawGeocodeCandidate[];
@@ -44,16 +46,21 @@ Feature: Geocode client
 
   Scenario: Geocoding fails fast without an API key
     Given geocoding has no API key
-    When geocoding is requested without an API key
+    When geocoding is requested with bias 60.17 24.94 and language fi
     Then the geocode client error is Missing DIGITRANSIT_API_KEY environment variable.
 
   Scenario: Invalid upstream JSON returns a deterministic error
     Given Digitransit geocoding returns invalid JSON with status 502
     When geocoding is requested with bias 60.17 24.94 and language fi
     Then the geocode client error is Digitransit geocoding invalid response (HTTP 502)
+
+  Scenario: Digitransit geocoding times out with a deterministic error
+    Given Digitransit geocoding has a hanging upstream
+    When geocoding is requested with bias 60.17 24.94 and language fi
+    Then the geocode client error is Digitransit geocoding request timed out
   `,
   {
-    createWorld: () => ({}),
+    createWorld: () => ({ apiKey: "test-key" }),
     stepDefinitions: [
       {
         pattern: /^Given Digitransit geocoding returns valid and invalid candidate features$/,
@@ -73,7 +80,9 @@ Feature: Geocode client
       },
       {
         pattern: /^Given geocoding has no API key$/,
-        run: () => {},
+        run: ({ world }) => {
+          world.apiKey = undefined;
+        },
       },
       {
         pattern: /^Given Digitransit geocoding returns invalid JSON with status 502$/,
@@ -83,55 +92,75 @@ Feature: Geocode client
         },
       },
       {
+        pattern: /^Given Digitransit geocoding has a hanging upstream$/,
+        run: ({ world }) => {
+          world.hangingUpstream = true;
+        },
+      },
+      {
         pattern: /^When geocoding is requested with bias ([\d.]+) ([\d.]+) and language (.+)$/,
         run: async ({ args, world }) => {
           try {
             world.geocodeResult = await geocode({
               biasLat: Number(args[0]),
               biasLon: Number(args[1]),
-              fetchImpl: async (url, init) => {
-                world.fetchCalls?.push({ init, url: String(url) });
-                if (world.invalidJsonResponse) {
-                  return {
-                    json: async () => {
-                      throw new Error("invalid json");
+              ...(world.apiKey
+                ? {
+                    fetchImpl: async (url, init) => {
+                      world.fetchCalls?.push({ init, url: String(url) });
+                      if (world.hangingUpstream) {
+                        return new Promise((_resolve, reject) => {
+                          init?.signal?.addEventListener("abort", () => {
+                            const error = new Error("aborted");
+                            error.name = "AbortError";
+                            reject(error);
+                          });
+                        });
+                      }
+                      if (world.invalidJsonResponse) {
+                        return {
+                          json: async () => {
+                            throw new Error("invalid json");
+                          },
+                          ok: false,
+                          status: 502,
+                        } as unknown as Response;
+                      }
+                      return {
+                        json: async () => ({
+                          features: [
+                            {
+                              geometry: { coordinates: [24.94, 60.17] },
+                              properties: { confidence: 2, label: "Kamppi, Helsinki" },
+                            },
+                            {
+                              geometry: { coordinates: [999, 60.17] },
+                              properties: { confidence: 0.5, label: "Invalid" },
+                            },
+                            {
+                              geometry: { coordinates: [24.95, 60.18] },
+                              properties: { confidence: 0.7, name: "Kamppi" },
+                            },
+                            {
+                              geometry: { coordinates: [24.96, 60.19] },
+                              properties: { confidence: 0.6, locality: "Helsinki", region: "Uusimaa" },
+                            },
+                            {
+                              geometry: { coordinates: [] },
+                              properties: { label: "Missing coordinates" },
+                            },
+                          ],
+                        }),
+                        ok: true,
+                        status: 200,
+                      } as Response;
                     },
-                    ok: false,
-                    status: 502,
-                  } as unknown as Response;
-                }
-                return {
-                  json: async () => ({
-                    features: [
-                      {
-                        geometry: { coordinates: [24.94, 60.17] },
-                        properties: { confidence: 2, label: "Kamppi, Helsinki" },
-                      },
-                      {
-                        geometry: { coordinates: [999, 60.17] },
-                        properties: { confidence: 0.5, label: "Invalid" },
-                      },
-                      {
-                        geometry: { coordinates: [24.95, 60.18] },
-                        properties: { confidence: 0.7, name: "Kamppi" },
-                      },
-                      {
-                        geometry: { coordinates: [24.96, 60.19] },
-                        properties: { confidence: 0.6, locality: "Helsinki", region: "Uusimaa" },
-                      },
-                      {
-                        geometry: { coordinates: [] },
-                        properties: { label: "Missing coordinates" },
-                      },
-                    ],
-                  }),
-                  ok: true,
-                  status: 200,
-                } as Response;
-              },
-              getApiKey: () => "test-key",
+                  }
+                : {}),
+              getApiKey: () => world.apiKey,
               lang: args[2],
               query: "Kamppi",
+              timeoutMs: world.hangingUpstream ? 1 : undefined,
             });
           } catch (error) {
             world.errorMessage = error instanceof Error ? error.message : String(error);
@@ -162,22 +191,6 @@ Feature: Geocode client
             },
           });
           world.nearbyStopCallCount = callCount;
-        },
-      },
-      {
-        pattern: /^When geocoding is requested without an API key$/,
-        run: async ({ world }) => {
-          try {
-            await geocode({
-              biasLat: 60.17,
-              biasLon: 24.94,
-              getApiKey: () => undefined,
-              lang: "fi",
-              query: "Kamppi",
-            });
-          } catch (error) {
-            world.errorMessage = error instanceof Error ? error.message : String(error);
-          }
         },
       },
       {

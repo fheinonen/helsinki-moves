@@ -16,6 +16,9 @@ const PERSON = { lat: 60.1706, lon: 24.9414 };
 const PLATFORM = { lat: 60.1692, lon: 24.9337 };
 const GROUPED_CENTROID = { lat: 60.18, lon: 25.01 };
 const SHOWN_ROUTE: WalkRoute["points"] = [PERSON, { lat: 60.1701, lon: 24.9381 }, PLATFORM];
+const OTHER_STOP = { lat: 60.168, lon: 24.93 };
+const OTHER_ROUTE: WalkRoute["points"] = [PERSON, { lat: 60.169, lon: 24.936 }, OTHER_STOP];
+const OTHER_SPAN = "60.170600 24.941400 60.169000 24.936000 60.168000 24.930000";
 const ENCODED_WALK = "c~fnJcvewCz@zJ";
 const ENCODED_BUS = "_vjvJ_nszC";
 const ROUTE_SPAN = "60.170600 24.941400 60.170100 24.938100 60.169200 24.933700";
@@ -55,6 +58,7 @@ interface World {
   planner: PlannerMode;
   root?: HTMLElement;
   scrolls: number;
+  secondDeparture: boolean;
   serverApp?: ReturnType<typeof createApp>;
   serverBody: string;
   serverStatus: number;
@@ -90,6 +94,7 @@ function createWorld(): World {
     planBodies: [],
     planner: "walk",
     scrolls: 0,
+    secondDeparture: false,
     serverBody: "",
     serverStatus: 0,
     tripId: "HSL:TRIP1",
@@ -230,6 +235,10 @@ function stubNetwork(world: World): void {
 }
 
 function renderBoard(world: World): void {
+  world.cleanup?.();
+  world.fetches = [];
+  world.scrolls = 0;
+  world.vehicleOpens = 0;
   const store = createAppStore();
   if (world.coords) {
     store.setCoordinates(world.coords);
@@ -253,6 +262,17 @@ function renderBoard(world: World): void {
           stopId: STOP_ID,
           tripId: world.tripId,
         },
+        ...(world.secondDeparture
+          ? [
+              {
+                departureIso: "2026-03-07T10:20:00.000Z",
+                destination: "Ruoholahti",
+                line: "560",
+                stopId: STOP_ID,
+                tripId: "HSL:TRIP560",
+              },
+            ]
+          : []),
       ],
       distanceMeters: 80,
       stopCode: "A1",
@@ -455,26 +475,30 @@ Feature: Walking route from a held departure
     Then the vehicle map is open
     And no walk was requested
 
-  Scenario: Holding a departure while its walk map is open keeps that same map open.
+  Scenario: Holding another departure while the walk map is open changes that walk and keeps the map open.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And another departure for line 560 to Ruoholahti
     And the person is at latitude 60.1706 and longitude 24.9414
     When the card is held
     And the route arrives
     Then the walk map shows the route points
-    When the user holds the departure for the open map
+    When the user holds the other departure
     And the following click lands
     Then the same walk map stays open
+    And the other walk is requested
+    When the other route arrives
+    Then the same walk map shows line 560 to Ruoholahti
     And the vehicle map stays closed
-    And no walk was requested
 
-  Scenario: Holding a departure while its vehicle map is open keeps that same map open.
+  Scenario: Holding another departure while the vehicle map is open changes that vehicle route and keeps the map open.
     Given a departure card for line 550 to Kamppi at stop HSL:1020601
+    And another departure for line 560 to Ruoholahti
     And the person is at latitude 60.1706 and longitude 24.9414
     When the card is pressed briefly
     Then the vehicle map is open
-    When the user holds the departure for the open map
+    When the user holds the other departure
     And the following click lands
-    Then the same vehicle map stays open
+    Then the same vehicle map shows line 560 to Ruoholahti
     And no walk was requested
 
   Scenario: A short press while the walk map is open opens the vehicle map.
@@ -667,6 +691,13 @@ Feature: Walking route from a held departure
         },
       },
       {
+        pattern: /^Given another departure for line 560 to Ruoholahti$/,
+        run({ world }) {
+          world.secondDeparture = true;
+          renderBoard(world);
+        },
+      },
+      {
         pattern: /^Given the person is at latitude (-?\d+\.\d+) and longitude (-?\d+\.\d+)$/,
         run({ args, world }) {
           const coords = { lat: Number(args[0]), lon: Number(args[1]) };
@@ -705,14 +736,19 @@ Feature: Walking route from a held departure
         },
       },
       {
-        pattern: /^When the user holds the departure for the open map$/,
+        pattern: /^When the user holds the other departure$/,
         run({ world }) {
           world.openMap =
             walkMap(world) ?? world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']") ?? null;
-          if (!world.openMap) {
-            throw new Error("Expected an open map");
+          const row = world.root?.querySelectorAll("tbody tr")[1];
+          if (!(row instanceof HTMLTableRowElement) || !world.openMap) {
+            throw new Error("Expected the other departure and an open map");
           }
-          holdCard(world);
+          dispatchPointer(row, "pointerdown", 8, 8);
+          world.fireHold?.();
+          if (world.documentRef) {
+            dispatchPointer(world.documentRef, "pointerup", 8, 8);
+          }
         },
       },
       {
@@ -738,6 +774,13 @@ Feature: Walking route from a held departure
         pattern: /^When the card is held again before the first route arrives$/,
         run({ world }) {
           holdCard(world);
+        },
+      },
+      {
+        pattern: /^When the other route arrives$/,
+        run: async ({ world }) => {
+          world.fetches.shift()?.resolve({ points: OTHER_ROUTE, seconds: world.walkSeconds });
+          await flush();
         },
       },
       {
@@ -958,13 +1001,36 @@ Feature: Walking route from a held departure
         },
       },
       {
-        pattern: /^Then the same vehicle map stays open$/,
+        pattern: /^Then the other walk is requested$/,
+        run({ assert, world }) {
+          assert.equal(world.fetches.length, 1);
+          assert.equal(world.fetches[0]?.request.stopId, STOP_ID);
+          assert.equal(walkMap(world), world.openMap);
+        },
+      },
+      {
+        pattern: /^Then the same walk map shows line 560 to Ruoholahti$/,
+        run({ assert, world }) {
+          const map = walkMap(world);
+          assert.equal(map, world.openMap);
+          assert.equal(map?.isConnected, true);
+          assert.equal(map?.getAttribute("aria-label"), "560 walk to Ruoholahti");
+          assert.equal(map?.querySelector(".vehicle-span__line")?.textContent, "560");
+          assert.equal(map?.querySelector(".vehicle-span__destination")?.textContent, "Ruoholahti");
+          assert.equal(map?.querySelector("[data-route-span]")?.getAttribute("data-route-span"), OTHER_SPAN);
+        },
+      },
+      {
+        pattern: /^Then the same vehicle map shows line 560 to Ruoholahti$/,
         run({ assert, world }) {
           const map = world.root?.querySelector<HTMLElement>("[data-vehicle-map='true']") ?? null;
           assert.equal(map, world.openMap);
           assert.equal(map?.isConnected, true);
+          assert.equal(map?.getAttribute("aria-label"), "560 to Ruoholahti");
+          assert.equal(map?.querySelector(".vehicle-span__line")?.textContent, "560");
+          assert.equal(map?.querySelector(".vehicle-span__destination")?.textContent, "Ruoholahti");
           assert.equal(walkMap(world), null);
-          assert.equal(world.vehicleOpens, 1);
+          assert.equal(world.vehicleOpens, 2);
         },
       },
       {

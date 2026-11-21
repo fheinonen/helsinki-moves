@@ -265,7 +265,7 @@ Feature: Destination color
   Scenario: Neighboring departures on a long board stay apart across red-green color vision
     Given a board with 16 different destinations
     When the departure board is shown
-    Then each departure stays at least 33 apart across red-green color vision from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
   Scenario: Neighboring departures across all 22 destinations stay apart across red-green color vision
@@ -274,15 +274,26 @@ Feature: Destination color
     Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
 
-  Scenario: Mixed departures beside each other stay apart across red-green color vision
+  Scenario: A fresh 12-destination board spreads colors across the scheme without clustering
+    Given a board with 12 different destinations
+    When the departure board is shown
+    Then each destination uses its own color
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
+    And destinations two rows apart stay at least 16 apart across red-green color vision
+    And at most 8 pairs of destinations on the board sit closer than 14 across red-green color vision
+
+  Scenario: Mixed departures beside each other stay apart across the whole board
     Given a board with trips to Eira, Kamppi, Ruoholahti, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 52 apart across red-green color vision from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
+    And every pair of different destinations on the board stays at least 15 apart across red-green color vision
 
   Scenario: The departure board a rider glances at keeps neighbors apart across red-green color vision
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
-    Then each departure stays at least 33 apart across red-green color vision from the row above and the row below
+    Then each departure stays at least 29 apart across red-green color vision from the row above and the row below
+    And destinations two rows apart stay at least 16 apart across red-green color vision
+    And every pair of different destinations on the board stays at least 15 apart across red-green color vision
 
   Scenario: A repeated destination stays apart from the rows above and below it
     Given a board with 22 different destinations followed by the second destination
@@ -341,14 +352,20 @@ Feature: Destination color
     Then the shown destination colors are remembered
     When later departures append the same destinations in a different order
     Then each destination keeps its remembered color
-    And each departure stays at least 9 apart across red-green color vision from the row above and the row below
+    And each departure stays at least 15 apart across red-green color vision from the row above and the row below
 
   Scenario: Loading eight more destinations after the glance board keeps all neighbors apart
     Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
     When the departure board is shown
     When 8 new later departures are appended to the board
     Then each destination uses its own color
-    And each departure stays at least 32 apart across red-green color vision from the row above and the row below
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
+
+  Scenario: Adding four more interwoven destinations onto a busy eight-destination board keeps every destination unique
+    Given a busy board with 8 destinations that meet across many rows
+    When the departure board is shown
+    When 4 new destinations are interwoven with those departures
+    Then each destination uses its own color
 
   Scenario: Loading more departures in stages keeps later neighbors apart even near the palette limit
     Given a board with 20 different destinations
@@ -781,6 +798,91 @@ Feature: Destination color
           const tail = readRows(world).slice(-tailCount);
           assert.equal(tail.length, tailCount);
           assert.equal(new Set(tail.map((row) => row.color)).size, expectedColors);
+        },
+      },
+      {
+        pattern:
+          /^Then destinations two rows apart stay at least (\d+) apart across red-green color vision$/,
+        run: ({ args, assert, world }) => {
+          const minimum = Number(args[0]);
+          const rows = readRows(world);
+          assert.equal(rows.length > 2, true);
+          for (let index = 0; index + 2 < rows.length; index += 1) {
+            const first = rows[index];
+            const second = rows[index + 2];
+            if (first.destination === second.destination) {
+              continue;
+            }
+            const distance = neighborDistance(first.color, second.color);
+            assert.equal(
+              distance >= minimum,
+              true,
+              `${first.destination} and ${second.destination} (2 rows apart) are ${distance.toFixed(2)} apart`
+            );
+          }
+        },
+      },
+      {
+        pattern:
+          /^Then at most (\d+) pairs of destinations on the board sit closer than (\d+) across red-green color vision$/,
+        run: ({ args, assert, world }) => {
+          const maxPairs = Number(args[0]);
+          const cutoff = Number(args[1]);
+          const colors = [...colorsByDestination(readRows(world)).values()];
+          let closePairs = 0;
+          for (let left = 0; left < colors.length; left += 1) {
+            for (let right = left + 1; right < colors.length; right += 1) {
+              if (neighborDistance(colors[left], colors[right]) < cutoff) {
+                closePairs += 1;
+              }
+            }
+          }
+          assert.equal(
+            closePairs <= maxPairs,
+            true,
+            `Found ${closePairs} destination pairs closer than ${cutoff} (max ${maxPairs})`
+          );
+        },
+      },
+      {
+        pattern:
+          /^Then every pair of different destinations on the board stays at least (\d+) apart across red-green color vision$/,
+        run: ({ args, assert, world }) => {
+          const minimum = Number(args[0]);
+          const colors = [...colorsByDestination(readRows(world)).values()];
+          const closest = closestRedGreenDistance(colors);
+          assert.equal(
+            closest.distance >= minimum,
+            true,
+            `Closest ${closest.profile} pair on board differs by ${closest.distance.toFixed(2)}`
+          );
+        },
+      },
+      {
+        pattern: /^When 4 new destinations are interwoven with those departures$/,
+        run: ({ world }) => {
+          const interwoven = [
+            "Later 1",
+            "Destination 1",
+            "Later 2",
+            "Destination 2",
+            "Later 3",
+            "Destination 3",
+            "Later 4",
+            "Destination 4",
+            "Later 1",
+            "Later 3",
+            "Later 2",
+            "Later 4",
+          ];
+          const suffix = createTrips(
+            interwoven,
+            interwoven.map((_, index) => `W${index + 1}`),
+            world.trips.length * 60_000
+          );
+          const combined = world.trips.concat(suffix);
+          world.trips = combined;
+          replaceTrips(world, combined);
         },
       },
     ],

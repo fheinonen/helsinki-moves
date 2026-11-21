@@ -132,7 +132,7 @@ Feature: Fluid vehicle map and walking route screens in browser
     When the app is opened in desktop viewport for map fluidity
     And the user opens the first departure vehicle map
     Then the vehicle map stays framed inside the shell with loaded tiles and controls
-    When the user zooms in, drags to pan, expands, and resets the map
+    When the user zooms in, drags to pan, expands, and resets the map with the keyboard
     Then the map zoom, pan, expand height, and reset all respond smoothly
     When the user switches directly from the vehicle map to the walking route
     Then the walking route screen renders origin, stop, route, and on-time badge inside the shell
@@ -252,14 +252,15 @@ Feature: Fluid vehicle map and walking route screens in browser
         },
       },
       {
-        pattern: /^When the user zooms in, drags to pan, expands, and resets the map$/,
+        pattern: /^When the user zooms in, drags to pan, expands, and resets the map with the keyboard$/,
         run: async ({ fixtures, world }) => {
           const page = fixtures.page as import("@playwright/test").Page;
           const glass = page.locator("[data-vehicle-glass]");
           const initialBox = await glass.boundingBox();
           world.initialGlassHeight = initialBox?.height ?? 0;
 
-          await page.locator("[data-map-zoom-in]").click();
+          await glass.focus();
+          await page.keyboard.press("+");
           await page.waitForFunction(() => {
             const el = document.querySelector<HTMLElement>("[data-vehicle-glass]");
             return Number(el?.dataset.mapZoom || "1") > 1.2;
@@ -282,7 +283,8 @@ Feature: Fluid vehicle map and walking route screens in browser
           await page.waitForTimeout(320);
           world.expandedGlassHeight = (await glass.boundingBox())?.height ?? 0;
 
-          await page.locator("[data-map-reset]").click();
+          await glass.focus();
+          await page.keyboard.press("0");
         },
       },
       {
@@ -292,7 +294,7 @@ Feature: Fluid vehicle map and walking route screens in browser
           assert.equal(Number.parseFloat(world.panBefore || "0") !== 0, true);
           assert.equal((world.expandedGlassHeight ?? 0) > (world.initialGlassHeight ?? 0) + 40, true);
           assert.equal(await page.locator("[data-vehicle-glass]").getAttribute("data-map-zoom"), "1.00");
-          assert.equal(await page.locator("[data-map-reset]").isDisabled(), true);
+          assert.equal(await page.locator("[data-map-expand]").getAttribute("aria-pressed"), "true");
         },
       },
       {

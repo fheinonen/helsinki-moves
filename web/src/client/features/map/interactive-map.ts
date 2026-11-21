@@ -1,8 +1,6 @@
 import {
   createMapCamera,
   isDefaultMapCamera,
-  MAP_MAX_ZOOM,
-  MAP_MIN_ZOOM,
   panMapCamera,
   stepMapCameraZoom,
   zoomMapCameraAt,
@@ -32,9 +30,6 @@ interface AttachInteractiveMapInput {
 interface MapControlButtons {
   container: HTMLDivElement;
   expand: HTMLButtonElement;
-  reset: HTMLButtonElement;
-  zoomIn: HTMLButtonElement;
-  zoomOut: HTMLButtonElement;
 }
 
 function isInteractiveChild(target: EventTarget | null): boolean {
@@ -92,24 +87,6 @@ function createMapControls(documentRef: Document): MapControlButtons {
   const container = documentRef.createElement("div");
   container.className = "map-controls";
   container.dataset.mapControls = "true";
-  const zoomIn = createControlButton({
-    ariaLabel: "Zoom in",
-    attr: "mapZoomIn",
-    documentRef,
-    pathData: "M10 4.5v11M4.5 10h11",
-  });
-  const zoomOut = createControlButton({
-    ariaLabel: "Zoom out",
-    attr: "mapZoomOut",
-    documentRef,
-    pathData: "M4.5 10h11",
-  });
-  const reset = createControlButton({
-    ariaLabel: "Reset map view",
-    attr: "mapReset",
-    documentRef,
-    pathData: "M4.5 8V4.5H8M15.5 8V4.5H12M4.5 12v3.5H8M15.5 12v3.5H12",
-  });
   const expand = createControlButton({
     ariaLabel: "Expand map",
     attr: "mapExpand",
@@ -117,8 +94,8 @@ function createMapControls(documentRef: Document): MapControlButtons {
     pathData: "M12.5 4.5h3v3M7.5 15.5h-3v-3M15.5 4.5l-4.2 4.2M4.5 15.5l4.2-4.2",
   });
   expand.setAttribute("aria-pressed", "false");
-  container.append(zoomIn, zoomOut, reset, expand);
-  return { container, expand, reset, zoomIn, zoomOut };
+  container.append(expand);
+  return { container, expand };
 }
 
 function pairMetrics(first: MapPoint, second: MapPoint): { center: MapPoint; distance: number } {
@@ -160,9 +137,6 @@ export function attachInteractiveMap(input: AttachInteractiveMapInput): Interact
     canvas.style.setProperty("--map-pan-y", `${camera.panY.toFixed(1)}px`);
     glass.dataset.mapZoom = camera.zoom.toFixed(2);
     glass.classList.toggle("is-zoomed", !atDefault);
-    controls.zoomIn.disabled = camera.zoom >= MAP_MAX_ZOOM - 1e-4;
-    controls.zoomOut.disabled = camera.zoom <= MAP_MIN_ZOOM + 1e-4;
-    controls.reset.disabled = atDefault;
   }
 
   function setCamera(next: MapCamera): void {
@@ -293,15 +267,6 @@ export function attachInteractiveMap(input: AttachInteractiveMapInput): Interact
     controls.expand.setAttribute("aria-label", expanded ? "Collapse map" : "Expand map");
   }
 
-  controls.zoomIn.addEventListener("click", () => {
-    setCamera(stepMapCameraZoom(camera, "in", viewportOf(glass)));
-  });
-  controls.zoomOut.addEventListener("click", () => {
-    setCamera(stepMapCameraZoom(camera, "out", viewportOf(glass)));
-  });
-  controls.reset.addEventListener("click", () => {
-    reset();
-  });
   controls.expand.addEventListener("click", () => {
     expanded = !expanded;
     syncExpanded();

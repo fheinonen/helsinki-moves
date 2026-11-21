@@ -391,10 +391,8 @@ function createVehicleSpanSession(input: {
 }): {
   close(options?: { restoreFocus?: boolean }): void;
   press(card: HTMLTableRowElement, options?: { switched?: boolean }): void;
-  retarget(card: HTMLTableRowElement): void;
 } {
   let activeCard: HTMLTableRowElement | null = null;
-  let aimedCard: HTMLTableRowElement | null = null;
   let map: VehicleSpanMap | null = null;
   let stopStream: (() => void) | null = null;
   const openVehicleSpan = input.openVehicleSpan ?? openVehicleSpanStream;
@@ -405,7 +403,6 @@ function createVehicleSpanSession(input: {
       delete activeCard.dataset.mapActive;
     }
     activeCard = null;
-    aimedCard = null;
     stopStream?.();
     stopStream = null;
     map?.close();
@@ -429,7 +426,6 @@ function createVehicleSpanSession(input: {
         return;
       }
       close();
-      aimedCard = card;
       const switched = pressOptions?.switched ?? false;
       const nextMap = createVehicleSpanMap({
         destination: card.dataset.destination || "",
@@ -444,12 +440,8 @@ function createVehicleSpanSession(input: {
         onExpandedChange: input.onExpandedChange,
         onSwitchToWalk: input.canWalk()
           ? () => {
-              const target = aimedCard;
-              if (!target) {
-                return;
-              }
               nextMap.markSwitchBusy();
-              input.onSwitchToWalk(target);
+              input.onSwitchToWalk(card);
             }
           : undefined,
         switched,
@@ -469,32 +461,6 @@ function createVehicleSpanSession(input: {
       stopStream = openVehicleSpan({
         onEvent(event) {
           nextMap.apply(event);
-        },
-        stopId,
-        tripId,
-      });
-    },
-    retarget(card) {
-      const tripId = card.dataset.tripId || "";
-      const stopId = card.dataset.stopId || "";
-      if (!map || activeCard === card || !tripId || !stopId) {
-        return;
-      }
-      if (activeCard && activeCard !== card) {
-        delete activeCard.dataset.mapActive;
-      }
-      card.dataset.mapActive = "true";
-      activeCard = card;
-      aimedCard = card;
-      map.retarget({
-        destination: card.dataset.destination || "",
-        destinationColor: card.style.getPropertyValue("--destination-color") || undefined,
-        line: card.dataset.line || "",
-      });
-      stopStream?.();
-      stopStream = openVehicleSpan({
-        onEvent(event) {
-          map?.apply(event);
         },
         stopId,
         tripId,
@@ -718,9 +684,6 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     },
     onUserClose: resetMapExpanded,
     readCoords: () => store.getState().coords,
-    retargetVehicle: (card) => {
-      vehicleSpan.retarget(card);
-    },
     scheduleHold: options.scheduleHold,
     table: departuresTableView.element,
   });

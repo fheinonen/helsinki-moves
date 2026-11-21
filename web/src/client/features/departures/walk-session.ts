@@ -45,7 +45,6 @@ export interface CreateWalkSessionInput {
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   onUserClose?: () => void;
   readCoords(): GeoPoint | null;
-  retargetVehicle?(card: HTMLTableRowElement): void;
   scheduleHold?: HoldScheduler;
   table: HTMLTableElement;
 }
@@ -771,10 +770,6 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     return fetchWalkRoute(request, (url, init) => fetch(url, { ...init, signal }));
   }
 
-  function vehicleMapOpen(): boolean {
-    return input.table.previousElementSibling?.matches("[data-vehicle-map='true']") ?? false;
-  }
-
   function startWalk(label: HeldDeparture): void {
     const origin = input.readCoords();
     if (!usableOrigin(origin)) {
@@ -803,16 +798,8 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
     );
   }
 
-  function beginWalk(label: HeldDeparture): void {
-    if (vehicleMapOpen()) {
-      input.retargetVehicle?.(label.card);
-      return;
-    }
-    startWalk(label);
-  }
-
   const hold = bindHold({
-    beginWalk,
+    beginWalk: startWalk,
     canWalk: () => usableOrigin(input.readCoords()),
     scheduleHold,
     table: input.table,

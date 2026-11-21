@@ -5,6 +5,7 @@ import {
   contrastOnDarkBoard,
   GLANCEABLE_PROTANOPIA_DISTANCE,
   parseCssRgb,
+  protanopiaDistance,
   READABLE_BOARD_CONTRAST,
   simulateProtanopia,
 } from "@tests/helpers/protanopia";
@@ -32,6 +33,24 @@ interface World {
 
 const BASE_TIME_MS = Date.parse("2026-03-07T10:00:00.000Z");
 const COLOR_PATTERN = /^rgb\(\d+, \d+, \d+\)$/;
+const DESTINATION_SCHEME = [
+  "#ffff22",
+  "#a283ff",
+  "#cb9484",
+  "#b5ffe4",
+  "#d4d6ff",
+  "#7ca51b",
+  "#feffb5",
+  "#adcac7",
+  "#a4959c",
+  "#e5c7ac",
+  "#a5ca00",
+  "#dd9f6a",
+  "#b3a8c2",
+  "#f7e678",
+  "#65c1ff",
+  "#c684cf",
+] as const;
 const GLANCE_DESTINATIONS = [
   "Eira",
   "Kamppi",
@@ -155,6 +174,14 @@ function readRows(world: World): DepartureRow[] {
   });
 }
 
+function schemeColors(): Set<string> {
+  return new Set(DESTINATION_SCHEME.map((color) => paintedColor(color)));
+}
+
+function neighborDistance(first: string, second: string): number {
+  return protanopiaDistance(parseCssRgb(first), parseCssRgb(second));
+}
+
 function colorsByDestination(rows: DepartureRow[]): Map<string, string> {
   const colors = new Map<string, string>();
   for (const row of rows) {
@@ -211,6 +238,50 @@ Feature: Destination color
     When the departure board is shown
     Then each destination color stays distinct under protanopia
     And each destination color stays readable on the dark board
+
+  Scenario: Neighboring departures on a long board stay apart under protanopia
+    Given a board with 16 different destinations
+    When the departure board is shown
+    Then each departure stays at least 31 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
+
+  Scenario: Mixed departures beside each other stay apart under protanopia
+    Given a board with trips to Eira, Kamppi, Ruoholahti, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
+    When the departure board is shown
+    Then each departure stays at least 52 apart under protanopia from the row above and the row below
+
+  Scenario: The departure board a rider glances at keeps neighbors apart under protanopia
+    Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo
+    When the departure board is shown
+    Then each departure stays at least 32 apart under protanopia from the row above and the row below
+
+  Scenario: A repeated destination stays apart from the rows above and below it
+    Given a board with 16 different destinations followed by the second destination
+    When the departure board is shown
+    Then the repeated destination keeps the color of its first row
+    And each departure stays at least 29 apart under protanopia from the row above and the row below
+
+  Scenario: Two new destinations after every color is used stay apart from the rows beside them
+    Given a board with 16 different destinations
+    When the departure board is shown
+    When two new destinations are shown between Destination 7 and Destination 14
+    Then each departure stays at least 29 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
+
+  Scenario: A new destination between close colors stays apart from both rows
+    Given a board with 16 different destinations
+    When the departure board is shown
+    When a new destination is shown between Destination 7 and Destination 14
+    Then the new destination stays at least 32 apart under protanopia from the row above and the row below
+    And each destination color stays in the existing scheme
+
+  Scenario: Added departures stay apart from the rows already colored
+    Given a board with trips to Eira and Kamppi
+    When the departure board is shown
+    Then the shown destination colors are remembered
+    When Ruoholahti and Lauttasaari are added after those departures
+    Then Eira and Kamppi keep their remembered colors
+    And each departure stays at least 29 apart under protanopia from the row above and the row below
   `,
   {
     createWorld: () => ({
@@ -239,6 +310,30 @@ Feature: Destination color
         },
       },
       {
+        pattern: /^Given a board with 16 different destinations followed by the second destination$/,
+        run: ({ world }) => {
+          const destinations = Array.from({ length: 16 }, (_, index) => `Destination ${index + 1}`);
+          destinations.push("Destination 2");
+          world.trips = createTrips(destinations, destinations);
+        },
+      },
+      {
+        pattern: /^Given a board with trips to Eira and Kamppi$/,
+        run: ({ world }) => {
+          world.trips = createTrips(["Eira", "Kamppi"], ["18", "550"]);
+        },
+      },
+      {
+        pattern:
+          /^Given a board with trips to Kamppi, Ruoholahti, Eira, Rautatientori, Lauttasaari, Kamppi, Herttoniemi, Ruskeasuo, and Toolo$/,
+        run: ({ world }) => {
+          world.trips = createTrips(
+            ["Kamppi", "Ruoholahti", "Eira", "Rautatientori", "Lauttasaari", "Kamppi", "Herttoniemi", "Ruskeasuo", "Toolo"],
+            ["550", "560", "18", "65A", "14", "14", "21", "63", "8"]
+          );
+        },
+      },
+      {
         pattern: /^When the departure board is shown$/,
         run: ({ world }) => {
           showBoard(world, world.trips);
@@ -262,6 +357,34 @@ Feature: Destination color
           replaceTrips(
             world,
             world.trips.filter((trip) => trip.destination === "Kamppi")
+          );
+        },
+      },
+      {
+        pattern: /^When two new destinations are shown between Destination 7 and Destination 14$/,
+        run: ({ world }) => {
+          replaceTrips(
+            world,
+            createTrips(["Destination 7", "Kallio", "Pasila", "Destination 14"], ["7", "17", "18", "14"])
+          );
+        },
+      },
+      {
+        pattern: /^When a new destination is shown between Destination 7 and Destination 14$/,
+        run: ({ world }) => {
+          replaceTrips(world, createTrips(["Destination 7", "Kallio", "Destination 14"], ["7", "17", "14"]));
+        },
+      },
+      {
+        pattern: /^When Ruoholahti and Lauttasaari are added after those departures$/,
+        run: ({ world }) => {
+          const destinations = world.trips.map((trip) => trip.destination).concat("Ruoholahti", "Lauttasaari");
+          replaceTrips(
+            world,
+            createTrips(
+              destinations,
+              destinations.map((_, index) => String(index + 1))
+            )
           );
         },
       },
@@ -392,6 +515,84 @@ Feature: Destination color
               true,
               `${color} protanopia contrast ${simulated.toFixed(2)}`
             );
+          }
+        },
+      },
+      {
+        pattern:
+          /^Then each departure stays at least (\d+) apart under protanopia from the row above and the row below$/,
+        run: ({ args, assert, world }) => {
+          const minimum = Number(args[0]);
+          const rows = readRows(world);
+          assert.equal(rows.length > 1, true);
+          rows.forEach((row, index) => {
+            const above = rows[index - 1];
+            const below = rows[index + 1];
+            if (above && above.destination !== row.destination) {
+              const distance = neighborDistance(above.color, row.color);
+              assert.equal(
+                distance >= minimum,
+                true,
+                `${row.destination} is ${distance.toFixed(2)} from ${above.destination} above`
+              );
+            }
+            if (below && below.destination !== row.destination) {
+              const distance = neighborDistance(row.color, below.color);
+              assert.equal(
+                distance >= minimum,
+                true,
+                `${row.destination} is ${distance.toFixed(2)} from ${below.destination} below`
+              );
+            }
+          });
+        },
+      },
+      {
+        pattern: /^Then each destination color stays in the existing scheme$/,
+        run: ({ assert, world }) => {
+          const allowed = schemeColors();
+          for (const row of readRows(world)) {
+            assert.equal(allowed.has(row.color), true, `${row.destination} uses ${row.color}`);
+          }
+        },
+      },
+      {
+        pattern: /^Then the repeated destination keeps the color of its first row$/,
+        run: ({ assert, world }) => {
+          const rows = readRows(world);
+          const first = rows.find((row) => row.destination === "Destination 2");
+          const last = rows[rows.length - 1];
+          assert.equal(first?.destination, "Destination 2");
+          assert.equal(last?.destination, "Destination 2");
+          assert.equal(last?.color, first?.color);
+          assert.equal(rows.filter((row) => row.destination === "Destination 2").length, 2);
+        },
+      },
+      {
+        pattern:
+          /^Then the new destination stays at least (\d+) apart under protanopia from the row above and the row below$/,
+        run: ({ args, assert, world }) => {
+          const minimum = Number(args[0]);
+          const rows = readRows(world);
+          const index = rows.findIndex((row) => row.destination === "Kallio");
+          const row = rows[index];
+          const above = rows[index - 1];
+          const below = rows[index + 1];
+          assert.equal(above?.destination, "Destination 7");
+          assert.equal(below?.destination, "Destination 14");
+          const aboveDistance = neighborDistance(above.color, row.color);
+          const belowDistance = neighborDistance(row.color, below.color);
+          assert.equal(aboveDistance >= minimum, true, `Kallio is ${aboveDistance.toFixed(2)} from the row above`);
+          assert.equal(belowDistance >= minimum, true, `Kallio is ${belowDistance.toFixed(2)} from the row below`);
+        },
+      },
+      {
+        pattern: /^Then Eira and Kamppi keep their remembered colors$/,
+        run: ({ assert, world }) => {
+          const rows = readRows(world);
+          for (const name of ["Eira", "Kamppi"]) {
+            const row = rows.find((candidate) => candidate.destination === name);
+            assert.equal(row?.color, world.colors.get(name));
           }
         },
       },

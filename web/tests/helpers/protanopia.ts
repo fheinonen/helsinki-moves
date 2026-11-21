@@ -165,6 +165,10 @@ export function parseCssRgb(color: string): Rgb {
   return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
+export function protanopiaDistance(first: Rgb, second: Rgb): number {
+  return deltaE00(rgbToLab(simulateProtanopia(first)), rgbToLab(simulateProtanopia(second)));
+}
+
 export function closestProtanopiaDistance(colors: string[]): number {
   const simulated = colors.map((color) => rgbToLab(simulateProtanopia(parseCssRgb(color))));
   let closest = Number.POSITIVE_INFINITY;

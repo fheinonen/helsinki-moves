@@ -7,6 +7,8 @@ import type { RideSnapshot } from "@shared/domain/ride";
 
 interface World {
   digitransit?: DigitransitService;
+  graphqlQuery?: string;
+  graphqlVariables?: Record<string, unknown>;
   payload?: Partial<RideSnapshot> & { error?: string };
   parsedRide?: RideSnapshot | null;
   response?: Response;
@@ -94,9 +96,19 @@ Feature: Ride API route
     Then the ride API status is 200
     And the ride payload has no live vehicle position
 
-  Scenario: Digitransit client maps subway trip stoptimes into a RideSnapshot base
+  Scenario: Digitransit client maps subway trip stoptimesForDate into a RideSnapshot base
     When the Digitransit client loads a subway trip ride from GraphQL
-    Then the parsed trip ride uses mode METRO with 2 ordered stops
+    Then the GraphQL request queries stoptimesForDate for Helsinki service date 20260307
+    And the parsed trip ride uses mode METRO with 2 ordered stops
+    And the first parsed stop arrives in year 2026
+
+  Scenario: After-midnight trip selects yesterday stoptimesForDate when active across midnight
+    When the Digitransit client loads a late-night trip at 00:20 Helsinki time
+    Then the first parsed stop arrives at 2026-03-07T22:25:00.000Z
+
+  Scenario: Static stoptimes with serviceDay zero are anchored to Helsinki midnight instead of 1970
+    When the Digitransit client receives static stoptimes with serviceDay zero
+    Then the first parsed stop arrives in year 2026
 
   Scenario: The Vercel ride entrypoint validates missing trip id
     When the Vercel ride entrypoint is called without a trip id
@@ -150,10 +162,17 @@ Feature: Ride API route
       {
         pattern: /^When the Digitransit client loads a subway trip ride from GraphQL$/,
         run: async ({ world }) => {
-          const serviceDay = Math.floor(Date.parse("2026-03-07T00:00:00.000Z") / 1000);
+          const nowMs = Date.parse("2026-03-07T08:00:00.000Z"); // 10:00 EET (20260307)
+          const serviceDay = Math.floor(Date.parse("2026-03-06T22:00:00.000Z") / 1000); // 2026-03-07 00:00 EET
           const service = createDigitransitService({
-            fetchImpl: async () =>
-              new Response(
+            fetchImpl: async (_url, init) => {
+              const body = JSON.parse(String(init?.body || "{}")) as {
+                query?: string;
+                variables?: Record<string, unknown>;
+              };
+              world.graphqlQuery = body.query;
+              world.graphqlVariables = body.variables;
+              return new Response(
                 JSON.stringify({
                   data: {
                     trip: {
@@ -167,9 +186,25 @@ Feature: Ride API route
                       route: { mode: "SUBWAY", shortName: "M1" },
                       stoptimes: [
                         {
+                          realtime: false,
+                          realtimeArrival: 36_600,
+                          scheduledArrival: 36_600,
+                          serviceDay: 0,
+                          stop: {
+                            code: "H0001",
+                            gtfsId: "HSL:KAMPPI",
+                            lat: 60.169,
+                            lon: 24.933,
+                            name: "Kamppi",
+                            platformCode: "1",
+                          },
+                        },
+                      ],
+                      todayStoptimes: [
+                        {
                           realtime: true,
-                          realtimeArrival: 36_000,
-                          scheduledArrival: 35_940,
+                          realtimeArrival: 36_600,
+                          scheduledArrival: 36_540,
                           serviceDay,
                           stop: {
                             code: "H0001",
@@ -182,8 +217,8 @@ Feature: Ride API route
                         },
                         {
                           realtime: false,
-                          realtimeArrival: 36_120,
-                          scheduledArrival: 36_120,
+                          realtimeArrival: 36_780,
+                          scheduledArrival: 36_780,
                           serviceDay,
                           stop: {
                             code: "H0002",
@@ -196,14 +231,119 @@ Feature: Ride API route
                         },
                       ],
                       tripHeadsign: "Vuosaari",
+                      yesterdayStoptimes: [],
+                    },
+                  },
+                }),
+                { headers: { "content-type": "application/json" }, status: 200 },
+              );
+            },
+            getApiKey: () => "test-key",
+            now: () => nowMs,
+          });
+          const data = await service.getTripRide?.("HSL:M1_TRIP");
+          world.parsedRide = data ? { ...data, vehicle: null } : null;
+        },
+      },
+      {
+        pattern: /^When the Digitransit client loads a late-night trip at 00:20 Helsinki time$/,
+        run: async ({ world }) => {
+          const nowMs = Date.parse("2026-03-07T22:20:00.000Z"); // 2026-03-08 00:20 EET
+          const yesterdayDay = Math.floor(Date.parse("2026-03-06T22:00:00.000Z") / 1000); // 2026-03-07 00:00 EET
+          const todayDay = Math.floor(Date.parse("2026-03-07T22:00:00.000Z") / 1000); // 2026-03-08 00:00 EET
+          const service = createDigitransitService({
+            fetchImpl: async () =>
+              new Response(
+                JSON.stringify({
+                  data: {
+                    trip: {
+                      gtfsId: "HSL:N1_TRIP",
+                      pattern: { geometry: [] },
+                      route: { mode: "BUS", shortName: "415N" },
+                      todayStoptimes: [
+                        {
+                          realtime: false,
+                          realtimeArrival: 87_900, // 24:25 on 2026-03-08 (= 2026-03-09 00:25 EET)
+                          scheduledArrival: 87_900,
+                          serviceDay: todayDay,
+                          stop: {
+                            code: "H0001",
+                            gtfsId: "HSL:KAMPPI",
+                            lat: 60.169,
+                            lon: 24.933,
+                            name: "Kamppi",
+                            platformCode: null,
+                          },
+                        },
+                      ],
+                      tripHeadsign: "Lentoasema",
+                      yesterdayStoptimes: [
+                        {
+                          realtime: true,
+                          realtimeArrival: 87_900, // 24:25 on 2026-03-07 (= 2026-03-08 00:25 EET = 2026-03-07T22:25:00Z)
+                          scheduledArrival: 87_900,
+                          serviceDay: yesterdayDay,
+                          stop: {
+                            code: "H0001",
+                            gtfsId: "HSL:KAMPPI",
+                            lat: 60.169,
+                            lon: 24.933,
+                            name: "Kamppi",
+                            platformCode: null,
+                          },
+                        },
+                      ],
                     },
                   },
                 }),
                 { headers: { "content-type": "application/json" }, status: 200 },
               ),
             getApiKey: () => "test-key",
+            now: () => nowMs,
           });
-          const data = await service.getTripRide?.("HSL:M1_TRIP");
+          const data = await service.getTripRide?.("HSL:N1_TRIP");
+          world.parsedRide = data ? { ...data, vehicle: null } : null;
+        },
+      },
+      {
+        pattern: /^When the Digitransit client receives static stoptimes with serviceDay zero$/,
+        run: async ({ world }) => {
+          const nowMs = Date.parse("2026-03-07T08:00:00.000Z"); // 10:00 EET
+          const service = createDigitransitService({
+            fetchImpl: async () =>
+              new Response(
+                JSON.stringify({
+                  data: {
+                    trip: {
+                      gtfsId: "HSL:STATIC_TRIP",
+                      pattern: { geometry: [] },
+                      route: { mode: "TRAM", shortName: "4" },
+                      stoptimes: [
+                        {
+                          realtime: false,
+                          realtimeArrival: 36_600,
+                          scheduledArrival: 36_600,
+                          serviceDay: 0,
+                          stop: {
+                            code: "H0001",
+                            gtfsId: "HSL:KAMPPI",
+                            lat: 60.169,
+                            lon: 24.933,
+                            name: "Kamppi",
+                            platformCode: null,
+                          },
+                        },
+                      ],
+                      tripHeadsign: "Kamppi",
+                    },
+                  },
+                }),
+                { headers: { "content-type": "application/json" }, status: 200 },
+              ),
+            getApiKey: () => "test-key",
+            now: () => nowMs,
+          });
+          const data = await service.getTripRide?.("HSL:STATIC_TRIP");
           world.parsedRide = data ? { ...data, vehicle: null } : null;
         },
       },
@@ -235,11 +375,31 @@ Feature: Ride API route
         },
       },
       {
+        pattern: /^Then the GraphQL request queries stoptimesForDate for Helsinki service date (\d+)$/,
+        run: ({ args, assert, world }) => {
+          assert.match(world.graphqlQuery || "", /stoptimesForDate\s*\(\s*serviceDate:/);
+          assert.equal(world.graphqlVariables?.serviceDate, args[0]);
+        },
+      },
+      {
         pattern: /^Then the parsed trip ride uses mode (.+) with (\d+) ordered stops$/,
         run: ({ args, assert, world }) => {
           assert.equal(world.parsedRide?.mode, args[0]);
           assert.equal(world.parsedRide?.stops.length, Number(args[1]));
           assert.equal(world.parsedRide?.stops[0]?.name, "Kamppi");
+        },
+      },
+      {
+        pattern: /^Then the first parsed stop arrives in year (\d+)$/,
+        run: ({ args, assert, world }) => {
+          const iso = world.parsedRide?.stops[0]?.arrivalIso || "";
+          assert.match(iso, new RegExp(`^${args[0]}-`));
+        },
+      },
+      {
+        pattern: /^Then the first parsed stop arrives at (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(world.parsedRide?.stops[0]?.arrivalIso, args[0]);
         },
       },
     ],

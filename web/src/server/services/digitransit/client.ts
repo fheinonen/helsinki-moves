@@ -58,8 +58,23 @@ const tripShapeQuery = `
   }
 `;
 
+const tripRideStopTimeFields = `
+  serviceDay
+  scheduledArrival
+  realtimeArrival
+  realtime
+  stop {
+    gtfsId
+    name
+    code
+    platformCode
+    lat
+    lon
+  }
+`;
+
 const tripRideQuery = `
-  query TripRide($tripId: String!) {
+  query TripRide($tripId: String!, $serviceDate: String!, $previousServiceDate: String!) {
     trip(id: $tripId) {
       gtfsId
       tripHeadsign
@@ -73,19 +88,14 @@ const tripRideQuery = `
           lon
         }
       }
+      todayStoptimes: stoptimesForDate(serviceDate: $serviceDate) {
+        ${tripRideStopTimeFields}
+      }
+      yesterdayStoptimes: stoptimesForDate(serviceDate: $previousServiceDate) {
+        ${tripRideStopTimeFields}
+      }
       stoptimes {
-        serviceDay
-        scheduledArrival
-        realtimeArrival
-        realtime
-        stop {
-          gtfsId
-          name
-          code
-          platformCode
-          lat
-          lon
-        }
+        ${tripRideStopTimeFields}
       }
     }
   }
@@ -445,18 +455,68 @@ function parseRideMode(raw: string | undefined): Mode {
   return parseMode(normalized, "BUS");
 }
 
-function parseTripRideStop(raw: RawTripRideStopTime): RideStop | null {
+const ONE_DAY_MS = 86_400_000;
+const ACTIVE_BEFORE_MS = 30 * 60_000;
+const ACTIVE_AFTER_MS = 15 * 60_000;
+
+function readHelsinkiDateParts(timestampMs: number): Record<string, number> {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "Europe/Helsinki",
+    year: "numeric",
+  }).formatToParts(new Date(timestampMs));
+  const map: Record<string, number> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      map[part.type] = Number(part.value);
+    }
+  }
+  return map;
+}
+
+function formatHelsinkiServiceDate(timestampMs: number): string {
+  const parts = readHelsinkiDateParts(timestampMs);
+  return `${String(parts.year).padStart(4, "0")}${String(parts.month).padStart(2, "0")}${String(parts.day).padStart(2, "0")}`;
+}
+
+function helsinkiMidnightSeconds(timestampMs: number): number {
+  const parts = readHelsinkiDateParts(timestampMs);
+  const utcWallMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  const offsetMs = utcWallMs - Math.floor(timestampMs / 1000) * 1000;
+  return Math.floor((Date.UTC(parts.year, parts.month - 1, parts.day) - offsetMs) / 1000);
+}
+
+function parseTripRideStop(
+  raw: RawTripRideStopTime,
+  fallbackServiceDaySeconds: number,
+): RideStop | null {
   const stop = raw.stop;
   const stopId = stop?.gtfsId?.trim() || "";
   const name = stop?.name?.trim() || "";
   const code = stop?.code?.trim() || null;
   const platform = stop?.platformCode?.trim() || null;
   const seconds = raw.realtimeArrival ?? raw.scheduledArrival;
-  if (!stop || !stopId || !name || !isGeoPoint(stop) || typeof raw.serviceDay !== "number" || typeof seconds !== "number") {
+  if (!stop || !stopId || !name || !isGeoPoint(stop) || typeof seconds !== "number") {
     return null;
   }
+  const serviceDay =
+    typeof raw.serviceDay === "number" && raw.serviceDay > 86_400
+      ? raw.serviceDay
+      : fallbackServiceDaySeconds;
   return {
-    arrivalIso: new Date((raw.serviceDay + seconds) * 1000).toISOString(),
+    arrivalIso: new Date((serviceDay + seconds) * 1000).toISOString(),
     code,
     lat: stop.lat,
     lon: stop.lon,
@@ -467,23 +527,74 @@ function parseTripRideStop(raw: RawTripRideStopTime): RideStop | null {
   };
 }
 
-function readTripRide(data: Record<string, unknown>, fallbackTripId: string): TripRideData | null {
+function distanceToRideWindow(stops: readonly RideStop[], nowMs: number): number {
+  const firstMs = Date.parse(stops[0].arrivalIso);
+  const lastMs = Date.parse(stops[stops.length - 1].arrivalIso);
+  if (nowMs >= firstMs - ACTIVE_BEFORE_MS && nowMs <= lastMs + ACTIVE_AFTER_MS) {
+    return 0;
+  }
+  return Math.min(Math.abs(nowMs - firstMs), Math.abs(nowMs - lastMs));
+}
+
+function pickBestStopList(candidates: readonly (readonly RideStop[])[], nowMs: number): RideStop[] {
+  let best: readonly RideStop[] = [];
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const list of candidates) {
+    if (list.length === 0) {
+      continue;
+    }
+    const score = distanceToRideWindow(list, nowMs);
+    if (score < bestScore) {
+      best = list;
+      bestScore = score;
+    }
+  }
+  return [...best];
+}
+
+function parseStopList(
+  rawStops: readonly RawTripRideStopTime[] | undefined,
+  fallbackServiceDaySeconds: number | null,
+): RideStop[] {
+  return (rawStops ?? [])
+    .filter(
+      (item) =>
+        fallbackServiceDaySeconds !== null ||
+        (typeof item.serviceDay === "number" && item.serviceDay > 86_400),
+    )
+    .map((item) => parseTripRideStop(item, fallbackServiceDaySeconds ?? 0))
+    .filter((item): item is RideStop => item != null);
+}
+
+function readTripRide(
+  data: Record<string, unknown>,
+  fallbackTripId: string,
+  nowMs: number,
+): TripRideData | null {
   const trip = data.trip as
     | {
         gtfsId?: string;
         pattern?: { geometry?: Array<{ lat?: number; lon?: number }> };
         route?: { mode?: string; shortName?: string };
         stoptimes?: RawTripRideStopTime[];
+        todayStoptimes?: RawTripRideStopTime[];
         tripHeadsign?: string;
+        yesterdayStoptimes?: RawTripRideStopTime[];
       }
     | null
     | undefined;
   if (!trip) {
     return null;
   }
-  const stops = (trip.stoptimes ?? [])
-    .map(parseTripRideStop)
-    .filter((item): item is RideStop => item != null);
+  const todayMidnight = helsinkiMidnightSeconds(nowMs);
+  const datedCandidates = [
+    parseStopList(trip.todayStoptimes, null),
+    parseStopList(trip.yesterdayStoptimes, null),
+  ];
+  const stops =
+    datedCandidates.some((list) => list.length > 0)
+      ? pickBestStopList(datedCandidates, nowMs)
+      : parseStopList(trip.stoptimes ?? trip.todayStoptimes, todayMidnight);
   if (stops.length === 0) {
     return null;
   }
@@ -636,17 +747,22 @@ export function createDigitransitService(input: {
 
   return {
     async getTripRide(tripId) {
+      const currentMs = now();
       const data = await graphqlRequest({
         body: {
           query: tripRideQuery,
-          variables: { tripId },
+          variables: {
+            previousServiceDate: formatHelsinkiServiceDate(currentMs - ONE_DAY_MS),
+            serviceDate: formatHelsinkiServiceDate(currentMs),
+            tripId,
+          },
         },
         endpoint,
         fetchImpl,
         getApiKey,
         timeoutMs,
       });
-      return readTripRide(data, tripId);
+      return readTripRide(data, tripId, currentMs);
     },
     async getTripShape(tripId) {
       const data = await graphqlRequest({

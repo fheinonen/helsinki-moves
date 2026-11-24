@@ -1,12 +1,14 @@
 import type { Departure } from "../../../shared/domain/departure.js";
 import {
   getUpstreamMode,
+  parseMode,
   type Mode,
 } from "../../../shared/domain/mode.js";
+import type { RideStop } from "../../../shared/domain/ride.js";
 import type { GeoPoint } from "../../../shared/domain/vehicle-span.js";
 import { toWalkRoute, type WalkRoute } from "../../../shared/domain/walk-route.js";
 import type { DepartureFetchWindow } from "../glance/glance-horizon.js";
-import type { DigitransitService, NearbyStopNode } from "./types.js";
+import type { DigitransitService, NearbyStopNode, TripRideData } from "./types.js";
 
 const DIGITRANSIT_ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
 const DIGITRANSIT_TIMEOUT_MS = 7000;
@@ -48,6 +50,39 @@ const tripShapeQuery = `
     trip(id: $tripId) {
       pattern {
         geometry {
+          lat
+          lon
+        }
+      }
+    }
+  }
+`;
+
+const tripRideQuery = `
+  query TripRide($tripId: String!) {
+    trip(id: $tripId) {
+      gtfsId
+      tripHeadsign
+      route {
+        mode
+        shortName
+      }
+      pattern {
+        geometry {
+          lat
+          lon
+        }
+      }
+      stoptimes {
+        serviceDay
+        scheduledArrival
+        realtimeArrival
+        realtime
+        stop {
+          gtfsId
+          name
+          code
+          platformCode
           lat
           lon
         }
@@ -387,6 +422,81 @@ function readTripShape(data: Record<string, unknown>): Array<{ lat: number; lon:
   return geometry.filter(isGeoPoint);
 }
 
+interface RawTripRideStopTime {
+  realtime?: boolean;
+  realtimeArrival?: number;
+  scheduledArrival?: number;
+  serviceDay?: number;
+  stop?: {
+    code?: string | null;
+    gtfsId?: string;
+    lat?: number;
+    lon?: number;
+    name?: string;
+    platformCode?: string | null;
+  } | null;
+}
+
+function parseRideMode(raw: string | undefined): Mode {
+  const normalized = String(raw || "").trim().toUpperCase();
+  if (normalized === "SUBWAY") {
+    return "METRO";
+  }
+  return parseMode(normalized, "BUS");
+}
+
+function parseTripRideStop(raw: RawTripRideStopTime): RideStop | null {
+  const stop = raw.stop;
+  const stopId = stop?.gtfsId?.trim() || "";
+  const name = stop?.name?.trim() || "";
+  const code = stop?.code?.trim() || null;
+  const platform = stop?.platformCode?.trim() || null;
+  const seconds = raw.realtimeArrival ?? raw.scheduledArrival;
+  if (!stop || !stopId || !name || !isGeoPoint(stop) || typeof raw.serviceDay !== "number" || typeof seconds !== "number") {
+    return null;
+  }
+  return {
+    arrivalIso: new Date((raw.serviceDay + seconds) * 1000).toISOString(),
+    code,
+    lat: stop.lat,
+    lon: stop.lon,
+    name,
+    platform,
+    realtime: Boolean(raw.realtime),
+    stopId,
+  };
+}
+
+function readTripRide(data: Record<string, unknown>, fallbackTripId: string): TripRideData | null {
+  const trip = data.trip as
+    | {
+        gtfsId?: string;
+        pattern?: { geometry?: Array<{ lat?: number; lon?: number }> };
+        route?: { mode?: string; shortName?: string };
+        stoptimes?: RawTripRideStopTime[];
+        tripHeadsign?: string;
+      }
+    | null
+    | undefined;
+  if (!trip) {
+    return null;
+  }
+  const stops = (trip.stoptimes ?? [])
+    .map(parseTripRideStop)
+    .filter((item): item is RideStop => item != null);
+  if (stops.length === 0) {
+    return null;
+  }
+  return {
+    destination: trip.tripHeadsign?.trim() || stops[stops.length - 1].name,
+    line: trip.route?.shortName?.trim() || "",
+    mode: parseRideMode(trip.route?.mode),
+    route: (trip.pattern?.geometry ?? []).filter(isGeoPoint),
+    stops,
+    tripId: trip.gtfsId?.trim() || fallbackTripId,
+  };
+}
+
 function readVehicleFix(data: Record<string, unknown>, tripId: string): { lat: number; lon: number } | null {
   const trip = data.trip as
     | {
@@ -525,6 +635,19 @@ export function createDigitransitService(input: {
   }
 
   return {
+    async getTripRide(tripId) {
+      const data = await graphqlRequest({
+        body: {
+          query: tripRideQuery,
+          variables: { tripId },
+        },
+        endpoint,
+        fetchImpl,
+        getApiKey,
+        timeoutMs,
+      });
+      return readTripRide(data, tripId);
+    },
     async getTripShape(tripId) {
       const data = await graphqlRequest({
         body: {

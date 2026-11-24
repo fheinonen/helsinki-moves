@@ -11,12 +11,19 @@ export interface MapSwitchAction {
   target: "vehicle" | "walk";
 }
 
+export interface MapRideAction {
+  ariaLabel: string;
+  label: string;
+  onRide: () => void;
+}
+
 export interface MapHeaderInput {
   closeAttr: "vehicleSpanClose" | "walkClose";
   destination: string;
   documentRef: Document;
   line: string;
   onClose: () => void;
+  rideAction?: MapRideAction;
   switchAction?: MapSwitchAction;
 }
 
@@ -117,7 +124,7 @@ export function mountMapStreets(input: MountMapStreetsInput): void {
 }
 
 export function buildMapHeader(input: MapHeaderInput): HTMLDivElement {
-  const { closeAttr, destination, documentRef, line, onClose, switchAction } = input;
+  const { closeAttr, destination, documentRef, line, onClose, rideAction, switchAction } = input;
   const head = documentRef.createElement("div");
   head.className = "vehicle-span__head";
 
@@ -133,6 +140,19 @@ export function buildMapHeader(input: MapHeaderInput): HTMLDivElement {
 
   const actions = documentRef.createElement("div");
   actions.className = "vehicle-span__head-actions";
+
+  if (rideAction) {
+    const rideButton = documentRef.createElement("button");
+    rideButton.className = "vehicle-span__ride";
+    rideButton.dataset.mapRide = "true";
+    rideButton.type = "button";
+    rideButton.textContent = rideAction.label;
+    rideButton.setAttribute("aria-label", rideAction.ariaLabel);
+    rideButton.addEventListener("click", () => {
+      rideAction.onRide();
+    });
+    actions.append(rideButton);
+  }
 
   if (switchAction) {
     const switchButton = documentRef.createElement("button");

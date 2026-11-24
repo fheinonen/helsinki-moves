@@ -1,4 +1,4 @@
-import type { AppStore } from "@client/app/app-store";
+import type { AppStore, StartRideInput } from "@client/app/app-store";
 import { createHoldSession, type PointerPush, type ScrollMetrics } from "@client/app/hold-scroll";
 import type { DeparturesClient } from "@client/services/departures-client";
 import {
@@ -20,6 +20,7 @@ import type { Departure } from "@shared/domain/departure";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
 import { sanitizeFilterState } from "@shared/domain/filter";
 import type { Mode } from "@shared/domain/mode";
+import type { AppView } from "@shared/domain/ride";
 
 interface CreateAppControllerOptions {
   departuresClient: DeparturesClient;
@@ -47,14 +48,19 @@ type ExtendPermit = {
 
 export interface AppController {
   chooseVoiceLocation(index: number): Promise<void>;
+  clearRide(): void;
   getActiveMode(): Mode;
   getVoiceAvailability(): VoiceAvailability;
   initializeVoice(): void;
   loadInitialDepartures(): Promise<void>;
   noteScrollPush(push: PointerPush, metrics: ScrollMetrics): void;
+  openWaitAtStop(stopId: string): Promise<void>;
   refreshNearbyDepartures(): Promise<void>;
+  setActiveView(view: AppView): void;
   setMode(mode: Mode): void;
+  setRideExitStop(stopId: string | null): void;
   setSelectedStop(stopId: string | null): Promise<void>;
+  startRide(input: StartRideInput): void;
   startVoiceSearch(): Promise<void>;
   store: AppStore;
   subscribe(listener: (mode: Mode) => void): () => void;
@@ -623,6 +629,9 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
       }
       await loadResolvedVoiceLocation(choice);
     },
+    clearRide() {
+      store.clearRide();
+    },
     getActiveMode() {
       return store.getState().activeMode;
     },
@@ -642,8 +651,20 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
       await loadNearbyFromDevice(readCoarseDevicePosition);
     },
     noteScrollPush,
+    async openWaitAtStop(stopId) {
+      const normalized = String(stopId || "").trim();
+      store.setActiveView("wait");
+      if (!normalized) {
+        return;
+      }
+      store.setSelectedStop(normalized);
+      await loadDeparturesForCurrentState();
+    },
     async refreshNearbyDepartures() {
       await loadNearbyFromDevice(readFreshDevicePosition);
+    },
+    setActiveView(view) {
+      store.setActiveView(view);
     },
     setMode(mode) {
       store.setMode(mode);
@@ -651,11 +672,17 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
         void loadDeparturesForCurrentState();
       }
     },
+    setRideExitStop(stopId) {
+      store.setRideExitStop(stopId);
+    },
     async setSelectedStop(stopId) {
       store.setSelectedStop(stopId);
       if (store.getState().coords) {
         await loadDeparturesForCurrentState();
       }
+    },
+    startRide(input) {
+      store.startRide(input);
     },
     async startVoiceSearch() {
       if (store.getState().voice.phase !== "idle") {

@@ -4,6 +4,7 @@ import { registerDeparturesRoute } from "./routes/departures.js";
 import { registerGeocodeRoute } from "./routes/geocode.js";
 import { registerSpeechTranscribeRoute } from "./routes/speech-transcribe.js";
 import { registerMapTileRoute } from "./routes/map-tile.js";
+import { registerRideRoute } from "./routes/ride.js";
 import { registerVehicleSpanRoute } from "./routes/vehicle-span.js";
 import { registerWalkRoute } from "./routes/walk.js";
 import { createDigitransitService } from "./services/digitransit/client.js";
@@ -40,6 +41,11 @@ export function createApp(options: AppOptions = {}): Hono {
   });
   registerSpeechTranscribeRoute(app, {
     speechTranscriptionService: options.speechTranscriptionService,
+  });
+  registerRideRoute(app, {
+    digitransitService,
+    liveVehicleFetch: options.liveVehicleFetch,
+    now: options.now,
   });
   registerVehicleSpanRoute(app, {
     digitransitService,

@@ -7,6 +7,7 @@ import { createWalkSession, type HoldScheduler, type WalkSession } from "@client
 import { createRideView } from "@client/features/ride/ride-view";
 import { createLiquidGlassSwitch } from "@client/features/view-switch/liquid-glass-switch";
 import type { RideFetcher } from "@client/services/ride-client";
+import type { TransfersFetcher } from "@client/services/transfers-client";
 import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
 import type { VehicleSpanEvent } from "@shared/domain/vehicle-span";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
@@ -38,6 +39,7 @@ interface RenderAppShellOptions {
   controller: AppController;
   documentRef: Document;
   fetchRide?: RideFetcher;
+  fetchTransfers?: TransfersFetcher;
   fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
@@ -749,6 +751,8 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     destinationColorFor: colorForDestination,
     documentRef,
     fetchRide: options.fetchRide,
+    fetchTransfers: options.fetchTransfers,
+    fetchWalk: options.fetchWalk,
   });
 
   const ridePanel = documentRef.createElement("section");

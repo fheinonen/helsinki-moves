@@ -38,6 +38,8 @@ function createBaseState(): AppState {
       destinationColor: null,
       exitStopId: null,
       line: null,
+      transferMode: null,
+      transferTripId: null,
       tripId: null,
     },
     selectedStopId: "HSL:SELECTED",

@@ -1,7 +1,9 @@
 import type { AppController } from "@client/app/app-controller";
 import type { AppState } from "@client/app/app-store";
 import { createRideMapView, type RideMapView } from "@client/features/ride/ride-map-view";
+import { createRideTransfersController } from "@client/features/ride/ride-transfers-view";
 import { fetchRideSnapshot, type RideFetcher } from "@client/services/ride-client";
+import type { TransfersFetcher } from "@client/services/transfers-client";
 import type { Departure } from "@shared/domain/departure";
 import {
   computeRideProgress,
@@ -10,6 +12,8 @@ import {
   type RideProgressStop,
   type RideSnapshot,
 } from "@shared/domain/ride";
+import type { TransferOption } from "@shared/domain/transfer";
+import type { WalkRequest, WalkRoute } from "@shared/domain/walk-route";
 
 const RIDE_POLL_MS = 5000;
 const MAX_QUICK_PICKS = 6;
@@ -25,6 +29,8 @@ interface CreateRideViewInput {
   destinationColorFor(destination: string): string;
   documentRef: Document;
   fetchRide?: RideFetcher;
+  fetchTransfers?: TransfersFetcher;
+  fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
 }
 
 function formatMinutes(minutes: number): string {
@@ -151,10 +157,12 @@ function buildArrivedPanel(input: {
   controller: AppController;
   documentRef: Document;
   line: string;
+  onBoardTransfer?(option: TransferOption): void;
   stopId: string | null;
   stopName: string;
+  watchedTransfer?: TransferOption | null;
 }): HTMLElement {
-  const { controller, documentRef, line, stopId, stopName } = input;
+  const { controller, documentRef, line, onBoardTransfer, stopId, stopName, watchedTransfer } = input;
   const card = documentRef.createElement("div");
   card.className = "ride-arrived";
   card.dataset.rideArrived = "true";
@@ -170,9 +178,21 @@ function buildArrivedPanel(input: {
   const actions = documentRef.createElement("div");
   actions.className = "ride-arrived__actions";
 
+  if (watchedTransfer && onBoardTransfer) {
+    const boardBtn = documentRef.createElement("button");
+    boardBtn.className = "ride-action ride-action--primary";
+    boardBtn.dataset.transferBoard = "true";
+    boardBtn.type = "button";
+    boardBtn.textContent = `Board ${watchedTransfer.line} to ${watchedTransfer.destination}`;
+    boardBtn.addEventListener("click", () => {
+      onBoardTransfer(watchedTransfer);
+    });
+    actions.appendChild(boardBtn);
+  }
+
   if (stopId) {
     const waitHere = documentRef.createElement("button");
-    waitHere.className = "ride-action ride-action--primary";
+    waitHere.className = watchedTransfer ? "ride-action" : "ride-action ride-action--primary";
     waitHere.dataset.rideWaitHere = "true";
     waitHere.type = "button";
     waitHere.textContent = "See departures here";
@@ -293,13 +313,20 @@ function buildNextStopHero(input: {
 function buildExitSummaryCard(input: {
   controller: AppController;
   documentRef: Document;
+  drawer: HTMLElement | null;
+  drawerOpen: boolean;
   exit: RideExitSummary;
+  onToggleTransfers(): void;
+  watchCard: HTMLElement | null;
 }): HTMLElement {
-  const { controller, documentRef, exit } = input;
+  const { controller, documentRef, drawer, drawerOpen, exit, onToggleTransfers, watchCard } = input;
   const card = documentRef.createElement("section");
   card.className = "ride-exit";
   card.dataset.rideExitSummary = "true";
   card.dataset.exitUrgency = exit.urgency;
+
+  const head = documentRef.createElement("div");
+  head.className = "ride-exit__head";
 
   const info = documentRef.createElement("div");
   info.className = "ride-exit__info";
@@ -324,6 +351,15 @@ function buildExitSummaryCard(input: {
   const actions = documentRef.createElement("div");
   actions.className = "ride-exit__actions";
 
+  const transfersToggle = documentRef.createElement("button");
+  transfersToggle.className = "ride-action";
+  transfersToggle.dataset.rideTransfersToggle = "true";
+  transfersToggle.type = "button";
+  transfersToggle.setAttribute("aria-expanded", String(drawerOpen));
+  transfersToggle.classList.toggle("is-active", drawerOpen);
+  transfersToggle.textContent = "Transfers";
+  transfersToggle.addEventListener("click", onToggleTransfers);
+
   const waitHere = documentRef.createElement("button");
   waitHere.className = "ride-action ride-action--primary";
   waitHere.dataset.rideWaitHere = "true";
@@ -342,8 +378,15 @@ function buildExitSummaryCard(input: {
     controller.setRideExitStop(null);
   });
 
-  actions.append(waitHere, unpin);
-  card.append(info, actions);
+  actions.append(transfersToggle, waitHere, unpin);
+  head.append(info, actions);
+  card.appendChild(head);
+  if (watchCard) {
+    card.appendChild(watchCard);
+  }
+  if (drawer) {
+    card.appendChild(drawer);
+  }
   return card;
 }
 
@@ -471,6 +514,19 @@ export function createRideView(input: CreateRideViewInput): RideView {
     },
   });
 
+  const transfersController = createRideTransfersController({
+    controller,
+    destinationColorFor,
+    documentRef,
+    fetchTransfers: input.fetchTransfers,
+    fetchWalk: input.fetchWalk,
+    onChange() {
+      if (latestState.activeView === "ride") {
+        render();
+      }
+    },
+  });
+
   function stopPolling(): void {
     if (pollTimer) {
       clearInterval(pollTimer);
@@ -537,6 +593,14 @@ export function createRideView(input: CreateRideViewInput): RideView {
       state.ride.destinationColor || destinationColorFor(activeSnapshot.destination);
     element.style.setProperty("--destination-color", color);
 
+    transfersController.sync({
+      active: state.activeView === "ride" && progress.status === "active",
+      exitStop: progress.exit?.stop ?? null,
+      rideMode: activeSnapshot.mode,
+      transferMode: state.ride.transferMode,
+      transferTripId: state.ride.transferTripId,
+    });
+
     if (progress.status === "arrived") {
       const stop = progress.exit?.stop ?? progress.finalStop;
       content.replaceChildren(
@@ -544,8 +608,12 @@ export function createRideView(input: CreateRideViewInput): RideView {
           controller,
           documentRef,
           line: activeSnapshot.line,
+          onBoardTransfer(option) {
+            transfersController.boardTransfer(option);
+          },
           stopId: stop?.stopId ?? null,
           stopName: stop?.name || activeSnapshot.destination,
+          watchedTransfer: transfersController.getWatchedOption(),
         }),
       );
       return;
@@ -571,11 +639,25 @@ export function createRideView(input: CreateRideViewInput): RideView {
     ];
 
     if (progress.exit) {
+      const watchCard = transfersController.renderWatchCard({
+        arrivalIso: progress.exit.stop.arrivalIso,
+        transferTripId: state.ride.transferTripId,
+      });
+      const drawer = transfersController.renderDrawer({
+        arrivalIso: progress.exit.stop.arrivalIso,
+        transferTripId: state.ride.transferTripId,
+      });
       nodes.push(
         buildExitSummaryCard({
           controller,
           documentRef,
+          drawer,
+          drawerOpen: transfersController.isDrawerOpen(),
           exit: progress.exit,
+          onToggleTransfers() {
+            transfersController.toggleDrawer();
+          },
+          watchCard,
         }),
       );
     }
@@ -609,6 +691,13 @@ export function createRideView(input: CreateRideViewInput): RideView {
   function render(): void {
     const state = latestState;
     if (!state.ride.tripId) {
+      transfersController.sync({
+        active: false,
+        exitStop: null,
+        rideMode: null,
+        transferMode: state.ride.transferMode,
+        transferTripId: state.ride.transferTripId,
+      });
       mapView.setOpen(false);
       content.replaceChildren(
         buildQuickPickPanel({
@@ -626,14 +715,26 @@ export function createRideView(input: CreateRideViewInput): RideView {
       return;
     }
 
+    transfersController.sync({
+      active: false,
+      exitStop: null,
+      rideMode: null,
+      transferMode: state.ride.transferMode,
+      transferTripId: state.ride.transferTripId,
+    });
+
     if (loadStatus === "error") {
       content.replaceChildren(
         buildArrivedPanel({
           controller,
           documentRef,
           line: state.ride.line || "",
+          onBoardTransfer(option) {
+            transfersController.boardTransfer(option);
+          },
           stopId: state.ride.exitStopId || state.ride.boardedStopId,
           stopName: state.ride.destination || "your destination",
+          watchedTransfer: transfersController.getWatchedOption(),
         }),
       );
       return;
@@ -645,6 +746,7 @@ export function createRideView(input: CreateRideViewInput): RideView {
   return {
     cleanup() {
       stopPolling();
+      transfersController.cleanup();
       mapView.destroy();
     },
     element,
@@ -667,6 +769,13 @@ export function createRideView(input: CreateRideViewInput): RideView {
         }
       } else {
         stopPolling();
+        transfersController.sync({
+          active: false,
+          exitStop: null,
+          rideMode: null,
+          transferMode: state.ride.transferMode,
+          transferTripId: state.ride.transferTripId,
+        });
       }
 
       if (state.activeView === "ride") {

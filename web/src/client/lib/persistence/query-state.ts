@@ -31,16 +31,31 @@ export function readViewFromSearch(search: string): AppView {
 export function readRideFromSearch(search: string): {
   boardedStopId: string | null;
   exitStopId: string | null;
+  transferMode: AppState["activeMode"] | null;
+  transferTripId: string | null;
   tripId: string | null;
 } {
   const params = new URLSearchParams(search);
   const tripId = params.get("trip")?.trim() || null;
   if (!tripId) {
-    return { boardedStopId: null, exitStopId: null, tripId: null };
+    return {
+      boardedStopId: null,
+      exitStopId: null,
+      transferMode: null,
+      transferTripId: null,
+      tripId: null,
+    };
   }
+  const exitStopId = params.get("exit")?.trim() || null;
+  const transferTripId = exitStopId ? params.get("transferTrip")?.trim() || null : null;
+  const rawTransferMode = params.get("transferMode")?.trim().toUpperCase() || "";
+  const transferMode =
+    transferTripId && rawTransferMode ? parseMode(rawTransferMode, "RAIL") : null;
   return {
     boardedStopId: params.get("boarded")?.trim() || null,
-    exitStopId: params.get("exit")?.trim() || null,
+    exitStopId,
+    transferMode,
+    transferTripId,
     tripId,
   };
 }
@@ -99,6 +114,12 @@ function appendRideParams(params: URLSearchParams, state: AppState): void {
   }
   if (state.ride.exitStopId?.trim()) {
     params.set("exit", state.ride.exitStopId.trim());
+    if (state.ride.transferTripId?.trim()) {
+      if (state.ride.transferMode) {
+        params.set("transferMode", state.ride.transferMode.toLowerCase());
+      }
+      params.set("transferTrip", state.ride.transferTripId.trim());
+    }
   }
 }
 

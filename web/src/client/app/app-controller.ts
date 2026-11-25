@@ -59,6 +59,7 @@ export interface AppController {
   setActiveView(view: AppView): void;
   setMode(mode: Mode): void;
   setRideExitStop(stopId: string | null): void;
+  setRideTransfer(input: { mode: Mode | null; tripId: string | null }): void;
   setSelectedStop(stopId: string | null): Promise<void>;
   startRide(input: StartRideInput): void;
   startVoiceSearch(): Promise<void>;
@@ -674,6 +675,9 @@ export function createAppController(options: CreateAppControllerOptions): AppCon
     },
     setRideExitStop(stopId) {
       store.setRideExitStop(stopId);
+    },
+    setRideTransfer(input) {
+      store.setRideTransfer(input);
     },
     async setSelectedStop(stopId) {
       store.setSelectedStop(stopId);

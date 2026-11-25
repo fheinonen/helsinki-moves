@@ -34,6 +34,8 @@ export interface RideSelectionState {
   destinationColor: string | null;
   exitStopId: string | null;
   line: string | null;
+  transferMode: Mode | null;
+  transferTripId: string | null;
   tripId: string | null;
 }
 
@@ -86,6 +88,8 @@ export interface AppStore extends AppStateStore {
   restoreRideSelection(input: {
     boardedStopId: string | null;
     exitStopId: string | null;
+    transferMode?: Mode | null;
+    transferTripId?: string | null;
     tripId: string | null;
   }): void;
   setActiveView(view: AppView): void;
@@ -96,6 +100,7 @@ export interface AppStore extends AppStateStore {
   setLocationUnavailable(message: string): void;
   setMode(mode: Mode): void;
   setRideExitStop(stopId: string | null): void;
+  setRideTransfer(input: { mode: Mode | null; tripId: string | null }): void;
   setSelectedStop(stopId: string | null): void;
   setStopAnchor(stopId: string | null): void;
   setStatus(message: string | null): void;
@@ -117,6 +122,8 @@ function createEmptyRideSelection(): RideSelectionState {
     destinationColor: null,
     exitStopId: null,
     line: null,
+    transferMode: null,
+    transferTripId: null,
     tripId: null,
   };
 }
@@ -261,6 +268,8 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
     },
     restoreRideSelection(input) {
       const tripId = normalizeOptionalId(input.tripId);
+      const exitStopId = normalizeOptionalId(input.exitStopId);
+      const transferTripId = exitStopId ? normalizeOptionalId(input.transferTripId) : null;
       store.setState((state) => ({
         ...state,
         ride: tripId
@@ -268,8 +277,10 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
               boardedStopId: normalizeOptionalId(input.boardedStopId),
               destination: null,
               destinationColor: null,
-              exitStopId: normalizeOptionalId(input.exitStopId),
+              exitStopId,
               line: null,
+              transferMode: transferTripId ? (input.transferMode ?? null) : null,
+              transferTripId,
               tripId,
             }
           : createEmptyRideSelection(),
@@ -325,11 +336,27 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
     },
     setRideExitStop(stopId) {
       const normalizedStopId = normalizeOptionalId(stopId);
+      store.setState((state) => {
+        const unchanged = state.ride.exitStopId === normalizedStopId;
+        return {
+          ...state,
+          ride: {
+            ...state.ride,
+            exitStopId: normalizedStopId,
+            transferMode: unchanged ? state.ride.transferMode : null,
+            transferTripId: unchanged ? state.ride.transferTripId : null,
+          },
+        };
+      });
+    },
+    setRideTransfer(input) {
+      const transferTripId = normalizeOptionalId(input.tripId);
       store.setState((state) => ({
         ...state,
         ride: {
           ...state.ride,
-          exitStopId: normalizedStopId,
+          transferMode: transferTripId ? input.mode : null,
+          transferTripId,
         },
       }));
     },
@@ -383,6 +410,8 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
           destinationColor: normalizeOptionalId(input.destinationColor),
           exitStopId: normalizeOptionalId(input.exitStopId),
           line: normalizeOptionalId(input.line),
+          transferMode: null,
+          transferTripId: null,
           tripId,
         },
       }));

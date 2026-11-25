@@ -1772,6 +1772,23 @@ button {
   flex-wrap: wrap;
 }
 
+.ride-transfer-map {
+  margin-top: 0.2rem;
+}
+
+.ride-transfer-map__glass {
+  border-radius: 0.62rem;
+}
+
+.ride-transfer-map__status {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 0.56rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 .ride-transfers {
   display: grid;
   gap: 0.5rem;

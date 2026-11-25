@@ -263,27 +263,29 @@ definePlaywrightFeature<World>(
   `
 Feature: Wait and Ride view switching with Apple Liquid Glass dock
 
-  Scenario: Boarding a ride from Wait, pinning an exit, toggling the route map, and jumping to Wait here
+  Scenario: Boarding a ride from Wait, pinning an exit, toggling the route map, and switching back to Wait
     Given Wait and Ride API mocks are installed
     When the app opens on mobile viewport
     Then the floating Liquid Glass dock sits centered at the bottom inside the viewport
     When the rider opens Tram 4 and taps Ride
     Then the Ride view shows next stop Meilahti and the URL reflects ride view
     When the rider pins Toolo as their exit stop and opens the collapsible route map
-    Then the Ride exit card shows Toolo and the live route map is visible
-    When the rider taps Wait here for the pinned exit
-    Then the Wait view opens anchored on stop HSL:3
+    Then the Ride exit card shows Toolo without Wait here and the live route map is visible
+    When the rider taps the Wait tab on the Liquid Glass dock
+    Then the Wait view is visible again
 
   Scenario: Reloading a Ride URL restores the active Ride view and pinned exit
     Given Wait and Ride API mocks are installed
     When the rider opens the bookmarked Ride URL for trip HSL:TRIP_4 with exit HSL:4
     Then the Ride view is active with Lasipalatsi pinned as exit
 
-  Scenario: Watching a live transfer detects a missed connection, recovers with Watch next, and boards the next leg
+  Scenario: Watching a live transfer shows its inline Walk map, detects a missed connection, recovers with Watch next, and boards the next leg
     Given Wait and Ride API mocks are installed
     When the rider opens the bookmarked Ride URL for trip HSL:TRIP_4 with exit HSL:4
     And the rider opens Transfers and pins transfer option HSL:I_1244
     Then the browser Live Transfer Watch shows line I with make-it status
+    When the rider opens the inline transfer Walk map
+    Then the browser transfer Walk map shows the walking route and markers
     When the tram is delayed by 6 minutes on the next live poll
     Then the browser Live Transfer Watch shows line I with missed status
     When the rider taps Watch next and then Board transfer
@@ -348,30 +350,30 @@ Feature: Wait and Ride view switching with Apple Liquid Glass dock
         },
       },
       {
-        pattern: /^Then the Ride exit card shows (.+) and the live route map is visible$/,
+        pattern: /^Then the Ride exit card shows (.+) without Wait here and the live route map is visible$/,
         run: async ({ args, assert, fixtures }) => {
           const page = fixtures.page as Page;
-          const exitText = (await page.locator("[data-ride-exit-summary]").textContent()) || "";
+          const exitCard = page.locator("[data-ride-exit-summary]");
+          const exitText = (await exitCard.textContent()) || "";
           assert.match(exitText, new RegExp(args[0]));
+          assert.equal(await exitCard.locator('[data-ride-wait-here="true"]').count(), 0);
           const markerVisible = await page.locator('[data-ride-vehicle-marker="true"]').isVisible();
           assert.equal(markerVisible, true);
         },
       },
       {
-        pattern: /^When the rider taps Wait here for the pinned exit$/,
+        pattern: /^When the rider taps the Wait tab on the Liquid Glass dock$/,
         run: async ({ fixtures }) => {
           const page = fixtures.page as Page;
-          await page.locator('[data-ride-wait-here="true"]').click();
+          await page.locator('[data-view-tab="wait"]').click();
           await page.locator('[data-view-panel="wait"]').waitFor({ state: "visible" });
         },
       },
       {
-        pattern: /^Then the Wait view opens anchored on stop (.+)$/,
-        run: async ({ args, assert, fixtures, world }) => {
+        pattern: /^Then the Wait view is visible again$/,
+        run: async ({ assert, fixtures }) => {
           const page = fixtures.page as Page;
-          const waitVisible = await page.locator('[data-view-panel="wait"]').isVisible();
-          assert.equal(waitVisible, true);
-          assert.equal(world.requestedStopIds.includes(args[0]), true);
+          assert.equal(await page.locator('[data-view-panel="wait"]').isVisible(), true);
         },
       },
       {
@@ -413,6 +415,25 @@ Feature: Wait and Ride view switching with Apple Liquid Glass dock
           await watch.waitFor({ state: "visible", timeout: 8000 });
           const line = (await watch.locator(".ride-transfer-watch__line").textContent()) || "";
           assert.equal(line, args[0]);
+        },
+      },
+      {
+        pattern: /^When the rider opens the inline transfer Walk map$/,
+        run: async ({ fixtures }) => {
+          const page = fixtures.page as Page;
+          await page.locator('[data-transfer-walk-map-toggle="true"]').click();
+          await page.locator('[data-transfer-walk-map="true"]').waitFor({ state: "visible" });
+        },
+      },
+      {
+        pattern: /^Then the browser transfer Walk map shows the walking route and markers$/,
+        run: async ({ assert, fixtures }) => {
+          const page = fixtures.page as Page;
+          const map = page.locator('[data-transfer-walk-map="true"]');
+          assert.equal(await map.locator('[data-walk-origin="true"]').isVisible(), true);
+          assert.equal(await map.locator('[data-stop-marker="true"]').isVisible(), true);
+          assert.equal(await map.locator('[data-walk-time="true"]').isVisible(), true);
+          assert.equal(await map.locator("[data-route-span]").count(), 1);
         },
       },
       {

@@ -1,4 +1,5 @@
 import type { AppController } from "@client/app/app-controller";
+import { createTransferWalkMapView } from "@client/features/ride/transfer-walk-map-view";
 import { fetchTransfers, type TransfersFetcher } from "@client/services/transfers-client";
 import { fetchWalkRoute } from "@client/services/walk-client";
 import type { Mode } from "@shared/domain/mode";
@@ -148,11 +149,25 @@ function buildWatchCardElement(input: {
   documentRef: Document;
   evaluated: EvaluatedTransfer;
   onBoard(): void;
+  onToggleWalkMap(): void;
   onUnwatch(): void;
   onWatchNext?(next: EvaluatedTransfer): void;
   recovery: EvaluatedTransfer | null;
+  walkMap: HTMLElement;
+  walkMapOpen: boolean;
 }): HTMLElement {
-  const { color, documentRef, evaluated, onBoard, onUnwatch, onWatchNext, recovery } = input;
+  const {
+    color,
+    documentRef,
+    evaluated,
+    onBoard,
+    onToggleWalkMap,
+    onUnwatch,
+    onWatchNext,
+    recovery,
+    walkMap,
+    walkMapOpen,
+  } = input;
   const { option } = evaluated;
 
   const card = documentRef.createElement("div");
@@ -228,6 +243,15 @@ function buildWatchCardElement(input: {
   boardBtn.textContent = `Board ${option.line}`;
   boardBtn.addEventListener("click", onBoard);
 
+  const walkMapBtn = documentRef.createElement("button");
+  walkMapBtn.className = "ride-action";
+  walkMapBtn.dataset.transferWalkMapToggle = "true";
+  walkMapBtn.type = "button";
+  walkMapBtn.setAttribute("aria-expanded", String(walkMapOpen));
+  walkMapBtn.classList.toggle("is-active", walkMapOpen);
+  walkMapBtn.textContent = "Walk map";
+  walkMapBtn.addEventListener("click", onToggleWalkMap);
+
   const unwatchBtn = documentRef.createElement("button");
   unwatchBtn.className = "ride-action";
   unwatchBtn.dataset.transferUnwatch = "true";
@@ -235,8 +259,8 @@ function buildWatchCardElement(input: {
   unwatchBtn.textContent = "Unwatch";
   unwatchBtn.addEventListener("click", onUnwatch);
 
-  actions.append(boardBtn, unwatchBtn);
-  card.appendChild(actions);
+  actions.append(boardBtn, walkMapBtn, unwatchBtn);
+  card.append(actions, walkMap);
   return card;
 }
 
@@ -249,6 +273,7 @@ export function createRideTransfersController(
   const loadWalk = input.fetchWalk ?? fetchWalkRoute;
 
   let drawerOpen = false;
+  let walkMapOpen = false;
   let currentExit: RideStop | null = null;
   let currentRideMode: Mode = "BUS";
   let requestedMode: Mode | null = null;
@@ -260,8 +285,15 @@ export function createRideTransfersController(
   let inFlight: AbortController | null = null;
   let requestToken = 0;
 
-  const walkCache = new Map<string, number>();
+  const walkCache = new Map<string, WalkRoute | null>();
   const walkInFlight = new Set<string>();
+  const walkMapView = createTransferWalkMapView({
+    documentRef,
+    onClose() {
+      walkMapOpen = false;
+      onChange();
+    },
+  });
 
   function stopPolling(): void {
     if (pollTimer) {
@@ -288,14 +320,13 @@ export function createRideTransfersController(
     })
       .then((route) => {
         walkInFlight.delete(key);
-        if (!route) {
-          return;
-        }
-        walkCache.set(key, route.seconds);
+        walkCache.set(key, route ?? null);
         onChange();
       })
       .catch(() => {
         walkInFlight.delete(key);
+        walkCache.set(key, null);
+        onChange();
       });
   }
 
@@ -366,10 +397,9 @@ export function createRideTransfersController(
     const arrivalMs = Date.parse(arrivalIso);
     return response.options.map((option) => {
       const key = currentExit ? walkCacheKey(currentExit.stopId, option.stopId) : "";
+      const cachedWalk = key ? walkCache.get(key) : null;
       const walkOverride =
-        option.tripId === activeTransferTripId && key && walkCache.has(key)
-          ? walkCache.get(key)
-          : null;
+        option.tripId === activeTransferTripId && cachedWalk ? cachedWalk.seconds : null;
       return evaluateTransfer({
         arrivalMs,
         option,
@@ -381,6 +411,8 @@ export function createRideTransfersController(
   function boardTransfer(option: TransferOption): void {
     const color = destinationColorFor(option.destination);
     drawerOpen = false;
+    walkMapOpen = false;
+    walkMapView.setOpen(false);
     lastWatchedOption = null;
     stopPolling();
     controller.startRide({
@@ -396,6 +428,7 @@ export function createRideTransfersController(
     boardTransfer,
     cleanup() {
       stopPolling();
+      walkMapView.destroy();
     },
     getWatchedOption() {
       return lastWatchedOption;
@@ -466,6 +499,7 @@ export function createRideTransfersController(
               lastWatchedOption = item.option;
               requestedMode = item.option.mode;
               drawerOpen = false;
+              walkMapOpen = false;
               refineWalkForWatched(item.option);
               controller.setRideTransfer({
                 mode: item.option.mode,
@@ -480,25 +514,50 @@ export function createRideTransfersController(
     },
     renderWatchCard({ arrivalIso, transferTripId }) {
       if (!transferTripId) {
+        walkMapView.setOpen(false);
         return null;
       }
       const evaluated = evaluateAll(arrivalIso);
       const watched = evaluated.find((item) => item.option.tripId === transferTripId);
       if (!watched) {
+        walkMapView.setOpen(false);
         return null;
       }
       lastWatchedOption = watched.option;
+      const color = destinationColorFor(watched.option.destination);
+      const key = currentExit ? walkCacheKey(currentExit.stopId, watched.option.stopId) : "";
+      walkMapView.setOpen(walkMapOpen);
+      if (walkMapOpen) {
+        refineWalkForWatched(watched.option);
+        walkMapView.sync({
+          color,
+          evaluated: watched,
+          exitStopName: currentExit?.name || "Exit stop",
+          loading: Boolean(key && walkInFlight.has(key)),
+          route: key ? (walkCache.get(key) ?? null) : null,
+          routeKey: key,
+        });
+      }
       const recovery =
         watched.feasibility === "missed" ? findRecoveryTransfer(watched, evaluated) : null;
       return buildWatchCardElement({
-        color: destinationColorFor(watched.option.destination),
+        color,
         documentRef,
         evaluated: watched,
         onBoard() {
           boardTransfer(watched.option);
         },
+        onToggleWalkMap() {
+          walkMapOpen = !walkMapOpen;
+          if (walkMapOpen) {
+            refineWalkForWatched(watched.option);
+          }
+          onChange();
+        },
         onUnwatch() {
           lastWatchedOption = null;
+          walkMapOpen = false;
+          walkMapView.setOpen(false);
           controller.setRideTransfer({ mode: null, tripId: null });
         },
         onWatchNext(next) {
@@ -510,6 +569,8 @@ export function createRideTransfersController(
           });
         },
         recovery,
+        walkMap: walkMapView.element,
+        walkMapOpen,
       });
     },
     sync(next) {
@@ -517,6 +578,8 @@ export function createRideTransfersController(
       if (exitChanged) {
         response = null;
         drawerOpen = false;
+        walkMapOpen = false;
+        walkMapView.setOpen(false);
         requestedMode = next.transferMode;
         if (!next.transferTripId) {
           lastWatchedOption = null;
@@ -532,6 +595,8 @@ export function createRideTransfersController(
       activeTransferTripId = next.transferTripId;
       if (!next.transferTripId) {
         lastWatchedOption = null;
+        walkMapOpen = false;
+        walkMapView.setOpen(false);
       }
 
       const shouldPoll = next.active && Boolean(currentExit) && (drawerOpen || Boolean(activeTransferTripId));

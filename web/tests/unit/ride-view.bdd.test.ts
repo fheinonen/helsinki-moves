@@ -229,14 +229,12 @@ Feature: Wait and Ride view user flows
     Then the active view panel is ride
     And the Ride hero shows next stop Meilahti
 
-  Scenario: Pinning an exit stop shows countdown, dims later stops, and jumps to Wait here
+  Scenario: Pinning an exit stop shows countdown, dims later stops, and omits Wait here
     Given the app shell is riding Tram 4 to Kamppi with live telemetry
     When the rider taps Toolo on the Ride stop ribbon
     Then the exit summary shows Toolo with approaching urgency
     And Kamppi is dimmed beyond the exit
-    When the rider taps Wait here for the pinned exit
-    Then the active view panel is wait
-    And Wait requested departures for stop HSL:3
+    And the active exit card omits Wait here
 
   Scenario: Toggling the collapsible route map shows and hides the live trip map
     Given the app shell is riding Tram 4 to Kamppi with live telemetry
@@ -248,6 +246,9 @@ Feature: Wait and Ride view user flows
   Scenario: An arrived trip displays the calm Arrived card with See departures here
     Given the app shell is riding an already arrived Tram 4 trip
     Then the Ride view shows the Arrived card for Kamppi
+    When the rider taps See departures here on the Arrived card
+    Then the active view panel is wait
+    And Wait requested departures for stop HSL:5
 
   Scenario: Rider can expand passed stops, clear a pinned exit, and end the ride
     Given the app shell is riding Tram 4 to Kamppi with live telemetry
@@ -344,9 +345,11 @@ Feature: Wait and Ride view user flows
         },
       },
       {
-        pattern: /^When the rider taps Wait here for the pinned exit$/,
+        pattern: /^When the rider taps See departures here on the Arrived card$/,
         run: async ({ world }) => {
-          world.root?.querySelector<HTMLButtonElement>('[data-ride-wait-here="true"]')?.click();
+          world.root
+            ?.querySelector<HTMLButtonElement>('[data-ride-arrived="true"] [data-ride-wait-here="true"]')
+            ?.click();
           await flushMicrotasks();
         },
       },
@@ -387,6 +390,13 @@ Feature: Wait and Ride view user flows
           const exitCard = world.root?.querySelector<HTMLElement>("[data-ride-exit-summary]");
           assert.match(exitCard?.textContent || "", new RegExp(args[0]));
           assert.equal(exitCard?.dataset.exitUrgency, args[1]);
+        },
+      },
+      {
+        pattern: /^Then the active exit card omits Wait here$/,
+        run: ({ assert, world }) => {
+          const exitCard = world.root?.querySelector<HTMLElement>("[data-ride-exit-summary]");
+          assert.equal(exitCard?.querySelector('[data-ride-wait-here="true"]'), null);
         },
       },
       {

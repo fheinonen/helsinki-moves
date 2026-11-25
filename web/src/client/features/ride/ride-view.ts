@@ -352,22 +352,13 @@ function buildExitSummaryCard(input: {
   actions.className = "ride-exit__actions";
 
   const transfersToggle = documentRef.createElement("button");
-  transfersToggle.className = "ride-action";
+  transfersToggle.className = "ride-action ride-action--primary";
   transfersToggle.dataset.rideTransfersToggle = "true";
   transfersToggle.type = "button";
   transfersToggle.setAttribute("aria-expanded", String(drawerOpen));
   transfersToggle.classList.toggle("is-active", drawerOpen);
   transfersToggle.textContent = "Transfers";
   transfersToggle.addEventListener("click", onToggleTransfers);
-
-  const waitHere = documentRef.createElement("button");
-  waitHere.className = "ride-action ride-action--primary";
-  waitHere.dataset.rideWaitHere = "true";
-  waitHere.type = "button";
-  waitHere.textContent = "Wait here";
-  waitHere.addEventListener("click", () => {
-    void controller.openWaitAtStop(exit.stop.stopId);
-  });
 
   const unpin = documentRef.createElement("button");
   unpin.className = "ride-action";
@@ -378,7 +369,7 @@ function buildExitSummaryCard(input: {
     controller.setRideExitStop(null);
   });
 
-  actions.append(transfersToggle, waitHere, unpin);
+  actions.append(transfersToggle, unpin);
   head.append(info, actions);
   card.appendChild(head);
   if (watchCard) {

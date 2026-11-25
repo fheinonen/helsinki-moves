@@ -25,6 +25,7 @@ interface World {
   store?: AppStore;
   transferClientUrl?: string;
   walkCalls?: number;
+  walkUnavailable?: boolean;
 }
 
 afterEach(() => {
@@ -215,9 +216,13 @@ function mountBusRide(world: World): void {
     },
     fetchWalk: async () => {
       world.walkCalls = (world.walkCalls ?? 0) + 1;
+      if (world.walkUnavailable) {
+        return null;
+      }
       return {
         points: [
           { lat: 60.198, lon: 24.933 },
+          { lat: 60.1984, lon: 24.9334 },
           { lat: 60.1988, lon: 24.9338 },
         ],
         seconds: 120,
@@ -250,6 +255,19 @@ Feature: Real-time transfer feasibility inside Ride view
     Then the Live Transfer Watch shows line I with make-it status
     And walking route refinement was requested once for the pinned transfer
     And the synced URL includes transferMode rail and transferTrip HSL:I_1426
+
+  Scenario: Toggling Walk map on a Live Transfer Watch expands the inline street walking map and collapses it again
+    Given the rider is on Bus 500 watching the I-train at Pasila
+    Then the transfer walk map is collapsed by default
+    When the rider toggles the transfer Walk map
+    Then the transfer walk map is visible with exit origin, connecting stop marker, and walk-time badge
+    When the rider toggles the transfer Walk map
+    Then the transfer walk map is collapsed by default
+
+  Scenario: Transfer Walk map falls back cleanly when walking route is unavailable
+    Given the rider is on Bus 500 watching the I-train at Pasila without walking route data
+    When the rider toggles the transfer Walk map
+    Then the transfer walk map shows "Walking map unavailable for this transfer."
 
   Scenario: Switching transfer modes updates the list and Unwatch clears the Live Transfer Watch
     Given the rider is on Bus 500 with Pasila pinned as exit
@@ -550,6 +568,54 @@ Feature: Real-time transfer feasibility inside Ride view
         run: ({ args, assert, world }) => {
           assert.match(world.transferClientUrl || "", /^\/api\/v1\/transfers\?/);
           assert.match(world.transferClientUrl || "", new RegExp(`mode=${args[0]}`));
+        },
+      },
+      {
+        pattern: /^Given the rider is on Bus 500 watching the I-train at Pasila without walking route data$/,
+        run: async ({ world }) => {
+          world.walkUnavailable = true;
+          mountBusRide(world);
+          await flush();
+          world.root?.querySelector<HTMLButtonElement>('[data-ride-transfers-toggle="true"]')?.click();
+          await flush();
+          world.root?.querySelector<HTMLButtonElement>('[data-transfer-option="HSL:I_1426"]')?.click();
+          await flush();
+        },
+      },
+      {
+        pattern: /^When the rider toggles the transfer Walk map$/,
+        run: async ({ world }) => {
+          world.root?.querySelector<HTMLButtonElement>('[data-transfer-walk-map-toggle="true"]')?.click();
+          await flush();
+        },
+      },
+      {
+        pattern: /^Then the transfer walk map is collapsed by default$/,
+        run: ({ assert, world }) => {
+          const map = world.root?.querySelector<HTMLElement>('[data-transfer-walk-map="true"]');
+          const toggle = world.root?.querySelector<HTMLButtonElement>('[data-transfer-walk-map-toggle="true"]');
+          assert.equal(Boolean(toggle), true);
+          assert.equal(toggle?.getAttribute("aria-expanded"), "false");
+          assert.equal(map == null || map.hidden, true);
+        },
+      },
+      {
+        pattern: /^Then the transfer walk map is visible with exit origin, connecting stop marker, and walk-time badge$/,
+        run: ({ assert, world }) => {
+          const map = world.root?.querySelector<HTMLElement>('[data-transfer-walk-map="true"]');
+          assert.equal(Boolean(map && !map.hidden), true);
+          assert.equal(Boolean(map?.querySelector('[data-walk-origin="true"]')), true);
+          assert.equal(Boolean(map?.querySelector('[data-stop-marker="true"]')), true);
+          assert.equal(Boolean(map?.querySelector("[data-route-span]")), true);
+          assert.equal(Boolean(map?.querySelector('[data-walk-time="true"]')), true);
+        },
+      },
+      {
+        pattern: /^Then the transfer walk map shows "(.+)"$/,
+        run: ({ args, assert, world }) => {
+          const map = world.root?.querySelector<HTMLElement>('[data-transfer-walk-map="true"]');
+          assert.equal(Boolean(map && !map.hidden), true);
+          assert.equal(map?.querySelector(".ride-transfer-map__status")?.textContent, args[0]);
         },
       },
       {

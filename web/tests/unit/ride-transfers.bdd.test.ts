@@ -111,6 +111,28 @@ function createPasilaTransfers(): TransfersResponse {
     mode: "RAIL",
     options: [
       {
+        departureIso: new Date(NOW_MS + 6 * 60_000).toISOString(),
+        destination: "Kerava",
+        distanceMeters: 120,
+        line: "K",
+        mode: "RAIL",
+        platform: "2",
+        stopId: "HSL:PASILA_RAIL",
+        stopName: "Pasila",
+        tripId: "HSL:K_TOO_LATE",
+      },
+      {
+        departureIso: new Date(NOW_MS + 9 * 60_000).toISOString(),
+        destination: "Leppävaara",
+        distanceMeters: 120,
+        line: "A",
+        mode: "RAIL",
+        platform: "6",
+        stopId: "HSL:PASILA_RAIL",
+        stopName: "Pasila",
+        tripId: "HSL:A_NEAR_MISS",
+      },
+      {
         departureIso: new Date(NOW_MS + 16 * 60_000).toISOString(),
         destination: "Lentoasema",
         distanceMeters: 120,
@@ -255,6 +277,11 @@ Feature: Real-time transfer feasibility inside Ride view
     Then the Live Transfer Watch shows line I with make-it status
     And walking route refinement was requested once for the pinned transfer
     And the synced URL includes transferMode rail and transferTrip HSL:I_1426
+
+  Scenario: Transfers drawer hides departures missed by over 5 minutes while keeping closer misses
+    Given the rider is on Bus 500 with Pasila pinned as exit
+    When the rider toggles the Transfers drawer open
+    Then the Transfers drawer omits trip HSL:K_TOO_LATE and shows trips HSL:A_NEAR_MISS, HSL:I_1426, HSL:P_1432
 
   Scenario: Toggling Walk map on a Live Transfer Watch expands the inline street walking map and collapses it again
     Given the rider is on Bus 500 watching the I-train at Pasila
@@ -616,6 +643,16 @@ Feature: Real-time transfer feasibility inside Ride view
           const map = world.root?.querySelector<HTMLElement>('[data-transfer-walk-map="true"]');
           assert.equal(Boolean(map && !map.hidden), true);
           assert.equal(map?.querySelector(".ride-transfer-map__status")?.textContent, args[0]);
+        },
+      },
+      {
+        pattern: /^Then the Transfers drawer omits trip (.+) and shows trips (.+)$/,
+        run: ({ args, assert, world }) => {
+          const rows = [
+            ...(world.root?.querySelectorAll<HTMLButtonElement>("[data-transfer-option]") ?? []),
+          ].map((row) => row.dataset.transferOption || "");
+          assert.equal(rows.includes(args[0]), false);
+          assert.equal(rows.join(", "), args[1]);
         },
       },
       {

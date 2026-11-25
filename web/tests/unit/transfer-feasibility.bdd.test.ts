@@ -4,6 +4,7 @@ import {
   chooseDefaultTransferMode,
   estimateTransferWalkSeconds,
   evaluateTransfer,
+  filterDisplayableTransfers,
   findRecoveryTransfer,
   formatTransferMargin,
   type EvaluatedTransfer,
@@ -104,6 +105,10 @@ Feature: Real-time transfer feasibility evaluation
   Scenario: Non-finite walk distances and routed seconds clamp safely to zero
     When non-finite walk inputs are evaluated
     Then non-finite distance defaults to 30 seconds and non-finite routed walk to 45 seconds
+
+  Scenario: Displayable transfer filter hides departures missed by over 5 minutes
+    When filtering transfers with margins of -301, -300, -120, and 180 seconds
+    Then the displayable transfer trips are HSL:AT_LIMIT, HSL:NEAR_MISS, HSL:MAKE_IT
   `,
   {
     createWorld: () => ({}),
@@ -317,6 +322,47 @@ Feature: Real-time transfer feasibility evaluation
         pattern: /^Then no recovery transfer is suggested$/,
         run: ({ assert, world }) => {
           assert.equal(world.recovery, null);
+        },
+      },
+      {
+        pattern: /^When filtering transfers with margins of -301, -300, -120, and 180 seconds$/,
+        run: ({ world }) => {
+          const candidates: EvaluatedTransfer[] = [
+            {
+              feasibility: "missed",
+              marginSeconds: -301,
+              option: makeOption({ tripId: "HSL:TOO_LATE" }),
+              walkSeconds: 145,
+            },
+            {
+              feasibility: "missed",
+              marginSeconds: -300,
+              option: makeOption({ tripId: "HSL:AT_LIMIT" }),
+              walkSeconds: 145,
+            },
+            {
+              feasibility: "missed",
+              marginSeconds: -120,
+              option: makeOption({ tripId: "HSL:NEAR_MISS" }),
+              walkSeconds: 145,
+            },
+            {
+              feasibility: "make-it",
+              marginSeconds: 180,
+              option: makeOption({ tripId: "HSL:MAKE_IT" }),
+              walkSeconds: 145,
+            },
+          ];
+          world.evaluatedList = filterDisplayableTransfers(candidates);
+        },
+      },
+      {
+        pattern: /^Then the displayable transfer trips are (.+)$/,
+        run: ({ args, assert, world }) => {
+          assert.equal(
+            world.evaluatedList?.map((item) => item.option.tripId).join(", "),
+            args[0],
+          );
         },
       },
       {

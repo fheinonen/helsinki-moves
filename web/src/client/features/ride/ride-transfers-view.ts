@@ -8,6 +8,7 @@ import type { Mode } from "@shared/domain/mode";
 import type { RideStop } from "@shared/domain/ride";
 import {
   evaluateTransfer,
+  filterDisplayableTransfers,
   findRecoveryTransfer,
   formatTransferMargin,
   type EvaluatedTransfer,
@@ -480,7 +481,7 @@ export function createRideTransfersController(
         }),
       );
 
-      const evaluated = evaluateAll(arrivalIso);
+      const evaluated = filterDisplayableTransfers(evaluateAll(arrivalIso));
       if (evaluated.length === 0) {
         const none = documentRef.createElement("p");
         none.className = "ride-transfers__status";

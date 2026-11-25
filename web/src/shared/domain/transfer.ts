@@ -135,6 +135,14 @@ export function findRecoveryTransfer(
   return sorted[0] ?? null;
 }
 
+export const MAX_MISSED_DISPLAY_SECONDS = 300;
+
+export function filterDisplayableTransfers(
+  evaluated: readonly EvaluatedTransfer[],
+): EvaluatedTransfer[] {
+  return evaluated.filter((item) => item.marginSeconds >= -MAX_MISSED_DISPLAY_SECONDS);
+}
+
 export function formatTransferMargin(evaluated: EvaluatedTransfer): string {
   if (evaluated.feasibility === "make-it") {
     return `✓ +${Math.floor(evaluated.marginSeconds / 60)}m`;

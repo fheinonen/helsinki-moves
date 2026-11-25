@@ -14,7 +14,7 @@ import { transferFetchWindow } from "../services/glance/glance-horizon.js";
 const PRE_ARRIVAL_WINDOW_MS = 5 * 60_000;
 const TRANSFER_HORIZON_SECONDS = 50 * 60;
 const MAX_TRANSFER_STOPS = 4;
-const MAX_TRANSFER_OPTIONS = 16;
+const MAX_TRANSFER_OPTIONS = 24;
 
 interface TransfersRouteOptions {
   digitransitService: DigitransitService;

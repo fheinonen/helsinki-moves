@@ -1,5 +1,6 @@
 import type { AppController } from "@client/app/app-controller";
 import type { AppState } from "@client/app/app-store";
+import { scrollMapIntoView } from "@client/features/map/map-chrome";
 import { createRideMapView, type RideMapView } from "@client/features/ride/ride-map-view";
 import { createRideTransfersController } from "@client/features/ride/ride-transfers-view";
 import { fetchRideSnapshot, type RideFetcher } from "@client/services/ride-client";
@@ -610,6 +611,15 @@ export function createRideView(input: CreateRideViewInput): RideView {
       return;
     }
 
+    mapView.setOpen(mapOpen);
+    if (mapOpen) {
+      mapView.sync({
+        destinationColor: color,
+        progress,
+        snapshot: activeSnapshot,
+      });
+    }
+
     const nodes: HTMLElement[] = [
       buildIdentityHeader({
         destination: activeSnapshot.destination,
@@ -623,9 +633,13 @@ export function createRideView(input: CreateRideViewInput): RideView {
         onToggleMap() {
           mapOpen = !mapOpen;
           render();
+          if (mapOpen) {
+            scrollMapIntoView(mapView.element, documentRef);
+          }
         },
         telemetry: progress.telemetry,
       }),
+      mapView.element,
       buildNextStopHero({ documentRef, progress }),
     ];
 
@@ -652,16 +666,6 @@ export function createRideView(input: CreateRideViewInput): RideView {
         }),
       );
     }
-
-    mapView.setOpen(mapOpen);
-    if (mapOpen) {
-      mapView.sync({
-        destinationColor: color,
-        progress,
-        snapshot: activeSnapshot,
-      });
-    }
-    nodes.push(mapView.element);
 
     nodes.push(
       buildStopRibbon({

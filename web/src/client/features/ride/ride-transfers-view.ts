@@ -1,4 +1,5 @@
 import type { AppController } from "@client/app/app-controller";
+import { scrollMapIntoView } from "@client/features/map/map-chrome";
 import { createTransferWalkMapView } from "@client/features/ride/transfer-walk-map-view";
 import { fetchTransfers, type TransfersFetcher } from "@client/services/transfers-client";
 import { fetchWalkRoute } from "@client/services/walk-client";
@@ -559,6 +560,9 @@ export function createRideTransfersController(
             refineWalkForWatched(watched.option);
           }
           onChange();
+          if (walkMapOpen) {
+            scrollMapIntoView(walkMapView.element, documentRef);
+          }
         },
         onUnwatch() {
           lastWatchedOption = null;

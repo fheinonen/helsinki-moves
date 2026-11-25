@@ -363,6 +363,12 @@ Feature: Wait and Ride view switching with Apple Liquid Glass dock
             await rideMap.locator('[data-stop-marker="true"]').getAttribute("aria-label"),
             args[0],
           );
+          const mapBox = await rideMap.boundingBox();
+          const exitBox = await exitCard.boundingBox();
+          const viewport = page.viewportSize();
+          assert.equal(Boolean(mapBox && exitBox && viewport), true);
+          assert.equal((mapBox?.y || 0) < (exitBox?.y || 0), true);
+          assert.equal((mapBox?.y || 0) + (mapBox?.height || 0) <= (viewport?.height || 0), true);
         },
       },
       {

@@ -243,6 +243,7 @@ Feature: Wait and Ride view user flows
     And the Ride route map frames only up to target stop Meilahti without Munkkiniemi or Kamppi
     When the rider taps Toolo on the Ride stop ribbon
     Then the Ride route map frames only up to target stop Toolo without Munkkiniemi or Kamppi
+    And the Ride route map sits directly below the Ride header and above the exit card
     When the rider toggles the Ride route map
     Then the Ride route map is hidden
 
@@ -443,6 +444,23 @@ Feature: Wait and Ride view user flows
           };
           assert.equal(stopIds.includes(idByName[args[1]]), false);
           assert.equal(stopIds.includes(idByName[args[2]]), false);
+        },
+      },
+      {
+        pattern: /^Then the Ride route map sits directly below the Ride header and above the exit card$/,
+        run: ({ assert, world }) => {
+          const head = world.root?.querySelector<HTMLElement>(".ride-head");
+          const map = world.root?.querySelector<HTMLElement>('[data-ride-map="true"]');
+          const exitCard = world.root?.querySelector<HTMLElement>("[data-ride-exit-summary]");
+          assert.equal(head?.nextElementSibling, map);
+          assert.equal(
+            Boolean(
+              map &&
+                exitCard &&
+                (map.compareDocumentPosition(exitCard) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+            ),
+            true,
+          );
         },
       },
       {

@@ -4,6 +4,7 @@ const FINNISH_LOCALE = "fi-FI";
 
 export interface DestinationColorBook {
   colorsFor(destinations: readonly string[]): readonly string[];
+  peekColor(destination: string): string | null;
 }
 
 export function createDestinationColorBook(): DestinationColorBook {
@@ -14,13 +15,26 @@ export function createDestinationColorBook(): DestinationColorBook {
       const slots = remember(memory, keys);
       return keys.map((key) => DESTINATION_COLORS[slots.get(key) as number]);
     },
+    peekColor(destination) {
+      const slot = memory.get(destinationKey(destination));
+      return slot === undefined ? null : DESTINATION_COLORS[slot];
+    },
   };
 }
 
 function remember(memory: Map<string, number>, keys: readonly string[]): Map<string, number> {
   const unique = uniqueKeys(keys);
   const index = new Map(unique.map((key, position) => [key, position]));
-  const fixed = unique.map((key) => memory.get(key) ?? -1);
+  const seenOnBoard = new Set<number>();
+  const allowDuplicates = unique.length > DESTINATION_COLORS.length;
+  const fixed = unique.map((key) => {
+    const remembered = memory.get(key);
+    if (remembered === undefined || (!allowDuplicates && seenOnBoard.has(remembered))) {
+      return -1;
+    }
+    seenOnBoard.add(remembered);
+    return remembered;
+  });
   if (fixed.every((color) => color >= 0)) {
     return memory;
   }

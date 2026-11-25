@@ -650,8 +650,10 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.hidden = true;
 
   const destinationColors = createDestinationColorBook();
+  const rideDestinationColors = createDestinationColorBook();
   const colorForDestination = (destination: string): string =>
-    destinationColors.colorsFor([destination])[0];
+    destinationColors.peekColor(destination) ??
+    rideDestinationColors.colorsFor([destination])[0];
 
   let walk!: WalkSession;
   let mapExpanded = false;

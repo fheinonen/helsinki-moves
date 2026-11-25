@@ -2,6 +2,7 @@ import type { AppController } from "@client/app/app-controller";
 import { createTransferWalkMapView } from "@client/features/ride/transfer-walk-map-view";
 import { fetchTransfers, type TransfersFetcher } from "@client/services/transfers-client";
 import { fetchWalkRoute } from "@client/services/walk-client";
+import { createDestinationColorBook } from "@shared/domain/destination-color";
 import type { Mode } from "@shared/domain/mode";
 import type { RideStop } from "@shared/domain/ride";
 import {
@@ -285,6 +286,7 @@ export function createRideTransfersController(
   let inFlight: AbortController | null = null;
   let requestToken = 0;
 
+  const transferColors = createDestinationColorBook();
   const walkCache = new Map<string, WalkRoute | null>();
   const walkInFlight = new Set<string>();
   const walkMapView = createTransferWalkMapView({
@@ -409,7 +411,8 @@ export function createRideTransfersController(
   }
 
   function boardTransfer(option: TransferOption): void {
-    const color = destinationColorFor(option.destination);
+    const color =
+      transferColors.peekColor(option.destination) ?? destinationColorFor(option.destination);
     drawerOpen = false;
     walkMapOpen = false;
     walkMapView.setOpen(false);
@@ -485,10 +488,11 @@ export function createRideTransfersController(
         return panel;
       }
 
+      const rowColors = transferColors.colorsFor(evaluated.map((item) => item.option.destination));
       const list = documentRef.createElement("div");
       list.className = "ride-transfers__list";
-      for (const item of evaluated) {
-        const color = destinationColorFor(item.option.destination);
+      evaluated.forEach((item, index) => {
+        const color = rowColors[index];
         list.appendChild(
           buildTransferRow({
             color,
@@ -508,7 +512,7 @@ export function createRideTransfersController(
             },
           }),
         );
-      }
+      });
       panel.appendChild(list);
       return panel;
     },
@@ -524,7 +528,9 @@ export function createRideTransfersController(
         return null;
       }
       lastWatchedOption = watched.option;
-      const color = destinationColorFor(watched.option.destination);
+      const color =
+        transferColors.peekColor(watched.option.destination) ??
+        destinationColorFor(watched.option.destination);
       const key = currentExit ? walkCacheKey(currentExit.stopId, watched.option.stopId) : "";
       walkMapView.setOpen(walkMapOpen);
       if (walkMapOpen) {

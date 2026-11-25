@@ -168,28 +168,36 @@ function scanFixed(
   fixed: readonly number[],
   reserved: ReadonlySet<number>
 ): { avail: number; baseUsed: Uint8Array; free: number[] } {
-  const baseUsed = new Uint8Array(PALETTE_SIZE);
-  for (const color of reserved) {
-    baseUsed[color] = 1;
-  }
-  const onBoard = new Uint8Array(PALETTE_SIZE);
+  const boardUsed = new Uint8Array(PALETTE_SIZE);
   const free: number[] = [];
   for (let node = 0; node < fixed.length; node += 1) {
     const color = fixed[node];
     if (color >= 0) {
-      baseUsed[color] = onBoard[color] ? baseUsed[color] + 1 : 1;
-      onBoard[color] = 1;
+      boardUsed[color] += 1;
     } else {
       free.push(node);
     }
   }
-  let avail = 0;
+  let freshAvail = 0;
+  let boardAvail = 0;
   for (let color = 0; color < PALETTE_SIZE; color += 1) {
-    if (baseUsed[color] === 0) {
-      avail += 1;
+    if (boardUsed[color] === 0) {
+      boardAvail += 1;
+      if (!reserved.has(color)) {
+        freshAvail += 1;
+      }
     }
   }
-  return { avail, baseUsed, free };
+  if (free.length <= freshAvail) {
+    const baseUsed = boardUsed.slice();
+    for (const color of reserved) {
+      if (baseUsed[color] === 0) {
+        baseUsed[color] = 1;
+      }
+    }
+    return { avail: freshAvail, baseUsed, free };
+  }
+  return { avail: boardAvail, baseUsed: boardUsed, free };
 }
 
 function buildGraphs(

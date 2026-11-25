@@ -4,6 +4,10 @@ import { appendOsmCredit, OSM_ADDRESS_CREDIT } from "@client/features/map/osm-cr
 import { renderDepartureCard } from "@client/features/departures/departure-card-view";
 import { createVehicleSpanMap, type VehicleSpanMap } from "@client/features/departures/vehicle-span-view";
 import { createWalkSession, type HoldScheduler, type WalkSession } from "@client/features/departures/walk-session";
+import { createRideView } from "@client/features/ride/ride-view";
+import { createLiquidGlassSwitch } from "@client/features/view-switch/liquid-glass-switch";
+import type { RideFetcher } from "@client/services/ride-client";
+import type { TransfersFetcher } from "@client/services/transfers-client";
 import { openVehicleSpanStream } from "@client/services/vehicle-span-client";
 import type { VehicleSpanEvent } from "@shared/domain/vehicle-span";
 import { createFilterControlsView } from "@client/features/filters/filter-controls-view";
@@ -12,7 +16,7 @@ import { createStopSelectorView } from "@client/features/stops/stop-selector-vie
 import { getVoiceActionLabel } from "@client/features/voice/voice-capability";
 import type { AppState } from "@client/app/app-store";
 import type { AppController } from "@client/app/app-controller";
-import { createDestinationColorBook } from "@shared/domain/destination-color";
+import { createDestinationColorBook, type DestinationColorBook } from "@shared/domain/destination-color";
 import type { Departure } from "@shared/domain/departure";
 import type { Mode } from "@shared/domain/mode";
 import type { WalkRequest, WalkRoute } from "@shared/domain/walk-route";
@@ -34,6 +38,8 @@ interface VehicleSpanOpener {
 interface RenderAppShellOptions {
   controller: AppController;
   documentRef: Document;
+  fetchRide?: RideFetcher;
+  fetchTransfers?: TransfersFetcher;
   fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
   openVehicleSpan?: VehicleSpanOpener;
   root: HTMLElement;
@@ -286,7 +292,8 @@ function createVoiceChoicesView(
 
 function createDeparturesTableView(
   documentRef: Document,
-  onPress: (card: HTMLTableRowElement) => void
+  onPress: (card: HTMLTableRowElement) => void,
+  destinationColors: DestinationColorBook,
 ): DeparturesTableView {
   const element = documentRef.createElement("table");
   element.className = "app-shell__departures-table";
@@ -323,7 +330,6 @@ function createDeparturesTableView(
     }
     onPress(card);
   });
-  const destinationColors = createDestinationColorBook();
   let previousSignature = "";
   let previousDepartures: readonly Departure[] = [];
   let previousPaintMode: Mode | null = null;
@@ -385,6 +391,7 @@ function createVehicleSpanSession(input: {
   documentRef: Document;
   isExpanded(): boolean;
   onExpandedChange(expanded: boolean): void;
+  onRide(card: HTMLTableRowElement): void;
   onSwitchToWalk(card: HTMLTableRowElement): void;
   onUserClose(): void;
   openVehicleSpan?: VehicleSpanOpener;
@@ -439,6 +446,9 @@ function createVehicleSpanSession(input: {
           close({ restoreFocus: true });
         },
         onExpandedChange: input.onExpandedChange,
+        onRide: () => {
+          input.onRide(card);
+        },
         onSwitchToWalk: input.canWalk()
           ? () => {
               nextMap.markSwitchBusy();
@@ -639,6 +649,12 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   stationTitle.dataset.stationTitle = "true";
   stationTitle.hidden = true;
 
+  const destinationColors = createDestinationColorBook();
+  const rideDestinationColors = createDestinationColorBook();
+  const colorForDestination = (destination: string): string =>
+    destinationColors.peekColor(destination) ??
+    rideDestinationColors.colorsFor([destination])[0];
+
   let walk!: WalkSession;
   let mapExpanded = false;
   const resetMapExpanded = () => {
@@ -652,11 +668,33 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     const coords = store.getState().coords;
     return coords != null && Number.isFinite(coords.lat) && Number.isFinite(coords.lon);
   };
+  const closeMaps = () => {
+    resetMapExpanded();
+    walk.close();
+    vehicleSpan.close();
+  };
+  const boardRideCard = (card: HTMLTableRowElement) => {
+    const tripId = card.dataset.tripId || "";
+    if (!tripId) {
+      return;
+    }
+    const destination = card.dataset.destination || "";
+    const color = card.style.getPropertyValue("--destination-color") || colorForDestination(destination);
+    closeMaps();
+    controller.startRide({
+      boardedStopId: card.dataset.stopId || shownStopId(store.getState()) || null,
+      destination: destination || null,
+      destinationColor: color || null,
+      line: card.dataset.line || null,
+      tripId,
+    });
+  };
   const vehicleSpan = createVehicleSpanSession({
     canWalk: hasUsableCoords,
     documentRef,
     isExpanded: isMapExpanded,
     onExpandedChange: setMapExpanded,
+    onRide: boardRideCard,
     onSwitchToWalk: (card) => {
       walk.openForCard(card);
     },
@@ -667,10 +705,14 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     openVehicleSpan: options.openVehicleSpan,
     root,
   });
-  const departuresTableView = createDeparturesTableView(documentRef, (card) => {
-    walk.close();
-    vehicleSpan.press(card);
-  });
+  const departuresTableView = createDeparturesTableView(
+    documentRef,
+    (card) => {
+      walk.close();
+      vehicleSpan.press(card);
+    },
+    destinationColors,
+  );
   walk = createWalkSession({
     closeVehicle: () => {
       vehicleSpan.close();
@@ -679,6 +721,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     fetchWalk: options.fetchWalk,
     isExpanded: isMapExpanded,
     onExpandedChange: setMapExpanded,
+    onRide: boardRideCard,
     onSwitchToVehicle: (card) => {
       walk.close();
       vehicleSpan.press(card, { switched: true });
@@ -688,16 +731,51 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     scheduleHold: options.scheduleHold,
     table: departuresTableView.element,
   });
-  const closeMaps = () => {
-    resetMapExpanded();
-    walk.close();
-    vehicleSpan.close();
-  };
   departuresTableView.element.setAttribute("aria-live", "polite");
   departuresTableView.element.setAttribute("aria-relevant", "additions removals");
 
+  const waitPanel = documentRef.createElement("section");
+  waitPanel.className = "app-shell__view app-shell__view--wait";
+  waitPanel.id = "view-panel-wait";
+  waitPanel.dataset.viewPanel = "wait";
+  waitPanel.setAttribute("role", "tabpanel");
+  waitPanel.append(
+    modeRow,
+    stopSection,
+    voiceChoicesView.element,
+    status,
+    stationTitle,
+    departuresTableView.element,
+  );
+
+  const rideView = createRideView({
+    controller,
+    destinationColorFor: colorForDestination,
+    documentRef,
+    fetchRide: options.fetchRide,
+    fetchTransfers: options.fetchTransfers,
+    fetchWalk: options.fetchWalk,
+  });
+
+  const ridePanel = documentRef.createElement("section");
+  ridePanel.className = "app-shell__view app-shell__view--ride";
+  ridePanel.id = "view-panel-ride";
+  ridePanel.dataset.viewPanel = "ride";
+  ridePanel.setAttribute("role", "tabpanel");
+  ridePanel.hidden = true;
+  ridePanel.appendChild(rideView.element);
+
+  const glassSwitch = createLiquidGlassSwitch({
+    documentRef,
+    onSelect(nextView) {
+      controller.setActiveView(nextView);
+    },
+  });
+
   const attribution = documentRef.createElement("footer");
   attribution.className = "app-shell__footer";
+
+  let previousView = store.getState().activeView;
 
   const syncView = (state: AppState) => {
     if (state.activeMode !== previousMode) {
@@ -710,6 +788,16 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
       closeMaps();
       previousStopId = stopId;
     }
+    if (state.activeView !== previousView) {
+      if (state.activeView !== "wait") {
+        closeMaps();
+      }
+      previousView = state.activeView;
+    }
+
+    root.dataset.activeView = state.activeView;
+    waitPanel.hidden = state.activeView !== "wait";
+    ridePanel.hidden = state.activeView !== "ride";
 
     stationTitle.textContent = state.station?.stopName || "";
     status.textContent = state.statusMessage || "";
@@ -735,9 +823,19 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
     filterPanelControls.controlsView.sync(state);
     if (state.loadState === "ready") {
       departuresTableView.sync(state);
-      return;
+    } else {
+      departuresTableView.clear();
     }
-    departuresTableView.clear();
+
+    const rideTint =
+      state.ride.destinationColor ||
+      (state.ride.destination ? colorForDestination(state.ride.destination) : null);
+    glassSwitch.sync({
+      activeView: state.activeView,
+      hasActiveRide: Boolean(state.ride.tripId),
+      rideColor: rideTint,
+    });
+    rideView.sync(state);
   };
 
   syncView(store.getState());
@@ -745,6 +843,8 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
   const stopScrollPushes = listenForScrollPushes(controller, documentRef);
   const cleanup = () => {
     closeMaps();
+    rideView.cleanup();
+    glassSwitch.cleanup();
     stopScrollPushes();
     unsubscribeModeSelector();
     unsubscribeStore();
@@ -758,14 +858,7 @@ export function renderAppShell(options: RenderAppShellOptions): () => void {
 
   const board = documentRef.createElement("main");
   board.className = "app-shell__board";
-  board.append(
-    modeRow,
-    stopSection,
-    voiceChoicesView.element,
-    status,
-    stationTitle,
-    departuresTableView.element,
-  );
-  root.append(topbar, board, attribution);
+  board.append(waitPanel, ridePanel);
+  root.append(topbar, board, attribution, glassSwitch.element);
   return cleanup;
 }

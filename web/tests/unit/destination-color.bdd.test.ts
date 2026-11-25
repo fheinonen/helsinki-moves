@@ -381,6 +381,27 @@ Feature: Destination color
     Then the 4 appended departures use 4 different colors
     And each departure stays at least 29 apart across red-green color vision from the row above and the row below
     And each destination color stays in the existing scheme
+
+  Scenario: Switching through Rail, Tram, Metro, and Bus keeps every Bus destination uniquely colored
+    Given a board with 6 Rail destinations
+    When the departure board is shown
+    When the rider switches through 8 Tram destinations, 4 Metro destinations, and 10 Bus destinations
+    Then each destination uses its own color
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
+
+  Scenario: Switching from a 20-destination stop to a 10-destination stop keeps every destination uniquely colored
+    Given a board with 20 different destinations
+    When the departure board is shown
+    When the board switches to 4 remembered destinations and 6 new destinations
+    Then each destination uses its own color
+    And each departure stays at least 29 apart across red-green color vision from the row above and the row below
+
+  Scenario: Destinations that reused an off-board color on separate stops separate again when they meet on one board
+    Given a board with 22 different destinations
+    When the departure board is shown
+    When the board visits a separate 10-destination stop and then combines destinations from both stops
+    Then each destination uses its own color
+    And each departure stays at least 15 apart across red-green color vision from the row above and the row below
   `,
   {
     createWorld: () => ({
@@ -883,6 +904,92 @@ Feature: Destination color
           const combined = world.trips.concat(suffix);
           world.trips = combined;
           replaceTrips(world, combined);
+        },
+      },
+      {
+        pattern: /^Given a board with 6 Rail destinations$/,
+        run: ({ world }) => {
+          const rail = ["Helsinki", "Lentoasema", "Tikkurila", "Kerava", "Kirkkonummi", "Leppävaara"];
+          world.trips = createTrips(rail, ["I", "P", "K", "K", "U", "A"]);
+        },
+      },
+      {
+        pattern: /^When the rider switches through 8 Tram destinations, 4 Metro destinations, and 10 Bus destinations$/,
+        run: ({ world }) => {
+          const tram = [
+            "Kamppi",
+            "Länsiterminaali",
+            "Eira",
+            "Pikku Huopalahti",
+            "Arabia",
+            "Munkkiniemi",
+            "Töölö",
+            "Olympiaterminaali",
+          ];
+          const metro = ["Matinkylä", "Kivenlahti", "Vuosaari", "Mellunmäki"];
+          const bus = [
+            "Herttoniemi",
+            "Itäkeskus",
+            "Malmi",
+            "Oulunkylä",
+            "Maunula",
+            "Haaga",
+            "Pitäjänmäki",
+            "Konala",
+            "Kannelmäki",
+            "Myyrmäki",
+          ];
+          replaceTrips(world, createTrips(tram, tram.map((_, i) => `T${i + 1}`)));
+          replaceTrips(world, createTrips(metro, ["M1", "M1", "M1", "M2"]));
+          const busTrips = createTrips(bus, bus.map((_, i) => `B${i + 1}`));
+          world.trips = busTrips;
+          replaceTrips(world, busTrips);
+        },
+      },
+      {
+        pattern: /^When the board switches to 4 remembered destinations and 6 new destinations$/,
+        run: ({ world }) => {
+          const mixed = [
+            "Destination 1",
+            "Destination 2",
+            "Destination 3",
+            "Destination 4",
+            "StopB 1",
+            "StopB 2",
+            "StopB 3",
+            "StopB 4",
+            "StopB 5",
+            "StopB 6",
+          ];
+          const nextTrips = createTrips(mixed, mixed.map((_, i) => `S${i + 1}`));
+          world.trips = nextTrips;
+          replaceTrips(world, nextTrips);
+        },
+      },
+      {
+        pattern: /^When the board visits a separate 10-destination stop and then combines destinations from both stops$/,
+        run: ({ world }) => {
+          const stopB = Array.from({ length: 10 }, (_, index) => `OtherStop ${index + 1}`);
+          replaceTrips(world, createTrips(stopB, stopB.map((_, i) => `O${i + 1}`)));
+          const stopBRows = readRows(world);
+          const sharedDest = stopBRows[0].destination;
+          const sharedColor = stopBRows[0].color;
+          // Find a destination from the original 22-destination board that had the same color
+          const originalDestinations = Array.from({ length: 22 }, (_, i) => `Destination ${i + 1}`);
+          replaceTrips(world, createTrips(originalDestinations, originalDestinations));
+          const collidingOriginal =
+            readRows(world).find((row) => row.color === sharedColor)?.destination || "Destination 1";
+          const combined = [
+            collidingOriginal,
+            sharedDest,
+            "Destination 2",
+            "OtherStop 2",
+            "Destination 3",
+            "OtherStop 3",
+          ];
+          const combinedTrips = createTrips(combined, combined.map((_, i) => `C${i + 1}`));
+          world.trips = combinedTrips;
+          replaceTrips(world, combinedTrips);
         },
       },
     ],

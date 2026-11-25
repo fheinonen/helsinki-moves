@@ -3,7 +3,9 @@ import type { AppController } from "@client/app/app-controller";
 import {
   readLineAndDestinationFilters,
   readModeFromSearch,
+  readRideFromSearch,
   readStopFromSearch,
+  readViewFromSearch,
   syncUrlFromState,
   type HistoryLike,
   type LocationLike,
@@ -41,6 +43,8 @@ export function bootstrapApp(options: BootstrapOptions): AppStore {
     const selections = readLineAndDestinationFilters(search);
     store.setLineAndDestinationFilters(selections.lines, selections.destinations);
     store.setStopAnchor(readStopFromSearch(search));
+    store.restoreRideSelection(readRideFromSearch(search));
+    store.setActiveView(readViewFromSearch(search));
   }
   renderAppShell({
     controller,

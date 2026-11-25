@@ -50,6 +50,18 @@ export function continuationFetchWindow(
   };
 }
 
+export function transferFetchWindow(
+  startMs: number,
+  timeRangeSeconds: number
+): DepartureFetchWindow {
+  return {
+    [departureFetchWindowBrand]: "DepartureFetchWindow",
+    nowMs: startMs,
+    startTimeUnixSeconds: Math.floor(startMs / 1000),
+    timeRangeSeconds,
+  };
+}
+
 export function selectGlanceDepartures(input: {
   departures: readonly Departure[];
   mode: Mode;

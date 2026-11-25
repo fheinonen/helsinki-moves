@@ -19,6 +19,7 @@ interface VehicleSpanMapOptions {
   line: string;
   onClose: () => void;
   onExpandedChange?: (expanded: boolean) => void;
+  onRide?: () => void;
   onSwitchToWalk?: () => void;
   switched?: boolean;
 }
@@ -51,6 +52,7 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     line,
     onClose,
     onExpandedChange,
+    onRide,
     onSwitchToWalk,
     switched = false,
   } = options;
@@ -71,6 +73,13 @@ export function createVehicleSpanMap(options: VehicleSpanMapOptions): VehicleSpa
     documentRef,
     line,
     onClose,
+    rideAction: onRide
+      ? {
+          ariaLabel: `Ride ${line} to ${destination}`,
+          label: "Ride",
+          onRide,
+        }
+      : undefined,
     switchAction: onSwitchToWalk
       ? {
           ariaLabel: "Show walking route",

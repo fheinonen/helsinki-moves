@@ -3,6 +3,7 @@ import type { Departure } from "@shared/domain/departure";
 import { mergeLaterDepartures } from "@shared/domain/board-rank";
 import type { GeocodeLocation } from "@shared/contracts/geocode-contract";
 import type { Mode } from "@shared/domain/mode";
+import type { AppView } from "@shared/domain/ride";
 import type { Stop } from "@shared/domain/stop";
 import {
   createEmptyFilterState,
@@ -27,8 +28,29 @@ export interface Coordinates {
   lon: number;
 }
 
+export interface RideSelectionState {
+  boardedStopId: string | null;
+  destination: string | null;
+  destinationColor: string | null;
+  exitStopId: string | null;
+  line: string | null;
+  transferMode: Mode | null;
+  transferTripId: string | null;
+  tripId: string | null;
+}
+
+export interface StartRideInput {
+  boardedStopId?: string | null;
+  destination?: string | null;
+  destinationColor?: string | null;
+  exitStopId?: string | null;
+  line?: string | null;
+  tripId: string;
+}
+
 export interface AppState {
   activeMode: Mode;
+  activeView: AppView;
   coords: Coordinates | null;
   dataReceivedAtIso: string | null;
   filters: FilterState;
@@ -37,6 +59,7 @@ export interface AppState {
     lines: FilterOption[];
   };
   loadState: LoadState;
+  ride: RideSelectionState;
   selectedStopId: string | null;
   station: StopStation | null;
   statusMessage: string | null;
@@ -59,18 +82,30 @@ interface AppStateStore {
 export interface AppStore extends AppStateStore {
   appendLaterDepartures(suffix: readonly Departure[]): void;
   applyDeparturesResponse(response: DeparturesSuccessResponse): void;
+  clearRide(): void;
   clearVoiceChoices(): void;
   clearVoiceQuery(): void;
+  restoreRideSelection(input: {
+    boardedStopId: string | null;
+    exitStopId: string | null;
+    transferMode?: Mode | null;
+    transferTripId?: string | null;
+    tripId: string | null;
+  }): void;
+  setActiveView(view: AppView): void;
   setCoordinates(coords: Coordinates): void;
   setError(message: string): void;
   setLocationDenied(message: string): void;
   setLineAndDestinationFilters(lines: string[], destinations: string[]): void;
   setLocationUnavailable(message: string): void;
   setMode(mode: Mode): void;
+  setRideExitStop(stopId: string | null): void;
+  setRideTransfer(input: { mode: Mode | null; tripId: string | null }): void;
   setSelectedStop(stopId: string | null): void;
   setStopAnchor(stopId: string | null): void;
   setStatus(message: string | null): void;
   startLoading(message: string): void;
+  startRide(input: StartRideInput): void;
   setTheme(theme: ThemeMode): void;
   setVoiceAvailability(availability: VoiceAvailability): void;
   setVoiceChoices(choices: GeocodeLocation[]): void;
@@ -78,6 +113,24 @@ export interface AppStore extends AppStateStore {
   setVoiceQuery(query: string | null): void;
   toggleDestinationFilter(destination: string): void;
   toggleLineFilter(line: string): void;
+}
+
+function createEmptyRideSelection(): RideSelectionState {
+  return {
+    boardedStopId: null,
+    destination: null,
+    destinationColor: null,
+    exitStopId: null,
+    line: null,
+    transferMode: null,
+    transferTripId: null,
+    tripId: null,
+  };
+}
+
+function normalizeOptionalId(value: string | null | undefined): string | null {
+  const normalized = String(value || "").trim();
+  return normalized || null;
 }
 
 function readStopAnchor(stops: Stop[], selectedStopId: string | null): Coordinates | null {
@@ -94,6 +147,7 @@ function readStopAnchor(stops: Stop[], selectedStopId: string | null): Coordinat
 function createInitialState(): AppState {
   return {
     activeMode: "RAIL",
+    activeView: "wait",
     coords: null,
     dataReceivedAtIso: null,
     filters: createEmptyFilterState(),
@@ -102,6 +156,7 @@ function createInitialState(): AppState {
       lines: [],
     },
     loadState: "idle",
+    ride: createEmptyRideSelection(),
     selectedStopId: null,
     station: null,
     statusMessage: null,
@@ -187,6 +242,12 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         stops: response.stops,
       }));
     },
+    clearRide() {
+      store.setState((state) => ({
+        ...state,
+        ride: createEmptyRideSelection(),
+      }));
+    },
     clearVoiceChoices() {
       store.setState((state) => ({
         ...state,
@@ -204,6 +265,29 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
           pendingQuery: null,
         },
       }));
+    },
+    restoreRideSelection(input) {
+      const tripId = normalizeOptionalId(input.tripId);
+      const exitStopId = normalizeOptionalId(input.exitStopId);
+      const transferTripId = exitStopId ? normalizeOptionalId(input.transferTripId) : null;
+      store.setState((state) => ({
+        ...state,
+        ride: tripId
+          ? {
+              boardedStopId: normalizeOptionalId(input.boardedStopId),
+              destination: null,
+              destinationColor: null,
+              exitStopId,
+              line: null,
+              transferMode: transferTripId ? (input.transferMode ?? null) : null,
+              transferTripId,
+              tripId,
+            }
+          : createEmptyRideSelection(),
+      }));
+    },
+    setActiveView(view) {
+      store.setState((state) => (state.activeView === view ? state : { ...state, activeView: view }));
     },
     setCoordinates(coords) {
       store.setState((state) => ({
@@ -250,6 +334,32 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         selectedStopId: null,
       }));
     },
+    setRideExitStop(stopId) {
+      const normalizedStopId = normalizeOptionalId(stopId);
+      store.setState((state) => {
+        const unchanged = state.ride.exitStopId === normalizedStopId;
+        return {
+          ...state,
+          ride: {
+            ...state.ride,
+            exitStopId: normalizedStopId,
+            transferMode: unchanged ? state.ride.transferMode : null,
+            transferTripId: unchanged ? state.ride.transferTripId : null,
+          },
+        };
+      });
+    },
+    setRideTransfer(input) {
+      const transferTripId = normalizeOptionalId(input.tripId);
+      store.setState((state) => ({
+        ...state,
+        ride: {
+          ...state.ride,
+          transferMode: transferTripId ? input.mode : null,
+          transferTripId,
+        },
+      }));
+    },
     setSelectedStop(stopId) {
       const normalizedStopId = String(stopId || "").trim() || null;
       store.setState((state) => ({
@@ -284,6 +394,26 @@ export function createAppStore(initialState: Partial<AppState> = {}): AppStore {
         ...state,
         loadState: "loading",
         statusMessage: message,
+      }));
+    },
+    startRide(input) {
+      const tripId = normalizeOptionalId(input.tripId);
+      if (!tripId) {
+        return;
+      }
+      store.setState((state) => ({
+        ...state,
+        activeView: "ride",
+        ride: {
+          boardedStopId: normalizeOptionalId(input.boardedStopId),
+          destination: normalizeOptionalId(input.destination),
+          destinationColor: normalizeOptionalId(input.destinationColor),
+          exitStopId: normalizeOptionalId(input.exitStopId),
+          line: normalizeOptionalId(input.line),
+          transferMode: null,
+          transferTripId: null,
+          tripId,
+        },
       }));
     },
     setTheme(theme) {

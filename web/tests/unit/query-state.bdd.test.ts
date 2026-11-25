@@ -19,6 +19,7 @@ interface World {
 function createBaseState(): AppState {
   return {
     activeMode: "BUS",
+    activeView: "wait",
     coords: null,
     dataReceivedAtIso: null,
     filters: {
@@ -31,6 +32,16 @@ function createBaseState(): AppState {
       lines: [],
     },
     loadState: "idle",
+    ride: {
+      boardedStopId: null,
+      destination: null,
+      destinationColor: null,
+      exitStopId: null,
+      line: null,
+      transferMode: null,
+      transferTripId: null,
+      tripId: null,
+    },
     selectedStopId: "HSL:SELECTED",
     station: null,
     statusMessage: null,

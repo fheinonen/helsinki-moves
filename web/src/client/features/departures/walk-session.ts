@@ -42,6 +42,7 @@ export interface CreateWalkSessionInput {
   fetchWalk?: (request: WalkRequest) => Promise<WalkRoute | null>;
   isExpanded?: () => boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  onRide?: (card: HTMLTableRowElement) => void;
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   onUserClose?: () => void;
   readCoords(): GeoPoint | null;
@@ -310,10 +311,11 @@ function buildWalkMap(input: {
   label: HeldDeparture;
   onClose: () => void;
   onExpandedChange?: (expanded: boolean) => void;
+  onRide?: (card: HTMLTableRowElement) => void;
   onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   route: WalkRoute;
 }): { destroy: () => void; element: HTMLElement; show(label: HeldDeparture, route: WalkRoute): void } {
-  const { documentRef, initialExpanded, onClose, onExpandedChange, onSwitchToVehicle } = input;
+  const { documentRef, initialExpanded, onClose, onExpandedChange, onRide, onSwitchToVehicle } = input;
   let label = input.label;
   const element = documentRef.createElement("section");
   element.className = "vehicle-span";
@@ -342,6 +344,16 @@ function buildWalkMap(input: {
     documentRef,
     line: label.line,
     onClose,
+    rideAction:
+      onRide && label.tripId
+        ? {
+            ariaLabel: `Ride ${label.line} to ${label.destination}`,
+            label: "Ride",
+            onRide: () => {
+              onRide(label.card);
+            },
+          }
+        : undefined,
     switchAction: label.tripId ? switchAction : undefined,
   });
 
@@ -438,6 +450,7 @@ function projectWalk(input: {
   readonly mounted: WalkProjection | null;
   readonly onClose: () => void;
   readonly onExpandedChange?: (expanded: boolean) => void;
+  readonly onRide?: (card: HTMLTableRowElement) => void;
   readonly onSwitchToVehicle?: (card: HTMLTableRowElement) => void;
   readonly table: HTMLTableElement;
 }): WalkProjection | null {
@@ -489,6 +502,7 @@ function projectWalk(input: {
     label: attempt.label,
     onClose: input.onClose,
     onExpandedChange: input.onExpandedChange,
+    onRide: input.onRide,
     onSwitchToVehicle: input.onSwitchToVehicle,
     route: attempt.route,
   });
@@ -746,6 +760,7 @@ export function createWalkSession(input: CreateWalkSessionInput): WalkSession {
       mounted,
       onClose: closeWithFocus,
       onExpandedChange: input.onExpandedChange,
+      onRide: input.onRide,
       onSwitchToVehicle: input.onSwitchToVehicle,
       table: input.table,
     });

@@ -1,7 +1,7 @@
 import { attachInteractiveMap } from "@client/features/map/interactive-map";
 import { formatCoord, mountMapStreets, writeMapExtent } from "@client/features/map/map-chrome";
 import { appendOsmCredit, OSM_MAP_CREDIT } from "@client/features/map/osm-credit";
-import { frameRideRoute, type RideProgress, type RideSnapshot } from "@shared/domain/ride";
+import { frameRideSpan, type RideProgress, type RideSnapshot } from "@shared/domain/ride";
 import { placeOnMap, type MapExtent } from "@shared/domain/street-map";
 import type { GeoPoint } from "@shared/domain/vehicle-span";
 
@@ -44,8 +44,11 @@ export function createRideMapView(input: {
   const canvas = documentRef.createElement("div");
   canvas.className = "vehicle-span__canvas ride-map__canvas";
 
-  const stopAnchor = documentRef.createElement("span");
-  stopAnchor.className = "visually-hidden";
+  const stopMarker = documentRef.createElement("span");
+  stopMarker.className = "vehicle-span__stop";
+  stopMarker.dataset.stopMarker = "true";
+  stopMarker.setAttribute("role", "img");
+  stopMarker.setAttribute("aria-label", "Target stop");
 
   const vehicleMarker = documentRef.createElement("span");
   vehicleMarker.className = "vehicle-span__vehicle ride-map__vehicle";
@@ -57,7 +60,7 @@ export function createRideMapView(input: {
   credit.className = "vehicle-span__credit";
   appendOsmCredit(credit, documentRef, OSM_MAP_CREDIT);
 
-  canvas.append(stopAnchor, vehicleMarker);
+  canvas.append(stopMarker, vehicleMarker);
   glass.append(canvas, credit);
   element.appendChild(glass);
 
@@ -68,7 +71,7 @@ export function createRideMapView(input: {
     onClose,
   });
 
-  let mountedTripId: string | null = null;
+  let mountedKey: string | null = null;
   let mountedExtent: MapExtent | null = null;
   let hadLiveVehicle = false;
 
@@ -86,41 +89,49 @@ export function createRideMapView(input: {
         element.style.setProperty("--destination-color", destinationColor);
         vehicleMarker.style.background = destinationColor;
       }
-      if (mountedTripId !== snapshot.tripId || !mountedExtent) {
-        const extent = frameRideRoute(snapshot);
-        if (!extent) {
-          return;
-        }
-        mountedTripId = snapshot.tripId;
-        mountedExtent = extent;
+
+      const span = frameRideSpan(snapshot, progress);
+      if (!span) {
+        return;
+      }
+
+      const spanKey = `${snapshot.tripId}:${span.targetStop.stopId}:${snapshot.vehicle ? "live" : "timetable"}`;
+      if (mountedKey !== spanKey || !mountedExtent) {
+        mountedKey = spanKey;
+        mountedExtent = span;
         hadLiveVehicle = false;
         clearMapLayers(canvas);
-        writeMapExtent(glass, extent);
+        writeMapExtent(glass, span);
         mountMapStreets({
-          ariaLabel: `Live route for ${snapshot.line} to ${snapshot.destination}`,
+          ariaLabel: `Live approach for ${snapshot.line} to ${span.targetStop.name}`,
           canvas,
           color: destinationColor || undefined,
           documentRef,
-          extent,
-          points: snapshot.route.length >= 2 ? snapshot.route : snapshot.stops,
-          stopMarker: stopAnchor,
+          extent: span,
+          points: span.route,
+          stopMarker,
         });
+        stopMarker.setAttribute("aria-label", span.targetStop.name);
+        stopMarker.dataset.lat = formatCoord(span.targetStop.lat);
+        stopMarker.dataset.lon = formatCoord(span.targetStop.lon);
+        placePoint(stopMarker, span, span.targetStop);
         interactive.reset();
       }
 
       for (const dot of canvas.querySelectorAll("[data-ride-stop-dot]")) {
         dot.remove();
       }
-      for (const entry of progress.stops) {
+      for (let index = progress.nextStopIndex; index < span.targetStopIndex; index += 1) {
+        const entry = progress.stops[index];
+        if (!entry) {
+          continue;
+        }
         const dot = documentRef.createElement("span");
         dot.className = "ride-map__stop-dot";
         dot.dataset.rideStopDot = entry.stop.stopId;
         dot.dataset.stopState = entry.state;
-        if (entry.isExit) {
-          dot.dataset.isExit = "true";
-        }
         placePoint(dot, mountedExtent, entry.stop);
-        canvas.insertBefore(dot, vehicleMarker);
+        canvas.insertBefore(dot, stopMarker);
       }
 
       if (snapshot.vehicle) {

@@ -357,8 +357,12 @@ Feature: Wait and Ride view switching with Apple Liquid Glass dock
           const exitText = (await exitCard.textContent()) || "";
           assert.match(exitText, new RegExp(args[0]));
           assert.equal(await exitCard.locator('[data-ride-wait-here="true"]').count(), 0);
-          const markerVisible = await page.locator('[data-ride-vehicle-marker="true"]').isVisible();
-          assert.equal(markerVisible, true);
+          const rideMap = page.locator('[data-ride-map="true"]');
+          assert.equal(await rideMap.locator('[data-ride-vehicle-marker="true"]').isVisible(), true);
+          assert.equal(
+            await rideMap.locator('[data-stop-marker="true"]').getAttribute("aria-label"),
+            args[0],
+          );
         },
       },
       {

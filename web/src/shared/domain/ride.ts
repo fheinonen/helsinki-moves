@@ -1,6 +1,5 @@
 import type { Mode } from "./mode.js";
-import type { MapExtent } from "./street-map.js";
-import type { GeoPoint } from "./vehicle-span.js";
+import { frameVehicleSpan, type GeoPoint, type VehicleSpanFrame } from "./vehicle-span.js";
 
 export type AppView = "wait" | "ride";
 export type RideTelemetry = "live" | "timetable";
@@ -55,13 +54,17 @@ export interface RideProgress {
   readonly telemetry: RideTelemetry;
 }
 
+export interface RideSpanFrame extends VehicleSpanFrame {
+  readonly targetStop: RideStop;
+  readonly targetStopIndex: number;
+}
+
 export interface ComputeRideProgressOptions {
   readonly boardedStopId?: string | null;
   readonly exitStopId?: string | null;
 }
 
 const PASS_EPSILON = 1e-6;
-const MIN_EXTENT_SPAN = 0.002;
 
 export function parseAppView(value: unknown): AppView {
   return String(value ?? "").trim().toLowerCase() === "ride" ? "ride" : "wait";
@@ -228,31 +231,52 @@ export function computeRideProgress(
   };
 }
 
-export function frameRideRoute(snapshot: RideSnapshot): MapExtent | null {
-  const points: GeoPoint[] = [
-    ...(snapshot.route.length > 0 ? snapshot.route : snapshot.stops),
-    ...(snapshot.vehicle ? [snapshot.vehicle] : []),
-  ];
-  if (points.length === 0) {
+function resolveSpanTarget(
+  snapshot: RideSnapshot,
+  progress: RideProgress,
+): { index: number; stop: RideStop } | null {
+  if (progress.exit && progress.exit.stopsRemaining > 0) {
+    const index = findStopIndex(snapshot.stops, progress.exit.stop.stopId);
+    if (index >= 0) {
+      return { index, stop: progress.exit.stop };
+    }
+  }
+  if (progress.nextStop) {
+    return { index: progress.nextStopIndex, stop: progress.nextStop };
+  }
+  if (progress.finalStop) {
+    return { index: snapshot.stops.length - 1, stop: progress.finalStop };
+  }
+  return null;
+}
+
+function resolveSpanOrigin(
+  snapshot: RideSnapshot,
+  progress: RideProgress,
+  targetStop: RideStop,
+): GeoPoint {
+  if (snapshot.vehicle) {
+    return snapshot.vehicle;
+  }
+  if (progress.nextStopIndex > 0 && snapshot.stops[progress.nextStopIndex - 1]) {
+    return snapshot.stops[progress.nextStopIndex - 1];
+  }
+  return snapshot.stops[0] ?? targetStop;
+}
+
+export function frameRideSpan(
+  snapshot: RideSnapshot,
+  progress: RideProgress,
+): RideSpanFrame | null {
+  const target = resolveSpanTarget(snapshot, progress);
+  if (!target) {
     return null;
   }
-
-  let east = points[0].lon;
-  let north = points[0].lat;
-  let south = points[0].lat;
-  let west = points[0].lon;
-  for (const point of points) {
-    east = Math.max(east, point.lon);
-    north = Math.max(north, point.lat);
-    south = Math.min(south, point.lat);
-    west = Math.min(west, point.lon);
-  }
-  const padLat = Math.max((north - south) * 0.08, MIN_EXTENT_SPAN * 0.25);
-  const padLon = Math.max((east - west) * 0.08, MIN_EXTENT_SPAN * 0.25);
+  const origin = resolveSpanOrigin(snapshot, progress, target.stop);
+  const span = frameVehicleSpan(origin, target.stop, resolveLine(snapshot));
   return {
-    east: east + padLon,
-    north: north + padLat,
-    south: south - padLat,
-    west: west - padLon,
+    ...span,
+    targetStop: target.stop,
+    targetStopIndex: target.index,
   };
 }

@@ -236,10 +236,13 @@ Feature: Wait and Ride view user flows
     And Kamppi is dimmed beyond the exit
     And the active exit card omits Wait here
 
-  Scenario: Toggling the collapsible route map shows and hides the live trip map
+  Scenario: Toggling the collapsible route map shows only the active vehicle-to-stop span and reframes on exit pin
     Given the app shell is riding Tram 4 to Kamppi with live telemetry
     When the rider toggles the Ride route map
     Then the Ride route map is visible with a live vehicle marker
+    And the Ride route map frames only up to target stop Meilahti without Munkkiniemi or Kamppi
+    When the rider taps Toolo on the Ride stop ribbon
+    Then the Ride route map frames only up to target stop Toolo without Munkkiniemi or Kamppi
     When the rider toggles the Ride route map
     Then the Ride route map is hidden
 
@@ -420,6 +423,26 @@ Feature: Wait and Ride view user flows
           const marker = map?.querySelector<HTMLElement>('[data-ride-vehicle-marker="true"]');
           assert.equal(Boolean(map && !map.hidden), true);
           assert.equal(Boolean(marker && marker.dataset.lat), true);
+        },
+      },
+      {
+        pattern: /^Then the Ride route map frames only up to target stop (.+) without (.+) or (.+)$/,
+        run: ({ args, assert, world }) => {
+          const map = world.root?.querySelector<HTMLElement>('[data-ride-map="true"]');
+          const stopMarker = map?.querySelector<HTMLElement>('[data-stop-marker="true"]');
+          assert.equal(stopMarker?.getAttribute("aria-label"), args[0]);
+          const stopIds = [...(map?.querySelectorAll<HTMLElement>("[data-ride-stop-dot]") ?? [])].map(
+            (dot) => dot.dataset.rideStopDot,
+          );
+          const idByName: Record<string, string> = {
+            Kamppi: "HSL:5",
+            Lasipalatsi: "HSL:4",
+            Meilahti: "HSL:2",
+            Munkkiniemi: "HSL:1",
+            Toolo: "HSL:3",
+          };
+          assert.equal(stopIds.includes(idByName[args[1]]), false);
+          assert.equal(stopIds.includes(idByName[args[2]]), false);
         },
       },
       {

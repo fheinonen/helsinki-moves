@@ -2,23 +2,23 @@ import { test } from "vitest";
 import { defineFeature } from "@tests/helpers/bdd-runner";
 import {
   computeRideProgress,
-  frameRideRoute,
+  frameRideSpan,
   parseAppView,
   type RideProgress,
   type RideSnapshot,
+  type RideSpanFrame,
 } from "@shared/domain/ride";
-import type { MapExtent } from "@shared/domain/street-map";
 
 const BASE_MS = Date.parse("2026-03-07T12:30:00.000Z");
 
 interface World {
   boardedStopId?: string | null;
   exitStopId?: string | null;
-  extent?: MapExtent | null;
   nowMs?: number;
   parsedView?: string;
   progress?: RideProgress;
   snapshot?: RideSnapshot;
+  span?: RideSpanFrame | null;
 }
 
 function createSampleSnapshot(vehicle: { lat: number; lon: number } | null): RideSnapshot {
@@ -134,10 +134,24 @@ Feature: Ride progress tracking
     When ride progress is calculated at the current time
     Then the next stop is Toolo
 
-  Scenario: Framing the ride route covers the vehicle and remaining stops
+  Scenario: Framing the ride span without an exit clips tightly between vehicle and next stop
     Given a live ride snapshot with the vehicle between Meilahti and Toolo
-    When the ride route frame is computed
-    Then the ride route frame encloses both the vehicle and Kamppi
+    When ride progress is calculated at the current time
+    And the ride route frame is computed
+    Then the ride span targets Toolo and excludes Munkkiniemi and Kamppi
+
+  Scenario: Framing the ride span with a pinned exit clips between vehicle and the pinned exit
+    Given a live ride snapshot with the vehicle between Meilahti and Toolo
+    And the rider pinned Lasipalatsi as their exit stop
+    When ride progress is calculated at the current time
+    And the ride route frame is computed
+    Then the ride span targets Lasipalatsi and excludes Munkkiniemi and Kamppi
+
+  Scenario: Framing the ride span without live GPS spans from the previous stop to the target stop
+    Given a ride snapshot without vehicle coordinates
+    When ride progress is calculated at 5 minutes after base time
+    And the ride route frame is computed
+    Then the ride span targets Lasipalatsi and excludes Munkkiniemi and Kamppi
 
   Scenario: Invalid view names default to wait
     When an invalid view name is parsed
@@ -231,10 +245,10 @@ Feature: Ride progress tracking
       {
         pattern: /^When the ride route frame is computed$/,
         run: ({ world }) => {
-          if (!world.snapshot) {
-            throw new Error("Snapshot required");
+          if (!world.snapshot || !world.progress) {
+            throw new Error("Snapshot and progress required");
           }
-          world.extent = frameRideRoute(world.snapshot);
+          world.span = frameRideSpan(world.snapshot, world.progress);
         },
       },
       {
@@ -284,27 +298,31 @@ Feature: Ride progress tracking
         },
       },
       {
-        pattern: /^Then the ride route frame encloses both the vehicle and (.+)$/,
+        pattern: /^Then the ride span targets (.+) and excludes (.+) and (.+)$/,
         run: ({ args, assert, world }) => {
-          const stop = world.snapshot?.stops.find((item) => item.name === args[0]);
-          const vehicle = world.snapshot?.vehicle;
-          const extent = world.extent;
-          const encloses = Boolean(
-            extent &&
-              stop &&
-              vehicle &&
-              extent.south <= Math.min(stop.lat, vehicle.lat) &&
-              extent.north >= Math.max(stop.lat, vehicle.lat) &&
-              extent.west <= Math.min(stop.lon, vehicle.lon) &&
-              extent.east >= Math.max(stop.lon, vehicle.lon),
-          );
-          assert.equal(encloses, true);
+          const span = world.span;
+          const target = world.snapshot?.stops.find((item) => item.name === args[0]);
+          const firstExcluded = world.snapshot?.stops.find((item) => item.name === args[1]);
+          const secondExcluded = world.snapshot?.stops.find((item) => item.name === args[2]);
+          assert.equal(span?.targetStop.name, args[0]);
+          assert.equal(Boolean(span && target && span.south <= target.lat && span.north >= target.lat), true);
+          const containsPoint = (point: { lat: number; lon: number } | undefined) =>
+            Boolean(
+              span &&
+                point &&
+                span.south <= point.lat &&
+                span.north >= point.lat &&
+                span.west <= point.lon &&
+                span.east >= point.lon,
+            );
+          assert.equal(containsPoint(firstExcluded), false);
+          assert.equal(containsPoint(secondExcluded), false);
         },
       },
       {
         pattern: /^When the empty ride route frame is computed$/,
         run: ({ world }) => {
-          world.extent = frameRideRoute({
+          const emptySnapshot: RideSnapshot = {
             destination: "Kamppi",
             line: "4",
             mode: "TRAM",
@@ -312,13 +330,14 @@ Feature: Ride progress tracking
             stops: [],
             tripId: "HSL:EMPTY",
             vehicle: null,
-          });
+          };
+          world.span = frameRideSpan(emptySnapshot, computeRideProgress(emptySnapshot, BASE_MS));
         },
       },
       {
         pattern: /^Then the empty route frame is null$/,
         run: ({ assert, world }) => {
-          assert.equal(world.extent, null);
+          assert.equal(world.span, null);
         },
       },
       {
